@@ -221,6 +221,7 @@ func skeletonChecks() []CheckResult {
 		{"Chat template (hero)", "Instructions in GGUF metadata that act before user input"},
 		{"Tokenizer config", "Tokenizer metadata anomalies"},
 		{"Safetensors header and opcodes", "Serialized code gadgets in headers or pickle opcodes"},
+		{"File inventory and payloads", "Hidden files, embedded payloads, unexpected executables"},
 		{"Hash, provenance, lineage", "Traceable origin and declared quantization lineage"},
 		{"Known-bad hash match", "Match against the known-bad artifact denylist"},
 		{"Quant match", "Declared quantization against observed weight layout"},
