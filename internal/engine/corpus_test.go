@@ -10,10 +10,10 @@ import (
 
 func TestCorpusSweep(t *testing.T) {
 	dir := t.TempDir()
-	writeFixtureAt(t, filepath.Join(dir, "clean-Q8_0.gguf"), gguftest.BuildGGUF(gguftest.Clean()))
+	writeFixtureAt(t, filepath.Join(dir, "clean-Q5_K_M.gguf"), gguftest.BuildGGUF(gguftest.Clean()))
 	hostile := gguftest.WithMeta("tokenizer.chat_template",
 		gguftest.Str("tokenizer.chat_template", "{{ ''.__globals__ }}"))
-	writeFixtureAt(t, filepath.Join(dir, "hostile-Q8_0.gguf"), gguftest.BuildGGUF(hostile))
+	writeFixtureAt(t, filepath.Join(dir, "hostile-Q5_K_M.gguf"), gguftest.BuildGGUF(hostile))
 	// A non-GGUF file must be ignored.
 	writeFixtureAt(t, filepath.Join(dir, "notes.txt"), []byte("ignore me"))
 
@@ -30,7 +30,7 @@ func TestCorpusSweep(t *testing.T) {
 		if e.Error != "" {
 			t.Fatalf("unexpected scan error: %s", e.Error)
 		}
-		if filepath.Base(e.Path) == "hostile-Q8_0.gguf" {
+		if filepath.Base(e.Path) == "hostile-Q5_K_M.gguf" {
 			hostileSeen = true
 			found := false
 			for _, n := range e.Fails {

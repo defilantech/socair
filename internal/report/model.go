@@ -74,6 +74,7 @@ type ArtifactIdentity struct {
 	SHA256                string `json:"sha256"`
 	Format                string `json:"format"`
 	SizeBytes             int64  `json:"size_bytes"`
+	Split                 string `json:"split,omitempty"`
 	QuantDeclared         string `json:"quant_declared,omitempty"`
 	QuantObserved         string `json:"quant_observed,omitempty"`
 	TokenizerHash         string `json:"tokenizer_hash,omitempty"`
@@ -145,6 +146,13 @@ type Appendices struct {
 	Glossary         string `json:"glossary,omitempty"`
 }
 
+func splitLabel(m *gguf.Manifest) string {
+	if !m.MultiPart() {
+		return ""
+	}
+	return fmt.Sprintf("part %d of %d", m.Split.No+1, m.Split.Count)
+}
+
 // DefaultCeiling is the published detection ceiling, per artifact.
 func DefaultCeiling() []string {
 	return []string{
@@ -180,6 +188,7 @@ func NewFromManifest(m *gguf.Manifest) *Document {
 			SizeBytes:     m.SizeBytes,
 			QuantDeclared: m.Quant.Declared,
 			QuantObserved: observed,
+			Split:         splitLabel(m),
 		},
 		Scope: Scope{
 			CheckSetVersion:  "tier1/0.1",

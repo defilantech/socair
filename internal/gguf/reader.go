@@ -12,6 +12,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -70,7 +71,22 @@ type Manifest struct {
 	// directly; the report carries only its hash.
 	ChatTemplate string `json:"-"`
 
-	Quant Quant `json:"quant"`
+	Quant Quant  `json:"quant"`
+	Split *Split `json:"split,omitempty"`
+}
+
+// Split records that an artifact is one shard of a multi-part model. A shard
+// read as if it were a whole model is a real hazard, so this is surfaced, not
+// inferred.
+type Split struct {
+	No          uint32 `json:"no"`
+	Count       uint32 `json:"count"`
+	TensorCount uint32 `json:"tensors"`
+}
+
+// MultiPart reports whether this artifact is one shard of a split model.
+func (m *Manifest) MultiPart() bool {
+	return m.Split != nil && m.Split.Count > 1
 }
 
 // ErrNotGGUF is returned when the file does not start with the GGUF magic.
@@ -86,6 +102,9 @@ var wanted = map[string]struct{}{
 	"tokenizer.chat_template":      {},
 	"general.file_type":            {},
 	"general.quantization_version": {},
+	"split.no":                     {},
+	"split.count":                  {},
+	"split.tensors.count":          {},
 }
 
 // ReadHeader parses the GGUF header and metadata at path without hashing the
@@ -202,14 +221,33 @@ func applyWanted(m *Manifest, key string, val any) {
 		sum := sha256.Sum256([]byte(s))
 		m.ChatTemplateSHA256 = hex.EncodeToString(sum[:])
 	case "general.file_type":
-		if v, ok := val.(uint32); ok {
+		if v, ok := asUint(val); ok {
 			m.Quant.FileType = &v
 		}
 	case "general.quantization_version":
-		if v, ok := val.(uint32); ok {
+		if v, ok := asUint(val); ok {
 			m.Quant.QuantVersion = &v
 		}
+	case "split.no":
+		if v, ok := asUint(val); ok {
+			m.ensureSplit().No = v
+		}
+	case "split.count":
+		if v, ok := asUint(val); ok {
+			m.ensureSplit().Count = v
+		}
+	case "split.tensors.count":
+		if v, ok := asUint(val); ok {
+			m.ensureSplit().TensorCount = v
+		}
 	}
+}
+
+func (m *Manifest) ensureSplit() *Split {
+	if m.Split == nil {
+		m.Split = &Split{}
+	}
+	return m.Split
 }
 
 func asString(v any) string {
@@ -232,32 +270,50 @@ func scanValue(f io.Reader, t uint32, capture bool) (any, error) {
 			return s, nil
 		}
 		return nil, nil
-	case typeUint32:
-		v, err := readU32(f)
-		if err != nil {
-			return nil, err
-		}
-		if capture {
-			return v, nil
-		}
-		return nil, nil
-	case typeUint64:
-		return nil, skipN(f, 8)
-	case typeInt64:
-		return nil, skipN(f, 8)
-	case typeFloat64:
-		return nil, skipN(f, 8)
 	case typeUint8, typeInt8, typeBool:
-		return nil, skipN(f, 1)
+		return readInt(f, 1, capture)
 	case typeUint16, typeInt16:
-		return nil, skipN(f, 2)
-	case typeInt32, typeFloat32:
-		return nil, skipN(f, 4)
+		return readInt(f, 2, capture)
+	case typeUint32, typeInt32, typeFloat32:
+		return readInt(f, 4, capture)
+	case typeUint64, typeInt64, typeFloat64:
+		return readInt(f, 8, capture)
 	case typeArray:
 		return nil, skipArray(f)
 	default:
 		return nil, fmt.Errorf("unknown metadata value type %d", t)
 	}
+}
+
+// readInt reads an n-byte little-endian integer. Real GGUF metadata stores the
+// same field as different widths across writers (split.count is uint16 in
+// some files), so all integer widths are decoded, not just uint32.
+func readInt(f io.Reader, n int, capture bool) (any, error) {
+	buf := make([]byte, n)
+	if _, err := io.ReadFull(f, buf); err != nil {
+		return nil, err
+	}
+	if !capture {
+		return nil, nil
+	}
+	var v uint64
+	for i := n - 1; i >= 0; i-- {
+		v = v<<8 | uint64(buf[i])
+	}
+	return v, nil
+}
+
+// asUint converts a decoded integer to uint32, rejecting values that would
+// truncate.
+func asUint(v any) (uint32, bool) {
+	u, ok := v.(uint64)
+	if !ok {
+		return 0, false
+	}
+	if u > math.MaxUint32 {
+		return 0, false
+	}
+	return uint32(u), true
 }
 
 func skipArray(f io.Reader) error {

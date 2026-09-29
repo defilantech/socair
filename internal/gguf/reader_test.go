@@ -128,3 +128,57 @@ func TestQuantFromFileName(t *testing.T) {
 		}
 	}
 }
+
+func TestSplitMetadata(t *testing.T) {
+	kvs := append(gguftest.Clean(),
+		gguftest.U32("split.no", 1),
+		gguftest.U32("split.count", 3),
+		gguftest.U32("split.tensors.count", 809),
+	)
+	p := writeFixture(t, "shard-00002-of-00003-Q8_0.gguf", gguftest.BuildGGUF(kvs))
+
+	m, err := ReadHeader(p)
+	if err != nil {
+		t.Fatalf("ReadHeader: %v", err)
+	}
+	if !m.MultiPart() {
+		t.Fatal("a shard must be reported as part of a split model")
+	}
+	if m.Split.No != 1 || m.Split.Count != 3 || m.Split.TensorCount != 809 {
+		t.Errorf("split = %+v, want no=1 count=3 tensors=809", m.Split)
+	}
+}
+
+// Real GGUF files store split metadata at mixed widths. The MiniMax shards on
+// disk use uint16 for split.no and split.count and int32 for
+// split.tensors.count. A reader that only decodes uint32 silently drops them.
+func TestMixedWidthSplitMetadata(t *testing.T) {
+	kvs := append(gguftest.Clean(),
+		gguftest.U16("split.no", 1),
+		gguftest.U16("split.count", 3),
+		gguftest.I32("split.tensors.count", 809),
+	)
+	p := writeFixture(t, "shard-mixed-Q8_0.gguf", gguftest.BuildGGUF(kvs))
+
+	m, err := ReadHeader(p)
+	if err != nil {
+		t.Fatalf("ReadHeader: %v", err)
+	}
+	if !m.MultiPart() {
+		t.Fatal("uint16 split metadata must be captured, not dropped")
+	}
+	if m.Split.No != 1 || m.Split.Count != 3 || m.Split.TensorCount != 809 {
+		t.Errorf("split = %+v, want no=1 count=3 tensors=809", m.Split)
+	}
+}
+
+func TestWholeModelIsNotMultiPart(t *testing.T) {
+	p := writeFixture(t, "whole-Q8_0.gguf", gguftest.BuildGGUF(gguftest.Clean()))
+	m, err := ReadHeader(p)
+	if err != nil {
+		t.Fatalf("ReadHeader: %v", err)
+	}
+	if m.MultiPart() {
+		t.Error("a model with no split metadata must not report as multi-part")
+	}
+}
