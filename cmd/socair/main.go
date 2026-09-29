@@ -37,6 +37,38 @@ func main() {
 			fmt.Fprintln(os.Stderr, "error:", err)
 			os.Exit(1)
 		}
+	case "corpus":
+		if len(os.Args) < 3 {
+			fmt.Fprintln(os.Stderr, "usage: socair corpus <dir>")
+			os.Exit(2)
+		}
+		if err := corpus(os.Args[2]); err != nil {
+			fmt.Fprintln(os.Stderr, "error:", err)
+			os.Exit(1)
+		}
+	case "template":
+		if len(os.Args) < 3 {
+			fmt.Fprintln(os.Stderr, "usage: socair template <path>")
+			os.Exit(2)
+		}
+		if err := templateDump(os.Args[2]); err != nil {
+			fmt.Fprintln(os.Stderr, "error:", err)
+			os.Exit(1)
+		}
+	case "render":
+		if len(os.Args) < 3 {
+			fmt.Fprintln(os.Stderr, "usage: socair render <path>")
+			os.Exit(2)
+		}
+		if err := renderCmd(os.Args[2]); err != nil {
+			fmt.Fprintln(os.Stderr, "error:", err)
+			os.Exit(1)
+		}
+	case "demo":
+		if err := demoCmd(); err != nil {
+			fmt.Fprintln(os.Stderr, "error:", err)
+			os.Exit(1)
+		}
 	case "-h", "--help", "help":
 		usage()
 	default:
@@ -53,5 +85,9 @@ Usage:
   socair version
   socair inspect <path>    read an artifact and print its manifest as JSON
   socair scan <path>       run the Tier 1 checks and print the report as JSON
+  socair corpus <dir>      sweep every GGUF under a directory, headers only
+  socair template <path>   print the chat template and hero-check findings
+  socair render <path>     scan and write the HTML attestation to stdout
+  socair demo              write the SAMPLE attestation for sales
 `)
 }

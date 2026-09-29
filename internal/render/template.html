@@ -1,0 +1,159 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Model Assurance Attestation {{ .Document.Header.DocumentID }}</title>
+<style>
+  :root {
+    --ink: #1c1c1e;
+    --muted: #6b6b70;
+    --line: #e2e2e6;
+    --pass-bg: #e6f4ea; --pass-ink: #1e6b3a; --pass-line: #bfe0c9;
+    --fail-bg: #fdecea; --fail-ink: #a3231b; --fail-line: #f3c2bd;
+    --untested-bg: #f1f1f3; --untested-ink: #55555c; --untested-line: #d8d8dd;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; padding: 48px; color: var(--ink); background: #fff;
+    font: 15px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+  .sheet { max-width: 820px; margin: 0 auto; }
+  h1 { font-size: 26px; margin: 0 0 4px; letter-spacing: -0.01em; }
+  h2 { font-size: 15px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted);
+    margin: 40px 0 12px; padding-bottom: 6px; border-bottom: 1px solid var(--line); }
+  .issued { color: var(--muted); font-size: 13px; margin-bottom: 28px; }
+
+  /* Cover block, page one, compact */
+  .cover { border: 1px solid var(--line); border-radius: 10px; padding: 20px 22px; }
+  .cover .artifact { font-size: 19px; font-weight: 600; }
+  .cover .hash { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; color: var(--muted); word-break: break-all; }
+  .cover .facts { margin-top: 12px; color: var(--muted); font-size: 13px; }
+  .badge { display: inline-block; margin-top: 14px; padding: 6px 12px; border-radius: 999px;
+    border: 1px solid var(--line); background: #fafafa; font-weight: 600; }
+  .counts { display: flex; gap: 22px; margin-top: 16px; }
+  .counts .n { font-size: 22px; font-weight: 700; display: block; line-height: 1.1; }
+  .counts .l { font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; }
+
+  table { width: 100%; border-collapse: collapse; margin-top: 6px; }
+  th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { font-size: 12px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); }
+  td.looks { color: var(--muted); font-size: 13px; }
+  td.evidence { font-size: 13px; color: var(--muted); }
+
+  /* Result pills. NOT_TESTED is deliberately neutral, never a pass look. */
+  .pill { display: inline-block; padding: 3px 9px; border-radius: 6px; font-size: 12px;
+    font-weight: 700; letter-spacing: 0.04em; border: 1px solid; white-space: nowrap; }
+  .pill.pass { background: var(--pass-bg); color: var(--pass-ink); border-color: var(--pass-line); }
+  .pill.fail { background: var(--fail-bg); color: var(--fail-ink); border-color: var(--fail-line); }
+  .pill.not-tested { background: var(--untested-bg); color: var(--untested-ink); border-color: var(--untested-line); }
+  .tag { display: inline-block; margin-left: 6px; padding: 1px 6px; border-radius: 4px; font-size: 10px;
+    text-transform: uppercase; letter-spacing: 0.06em; background: #fff; border: 1px solid var(--untested-line);
+    color: var(--untested-ink); font-weight: 600; }
+
+  .bounded { border-left: 3px solid var(--line); padding: 4px 0 4px 14px; font-style: italic; color: #333; }
+  .ceiling ul { margin: 8px 0 0; padding-left: 20px; }
+  .ceiling li { margin-bottom: 4px; }
+  .warn { font-weight: 600; }
+
+  /* Sample watermark. Fixed positioning repeats it on each printed page in
+     Chrome print. The SAMPLE tags in the header, badge, and footer are the
+     guaranteed marks. */
+  .sample-banner { position: fixed; top: 40%; left: 0; right: 0; text-align: center;
+    font-size: 96px; font-weight: 800; letter-spacing: 0.08em;
+    color: rgba(0, 0, 0, 0.06); transform: rotate(-18deg); pointer-events: none; z-index: 9; }
+  .sample-chip { display: inline-block; margin-bottom: 10px; padding: 3px 8px; border-radius: 4px;
+    font-size: 11px; font-weight: 700; letter-spacing: 0.08em; background: #fff4d6; color: #7a5a00;
+    border: 1px solid #f0d68a; text-transform: uppercase; }
+  footer { margin-top: 40px; padding-top: 14px; border-top: 1px solid var(--line);
+    color: var(--muted); font-size: 12px; }
+  @media print { body { padding: 0; } .sheet { max-width: none; } }
+</style>
+</head>
+<body>
+<div class="sheet">
+  {{- if .Sample }}<div class="sample-banner">SAMPLE</div>{{ end }}
+
+  {{- if .Sample }}<div class="sample-chip">Sample data &middot; not a real issuance</div>{{ end }}
+  <h1>Model Assurance Attestation</h1>
+  <div class="issued">
+    Issued {{ .Document.Header.IssuedUTC }} &middot; Template {{ .Document.Header.TemplateVersion }}
+    {{- if .Document.Header.RescanDue }} &middot; Re-scan due {{ .Document.Header.RescanDue }}{{ end }}
+  </div>
+
+  <section class="cover">
+    <div class="artifact">{{ .Document.Artifact.Name }}</div>
+    <div class="hash">{{ .Document.Artifact.SHA256 }}</div>
+    <div class="facts">
+      {{ .Document.Artifact.Format }} &middot; {{ .Document.Artifact.SizeBytes }} bytes
+      {{- if .Document.Artifact.QuantDeclared }} &middot; declared {{ .Document.Artifact.QuantDeclared }}{{ end }}
+      {{- if .Document.Artifact.QuantObserved }} &middot; observed {{ .Document.Artifact.QuantObserved }}{{ end }}
+      {{- if .Document.Artifact.Split }} &middot; <strong>{{ .Document.Artifact.Split }}</strong>{{ end }}
+      <br>Document {{ .Document.Header.DocumentID }} &middot; Issuer {{ .Document.Issuer.Authority }}
+      {{- if .Document.Header.SignerName }} &middot; Signer {{ .Document.Header.SignerName }}{{ end }}
+    </div>
+    <div class="badge">{{ .Document.Header.AssuranceLevelAwarded }}</div>
+    <div class="counts">
+      <div><span class="n">{{ .Counts.Pass }}</span><span class="l">Pass</span></div>
+      <div><span class="n">{{ .Counts.Fail }}</span><span class="l">Fail</span></div>
+      <div><span class="n">{{ .Counts.NotTested }}</span><span class="l">Not tested</span></div>
+    </div>
+  </section>
+
+  <h2>Checks performed</h2>
+  <table>
+    <thead>
+      <tr><th>Check</th><th>Looks for</th><th>Result</th><th>Evidence</th></tr>
+    </thead>
+    <tbody>
+      {{- range .Document.Checks }}
+      <tr>
+        <td>{{ .Name }}</td>
+        <td class="looks">{{ .LooksFor }}</td>
+        <td>
+          <span class="pill {{ statusClass .Status }}">{{ .Status }}</span>
+          {{- if isNotTested .Status }}<span class="tag">not tested</span>{{ end }}
+        </td>
+        <td class="evidence">{{ if .Evidence }}{{ .Evidence }}{{ else }}{{ .Notes }}{{ end }}</td>
+      </tr>
+      {{- end }}
+    </tbody>
+  </table>
+
+  <h2>Bounded statement</h2>
+  <p class="bounded">{{ .Document.BoundedStatement }}</p>
+
+  <section class="ceiling">
+    <h2>Out of scope</h2>
+    <p class="warn">{{ .Document.OutOfScope.DoesNotCertify }}</p>
+    <ul>
+      {{- range .Document.OutOfScope.Ceiling }}<li>{{ . }}</li>{{ end }}
+    </ul>
+    {{- if .Document.OutOfScope.UnparsedFormats }}
+    <p>Formats not parsed: {{ range .Document.OutOfScope.UnparsedFormats }}{{ . }} {{ end }}</p>
+    {{- end }}
+    {{- if .Document.OutOfScope.UntestedNodeClasses }}
+    <p>Node classes not tested: {{ range .Document.OutOfScope.UntestedNodeClasses }}{{ . }} {{ end }}</p>
+    {{- end }}
+  </section>
+
+  <h2>Promotion authorization</h2>
+  <p>
+    Clean-store promotion: <strong>{{ if .Document.PromotionAuthorization.Authorized }}authorized{{ else }}withheld{{ end }}</strong>
+    {{- if .Document.PromotionAuthorization.Level }} &middot; {{ .Document.PromotionAuthorization.Level }}{{ end }}
+  </p>
+  {{- if .Document.PromotionAuthorization.Conditions }}
+  <p class="evidence">{{ .Document.PromotionAuthorization.Conditions }}</p>
+  {{- end }}
+
+  <h2>Verification</h2>
+  <p class="evidence">
+    Signing: {{ .Document.Verification.SigningMethod }}<br>
+    Artifact SHA256: <span class="hash">{{ .Document.Verification.ArtifactSHA256 }}</span>
+    {{- if .Document.Verification.RerunInstructions }}<br>Re-run: {{ .Document.Verification.RerunInstructions }}{{ end }}
+  </p>
+
+  <footer>
+    {{ .Document.Issuer.Authority }}{{ if .Document.Issuer.Excludes }} &middot; {{ .Document.Issuer.Excludes }}{{ end }}
+    {{- if .Sample }} &middot; SAMPLE, NOT A REAL ISSUANCE{{ end }}
+  </footer>
+</div>
+</body>
+</html>

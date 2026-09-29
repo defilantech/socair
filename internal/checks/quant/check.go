@@ -1,9 +1,9 @@
 // Package quant compares the declared quantization against the observed GGML
 // file type.
 //
-// The file-type mapping is deliberately small and provisional. A file type not
-// in the mapping is NOT_TESTED, not a guess, until the mapping is verified
-// against the current llama.cpp enum.
+// The mapping is taken from llama.cpp include/llama.h, enum llama_ftype. Keep
+// it in step with that source; do not fill it from memory. A file type outside
+// the mapping is NOT_TESTED, not a guess.
 package quant
 
 import (
@@ -12,13 +12,45 @@ import (
 	"github.com/defilantech/socair/internal/checks"
 )
 
-// fileTypeToQuant maps a GGML file type to a quantization label. Only
-// historically stable values are listed. Extend with verification, not memory.
+// ftypeGuessed is LLAMA_FTYPE_GUESSED: the file does not declare a type.
+const ftypeGuessed = 1024
+
+// fileTypeToQuant maps a GGML file type to a quantization label, per
+// llama.cpp include/llama.h.
 var fileTypeToQuant = map[uint32]string{
-	0: "F32",
-	1: "F16",
-	2: "Q4_0",
-	3: "Q4_1",
+	0:  "F32",
+	1:  "F16",
+	2:  "Q4_0",
+	3:  "Q4_1",
+	7:  "Q8_0",
+	8:  "Q5_0",
+	9:  "Q5_1",
+	10: "Q2_K",
+	11: "Q3_K_S",
+	12: "Q3_K_M",
+	13: "Q3_K_L",
+	14: "Q4_K_S",
+	15: "Q4_K_M",
+	16: "Q5_K_S",
+	17: "Q5_K_M",
+	18: "Q6_K",
+	19: "IQ2_XXS",
+	20: "IQ2_XS",
+	21: "Q2_K_S",
+	22: "IQ3_XS",
+	23: "IQ3_XXS",
+	24: "IQ1_S",
+	25: "IQ4_NL",
+	26: "IQ3_S",
+	27: "IQ3_M",
+	28: "IQ2_S",
+	29: "IQ2_M",
+	30: "IQ4_XS",
+	31: "IQ1_M",
+	32: "BF16",
+	36: "TQ1_0",
+	37: "TQ2_0",
+	38: "MXFP4_MOE",
 }
 
 // Compare reports whether the declared quantization matches the observed file
@@ -39,17 +71,22 @@ func Compare(declared string, fileType *uint32) checks.Result {
 		r.Notes = "no declared quantization parsed from the file name"
 		return r
 	}
+	if *fileType == ftypeGuessed {
+		r.Status = checks.NotTested
+		r.Notes = "general.file_type is GUESSED; the file does not declare a quantization"
+		return r
+	}
 
 	observed, ok := fileTypeToQuant[*fileType]
 	if !ok {
 		r.Status = checks.NotTested
-		r.Notes = fmt.Sprintf("file type %d is not in our mapping; cannot compare against declared %s", *fileType, declared)
+		r.Notes = fmt.Sprintf("file type %d is not in the llama.cpp mapping; cannot compare against declared %s", *fileType, declared)
 		return r
 	}
 
 	if observed == declared {
 		r.Status = checks.Pass
-		r.Notes = "declared " + declared + " matches observed file type"
+		r.Notes = "declared " + declared + " matches observed file type " + fmt.Sprint(*fileType)
 		return r
 	}
 

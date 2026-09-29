@@ -3,6 +3,7 @@ package structure
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/defilantech/socair/internal/checks"
@@ -38,6 +39,21 @@ func TestTruncatedDoesNotPass(t *testing.T) {
 	}
 	if r.Notes == "" {
 		t.Error("NOT_TESTED must carry a reason")
+	}
+}
+
+func TestSplitArtifactIsSurfaced(t *testing.T) {
+	kvs := append(gguftest.Clean(),
+		gguftest.U32("split.no", 1),
+		gguftest.U32("split.count", 3),
+	)
+	p := writeFixture(t, "shard-00002-of-00003.gguf", gguftest.BuildGGUF(kvs))
+	r := Validate(p)
+	if r.Status != checks.Pass {
+		t.Fatalf("status = %s, want PASS", r.Status)
+	}
+	if !strings.Contains(r.Notes, "part 2 of 3") {
+		t.Errorf("a shard must be surfaced in the notes, got: %s", r.Notes)
 	}
 }
 

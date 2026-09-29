@@ -6,3 +6,7 @@ The report comes before the engine. The current core artifact is [docs/attestati
 
 - [docs/attestation-template.md](docs/attestation-template.md): the v1 attestation document, section by section.
 - [docs/brand.md](docs/brand.md): name meaning, domain set, trademark status.
+- [docs/stack.md](docs/stack.md): engine and frontend stack, and the report contract.
+- [docs/dev.md](docs/dev.md): build, test, and layout conventions.
+
+License: Apache-2.0.

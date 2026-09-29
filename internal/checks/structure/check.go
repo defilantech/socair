@@ -34,5 +34,9 @@ func Validate(path string) checks.Result {
 
 	r.Status = checks.Pass
 	r.Notes = fmt.Sprintf("GGUF v%d parsed: %d tensors, %d metadata pairs", m.Version, m.TensorCount, m.KVCount)
+	if m.MultiPart() {
+		r.Notes = fmt.Sprintf("part %d of %d of a split model; this artifact is one shard, not the whole model (%s)",
+			m.Split.No+1, m.Split.Count, r.Notes)
+	}
 	return r
 }

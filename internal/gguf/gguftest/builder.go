@@ -10,8 +10,10 @@ import (
 )
 
 const (
-	typeString = 8
+	typeUint16 = 2
 	typeUint32 = 4
+	typeInt32  = 5
+	typeString = 8
 )
 
 // KV is one metadata pair.
@@ -19,14 +21,23 @@ type KV struct {
 	key   string
 	vtype uint32
 	str   string
+	u16   uint16
 	u32   uint32
+	i32   int32
 }
 
 // Str builds a string metadata pair.
 func Str(key, val string) KV { return KV{key: key, vtype: typeString, str: val} }
 
+// U16 builds a uint16 metadata pair. Real GGUF files store split metadata this
+// narrow, so tests must cover it.
+func U16(key string, v uint16) KV { return KV{key: key, vtype: typeUint16, u16: v} }
+
 // U32 builds a uint32 metadata pair.
 func U32(key string, v uint32) KV { return KV{key: key, vtype: typeUint32, u32: v} }
+
+// I32 builds an int32 metadata pair.
+func I32(key string, v int32) KV { return KV{key: key, vtype: typeInt32, i32: v} }
 
 // Clean is a standard, benign metadata set for a small GGUF.
 func Clean() []KV {
@@ -55,8 +66,12 @@ func BuildGGUF(kvs []KV) []byte {
 		switch p.vtype {
 		case typeString:
 			writeStr(&b, p.str)
+		case typeUint16:
+			_ = binary.Write(&b, binary.LittleEndian, p.u16)
 		case typeUint32:
 			_ = binary.Write(&b, binary.LittleEndian, p.u32)
+		case typeInt32:
+			_ = binary.Write(&b, binary.LittleEndian, p.i32)
 		default:
 			panic("gguftest: unsupported type")
 		}
