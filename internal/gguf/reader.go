@@ -81,9 +81,9 @@ var wanted = map[string]struct{}{
 	"general.quantization_version": {},
 }
 
-// ReadArtifact parses the GGUF header and metadata at path and returns its
-// manifest, including a SHA256 of the exact file bytes.
-func ReadArtifact(path string) (*Manifest, error) {
+// ReadHeader parses the GGUF header and metadata at path without hashing the
+// file. Use it when only structure and metadata matter.
+func ReadHeader(path string) (*Manifest, error) {
 	f, err := os.Open(path)
 	if err != nil {
 		return nil, err
@@ -106,10 +106,23 @@ func ReadArtifact(path string) (*Manifest, error) {
 	if err := readHeader(f, m); err != nil {
 		return nil, err
 	}
+	return m, nil
+}
 
-	if _, err := f.Seek(0, io.SeekStart); err != nil {
+// ReadArtifact parses the GGUF header and metadata at path and returns its
+// manifest, including a SHA256 of the exact file bytes.
+func ReadArtifact(path string) (*Manifest, error) {
+	m, err := ReadHeader(path)
+	if err != nil {
 		return nil, err
 	}
+
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+
 	h := sha256.New()
 	if _, err := io.Copy(h, f); err != nil {
 		return nil, err

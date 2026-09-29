@@ -9,61 +9,9 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/defilantech/socair/internal/gguf/gguftest"
 )
-
-const (
-	vString = typeString
-	vU32    = typeUint32
-)
-
-type kvpair struct {
-	key   string
-	vtype uint32
-	str   string
-	u32   uint32
-}
-
-func strKV(key, val string) kvpair      { return kvpair{key: key, vtype: vString, str: val} }
-func u32KV(key string, v uint32) kvpair { return kvpair{key: key, vtype: vU32, u32: v} }
-
-func writeStr(b *bytes.Buffer, s string) {
-	_ = binary.Write(b, binary.LittleEndian, uint64(len(s)))
-	b.WriteString(s)
-}
-
-// buildGGUF assembles a minimal GGUF v3 container with the given metadata.
-func buildGGUF(kvs []kvpair) []byte {
-	var b bytes.Buffer
-	b.WriteString("GGUF")
-	_ = binary.Write(&b, binary.LittleEndian, uint32(3))
-	_ = binary.Write(&b, binary.LittleEndian, uint64(0)) // tensor count
-	_ = binary.Write(&b, binary.LittleEndian, uint64(len(kvs)))
-	for _, p := range kvs {
-		writeStr(&b, p.key)
-		_ = binary.Write(&b, binary.LittleEndian, p.vtype)
-		switch p.vtype {
-		case vString:
-			writeStr(&b, p.str)
-		case vU32:
-			_ = binary.Write(&b, binary.LittleEndian, p.u32)
-		default:
-			panic("fixture builder: unsupported type")
-		}
-	}
-	return b.Bytes()
-}
-
-func cleanFixture() []kvpair {
-	return []kvpair{
-		strKV("general.name", "Fixture Model"),
-		strKV("general.architecture", "llama"),
-		strKV("general.size_label", "1B"),
-		u32KV("general.file_type", 17),
-		u32KV("general.quantization_version", 2),
-		strKV("tokenizer.ggml.model", "llama"),
-		strKV("tokenizer.chat_template", "{{ bos_token }}\n{{ messages }}"),
-	}
-}
 
 func writeFixture(t *testing.T, name string, data []byte) string {
 	t.Helper()
@@ -75,7 +23,7 @@ func writeFixture(t *testing.T, name string, data []byte) string {
 }
 
 func TestReadArtifactValidFixture(t *testing.T) {
-	data := buildGGUF(cleanFixture())
+	data := gguftest.BuildGGUF(gguftest.Clean())
 	p := writeFixture(t, "clean-Q5_K_M.gguf", data)
 
 	m, err := ReadArtifact(p)
@@ -117,23 +65,32 @@ func TestReadArtifactValidFixture(t *testing.T) {
 	}
 }
 
+func TestReadHeaderDoesNotHash(t *testing.T) {
+	p := writeFixture(t, "clean.gguf", gguftest.BuildGGUF(gguftest.Clean()))
+	m, err := ReadHeader(p)
+	if err != nil {
+		t.Fatalf("ReadHeader: %v", err)
+	}
+	if m.SHA256 != "" {
+		t.Errorf("ReadHeader must not set SHA256, got %q", m.SHA256)
+	}
+	if m.Name != "Fixture Model" {
+		t.Errorf("name = %q, want Fixture Model", m.Name)
+	}
+}
+
 func TestReadArtifactBadMagic(t *testing.T) {
-	p := writeFixture(t, "bad.gguf", append([]byte("NOPE"), buildGGUF(cleanFixture())...))
+	p := writeFixture(t, "bad.gguf", append([]byte("NOPE"), gguftest.BuildGGUF(gguftest.Clean())...))
 	if _, err := ReadArtifact(p); !errors.Is(err, ErrNotGGUF) {
 		t.Fatalf("err = %v, want ErrNotGGUF", err)
 	}
 }
 
 func TestReadArtifactTruncatedHeader(t *testing.T) {
-	full := buildGGUF(cleanFixture())
+	full := gguftest.BuildGGUF(gguftest.Clean())
 	p := writeFixture(t, "truncated.gguf", full[:6])
-	_, err := ReadArtifact(p)
-	if err == nil {
+	if _, err := ReadArtifact(p); err == nil {
 		t.Fatal("expected an error on a truncated header, got nil")
-	}
-	if !errors.Is(err, ErrNotGGUF) && !errors.Is(err, os.ErrClosed) {
-		// any wrapped read error is acceptable; the point is no panic and a typed failure
-		t.Logf("typed error: %v", err)
 	}
 }
 
