@@ -38,7 +38,9 @@ A text file of known-bad artifact hashes.
 ## 3. Provenance manifest, `SOCAIR_PROVENANCE`
 
 A JSON record of where the artifact came from, written by whoever ran the
-airlock.
+airlock. `socair airlock pull` writes one of these beside every staged artifact,
+recording the repo and the revision, and never a signing status. A pull that
+lands nothing writes nothing.
 
 ```json
 {
