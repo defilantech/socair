@@ -14,6 +14,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 )
 
@@ -312,8 +313,15 @@ func readString(f io.Reader) (string, error) {
 	return string(buf), nil
 }
 
-// QuantFromFileName extracts a quantization label such as Q5_K_M from an
-// artifact file name, for the declared-vs-observed comparison.
+// quantField matches a GGML quantization tag: a plain type (Q4_0, Q5_K_M), an
+// IQ type (IQ3_S, IQ4_XS), or a float type. Deliberately strict, so a model
+// name that merely starts with Q (for example a "qwen2" vocab file) is not
+// mistaken for a quantization.
+var quantField = regexp.MustCompile(`^(IQ[0-9][A-Z0-9_]*|Q[0-9][A-Z0-9_]*|BF16|F16|F32)$`)
+
+// QuantFromFileName extracts a quantization label such as Q5_K_M or IQ3_S from
+// an artifact file name, for the declared-vs-observed comparison. Prefix tags
+// like UD- and shard parts are ignored because the label is a standalone field.
 func QuantFromFileName(name string) string {
 	base := strings.TrimSuffix(name, filepath.Ext(name))
 	fields := strings.FieldsFunc(base, func(r rune) bool {
@@ -321,16 +329,7 @@ func QuantFromFileName(name string) string {
 	})
 	for _, f := range fields {
 		up := strings.ToUpper(f)
-		switch up {
-		case "BF16", "F16", "F32", "Q8_0", "Q6_K", "Q5_K_M", "Q5_K_S", "Q5_0", "Q5_1",
-			"Q4_K_M", "Q4_K_S", "Q4_0", "Q4_1", "Q3_K_M", "Q3_K_S", "Q2_K":
-			return up
-		}
-	}
-	// Fall back to any field that looks like a GGML quant tag.
-	for _, f := range fields {
-		up := strings.ToUpper(f)
-		if strings.HasPrefix(up, "Q") || up == "BF16" {
+		if quantField.MatchString(up) {
 			return up
 		}
 	}

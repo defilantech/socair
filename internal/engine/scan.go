@@ -20,17 +20,39 @@ import (
 // CheckSetVersion names the set of checks this engine runs.
 const CheckSetVersion = "tier1/0.1"
 
-// Scan reads the artifact at path and returns a filled report document.
-func Scan(path string) (*report.Document, error) {
+// Mode selects how much of the artifact a scan reads.
+type Mode int
+
+const (
+	// ModeFull hashes the whole file. Use it for any attestation.
+	ModeFull Mode = iota
+	// ModeHeaders reads container metadata only. Use it for baseline sweeps
+	// across many models, where hashing gigabytes per file buys nothing.
+	ModeHeaders
+)
+
+// Scan reads the artifact at path and returns a filled report document, hashing
+// the full file. It is the attestation path.
+func Scan(path string) (*report.Document, error) { return ScanMode(path, ModeFull) }
+
+// ScanMode reads the artifact at path in the given mode and returns a filled
+// report document.
+func ScanMode(path string, mode Mode) (*report.Document, error) {
 	start := time.Now().UTC()
 
-	m, err := gguf.ReadArtifact(path)
+	var m *gguf.Manifest
+	var err error
+	if mode == ModeHeaders {
+		m, err = gguf.ReadHeader(path)
+	} else {
+		m, err = gguf.ReadArtifact(path)
+	}
 	if err != nil {
 		return nil, err
 	}
 
 	d := report.NewFromManifest(m)
-	d.Header.DocumentID = fmt.Sprintf("SOCAIR-%s-%s", start.Format("20060102"), shortHash(m.SHA256))
+	d.Header.DocumentID = fmt.Sprintf("SOCAIR-%s-%s", start.Format("20060102"), shortHashOr(m.SHA256, "headers"))
 	d.Header.IssuedUTC = start.Format(time.RFC3339)
 	d.Header.AssuranceLevelAwarded = "Tier 1 (static)"
 	d.Artifact.Name = m.Name
@@ -114,9 +136,9 @@ func allPass(cs []report.CheckResult) bool {
 	return true
 }
 
-func shortHash(sha string) string {
+func shortHashOr(sha, fallback string) string {
 	if len(sha) >= 8 {
 		return sha[:8]
 	}
-	return sha
+	return fallback
 }

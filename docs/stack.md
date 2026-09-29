@@ -29,3 +29,5 @@ The report data model is the cross-stack contract: a versioned JSON schema. The 
 ## Open-source posture
 
 Tier 1 is intended to be open source. The repository and the work stay private until the reveal, and the reveal is a working product, not a plan. The OSS tier output is unsigned; the Defilan signature is the paid product.
+
+License: Apache-2.0 (see `LICENSE`).

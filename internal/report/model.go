@@ -64,6 +64,7 @@ type Header struct {
 
 type ArtifactIdentity struct {
 	Name                  string `json:"name"`
+	Architecture          string `json:"architecture,omitempty"`
 	RepoURL               string `json:"repo_url,omitempty"`
 	CommitOrTag           string `json:"commit_or_tag,omitempty"`
 	CommitSHA             string `json:"commit_sha,omitempty"`
@@ -172,6 +173,7 @@ func NewFromManifest(m *gguf.Manifest) *Document {
 		},
 		Artifact: ArtifactIdentity{
 			Name:          m.Name,
+			Architecture:  m.Architecture,
 			FileName:      m.FileName,
 			SHA256:        m.SHA256,
 			Format:        m.Format,

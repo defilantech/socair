@@ -112,11 +112,15 @@ func TestReadArtifactOversizeStringLength(t *testing.T) {
 
 func TestQuantFromFileName(t *testing.T) {
 	cases := map[string]string{
-		"google_gemma-3-12b-it-Q5_K_M.gguf": "Q5_K_M",
-		"model-Q4_K_S.gguf":                 "Q4_K_S",
-		"deepseek-coder-33b-Q8_0.gguf":      "Q8_0",
-		"Llama-3-8B-BF16.gguf":              "BF16",
-		"plain.gguf":                        "",
+		"google_gemma-3-12b-it-Q5_K_M.gguf":         "Q5_K_M",
+		"model-Q4_K_S.gguf":                         "Q4_K_S",
+		"deepseek-coder-33b-Q8_0.gguf":              "Q8_0",
+		"Llama-3-8B-BF16.gguf":                      "BF16",
+		"MiniMax-M2.7-UD-IQ3_S-00003-of-00003.gguf": "IQ3_S",
+		"Qwen3.6-35B-A3B-UD-Q4_K_M.gguf":            "Q4_K_M",
+		"ggml-vocab-qwen2.gguf":                     "", // a name starting with Q is not a quant
+		"ggml-vocab-qwen35.gguf":                    "",
+		"plain.gguf":                                "",
 	}
 	for name, want := range cases {
 		if got := QuantFromFileName(name); got != want {
