@@ -48,6 +48,11 @@ func RenderPDF(w io.Writer, d *report.Document) error {
 	pdf.SetCreator("Socair", false)
 	pdf.SetTitle("Model Assurance Attestation "+d.Header.DocumentID, false)
 
+	// Sort the internal resource catalogs. Without this the library emits font
+	// and image objects in Go map order, so the same document produces different
+	// bytes run to run even though the content is identical.
+	pdf.SetCatalogSort(true)
+
 	// Deterministic metadata: derive the date from the document, not the clock.
 	issued := parsedOrEpoch(d.Header.IssuedUTC)
 	pdf.SetCreationDate(issued)

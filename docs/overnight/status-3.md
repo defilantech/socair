@@ -21,7 +21,7 @@ Board reconciled first: closed #1, #3, #7, #8, #9, #12, #17; re-scoped #2; opene
 - **Tests:** 13 packages ok, `gofmt` clean.
 - **Real artifact, all three formats from one scan:** HTML 9081 bytes, PDF valid (PDF 1.3, 2 pages), SARIF 2.1.0 with 8 results.
 - **Corpus, zero FAILs across 52 files.** Hero on `~/llmkube-models`: **24 PASS, 0 FAIL, 2 NOT_TESTED**, up from 8 PASS / 18 leads. The 2 are the MiniMax shards, which carry no template.
-- **PDF is byte-stable** for a fixed document; the creation date comes from the document, not the clock.
+- **PDF is byte-stable** for a fixed document. Two things were needed: the creation date comes from the document, not the clock, and `SetCatalogSort(true)` sorts the library's internal resource catalogs. Without the sort, the PDF library emits font objects in Go map order and the bytes differ run to run while the content is identical. CI caught this, which is why the byte-stability test exists.
 
 ## Falsification (each neutered, observed failing, restored, suite green)
 
