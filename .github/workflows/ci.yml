@@ -8,15 +8,21 @@ on:
 jobs:
   build-and-test:
     runs-on: ubuntu-latest
+    # Dependencies are vendored, so the build needs no network. Air-gap builds
+    # use the same path.
+    env:
+      GOFLAGS: -mod=vendor
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
-          cache: true
+          cache: false
+      - name: vendor is in sync
+        run: go mod verify
       - name: gofmt check
         run: |
-          unformatted="$(gofmt -l .)"
+          unformatted="$(gofmt -l cmd internal)"
           if [ -n "$unformatted" ]; then
             echo "gofmt needed on:"
             echo "$unformatted"

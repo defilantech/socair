@@ -1,0 +1,13 @@
+# Reviewed-template allowlist.
+#
+# One SHA256 per line, hex, of a chat template that a human has reviewed and
+# cleared. A template on this list clears the instruction-language leads, so it
+# returns PASS instead of NOT_TESTED.
+#
+# It is seeded EMPTY on purpose. Clearing a template by machine is the exact
+# false positive this project already paid for once. To add an entry: inspect
+# the template with `socair template <path>`, read it, and only then paste its
+# `template <n> bytes, sha <hex>` hash here.
+#
+# A template on this list is still FAILed if it carries structural
+# code-execution evidence. The allowlist clears language, never code.

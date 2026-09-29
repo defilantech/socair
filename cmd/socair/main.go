@@ -56,11 +56,7 @@ func main() {
 			os.Exit(1)
 		}
 	case "render":
-		if len(os.Args) < 3 {
-			fmt.Fprintln(os.Stderr, "usage: socair render <path>")
-			os.Exit(2)
-		}
-		if err := renderCmd(os.Args[2]); err != nil {
+		if err := renderCmd(os.Args[2:]); err != nil {
 			fmt.Fprintln(os.Stderr, "error:", err)
 			os.Exit(1)
 		}

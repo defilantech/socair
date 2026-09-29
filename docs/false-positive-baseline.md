@@ -64,6 +64,46 @@ Quant match                    2 / 0 / 24
 - A clean hero result still means "no structural indicator and no lead matched",
   not "no backdoor".
 
+## Second refinement (trust-coverage slice)
+
+The first retune left 18 of 26 real templates as instruction-language leads. A
+tally of the lead notes showed two causes, both substring false positives:
+
+1. **`secrecy-instruction` matched "do not tell".** The real text was "do not
+   tell the user about function calls", a benign tool-calling instruction in a
+   Qwen template. 15 of the 18 leads.
+2. **`external-access` matched "requests" inside "PULL_REQUESTS".** The word
+   appeared inside a Devstral system message.
+
+Both patterns were narrowed to require context:
+
+- `secrecy-instruction` now requires concealment of **something sensitive**
+  (system prompt, instructions, prompt, rules, training data, secrets,
+  passwords, credentials, hidden), not a bare "do not tell".
+- `external-access` now requires a **code call shape** (`import requests`,
+  `requests.get(`, `urllib.request`, `curl -`), so a word that merely contains
+  "requests" cannot match.
+
+Result on `~/llmkube-models` (26 files), PASS / FAIL / NOT_TESTED:
+
+```
+Chat template (hero)   24 / 0 / 2
+```
+
+The 2 remaining NOT_TESTED are the MiniMax shards 2 and 3, which carry no chat
+template at all. Zero leads, zero FAILs. Both real cases from the corpus are
+now regression tests: `TestRealWorldBenignLanguagePasses`.
+
+### The reviewed-template allowlist
+
+`internal/checks/chattemplate/known-good-templates.txt` holds SHA256 hashes of
+templates a human has reviewed. A listed template returns PASS instead of a
+lead. It is **seeded empty on purpose**: clearing a template by machine is the
+false positive this project already paid for. A `TestAllowlistIsSeededEmpty`
+guards that. A template on the list is still FAILed if it carries structural
+code-execution evidence: the allowlist clears language, never code, and
+`TestAllowlistClearsLeadsButNotStructural` proves it.
+
 ## Follow-ups
 
 1. Verify the GGML file-type mapping against the current llama.cpp enum so the
