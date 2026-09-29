@@ -45,6 +45,10 @@ type Manifest struct {
 	HeaderSHA256 string   `json:"header_sha256"`
 	DataBytes    int64    `json:"data_bytes"`
 	Malformed    []string `json:"malformed,omitempty"`
+
+	// Metadata holds the decoded __metadata__ values for the inventory check.
+	// Not serialized: the report carries keys, not values.
+	Metadata map[string]string `json:"-"`
 }
 
 type headerEntry struct {
@@ -132,6 +136,7 @@ func ReadArtifact(path string) (*Manifest, error) {
 				m.Malformed = append(m.Malformed, "__metadata__ is not a string map")
 				continue
 			}
+			m.Metadata = meta
 			for k := range meta {
 				m.MetadataKeys = append(m.MetadataKeys, k)
 			}
