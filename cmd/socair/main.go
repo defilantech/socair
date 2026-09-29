@@ -60,6 +60,11 @@ func main() {
 			fmt.Fprintln(os.Stderr, "error:", err)
 			os.Exit(1)
 		}
+	case "airlock":
+		if err := airlockCmd(os.Args[2:]); err != nil {
+			fmt.Fprintln(os.Stderr, "error:", err)
+			os.Exit(1)
+		}
 	case "demo":
 		if err := demoCmd(); err != nil {
 			fmt.Fprintln(os.Stderr, "error:", err)
@@ -84,6 +89,11 @@ Usage:
   socair corpus <dir>      sweep every GGUF under a directory, headers only
   socair template <path>   print the chat template and hero-check findings
   socair render <path>     scan and write the HTML attestation to stdout
+  socair airlock init <store>   create the store, staging, and activity log
+  socair airlock pull      pull an artifact through controlled egress into staging
+  socair airlock ingest    resolve a local path or an offline HF cache entry
+  socair airlock promote   promote an attested artifact into the clean store
+  socair airlock log       print the append-only airlock activity log
   socair demo              write the SAMPLE attestation for sales
 `)
 }
