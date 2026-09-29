@@ -1,0 +1,157 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://socair.ai/schema/report/v1.json",
+  "title": "Socair Model Assurance Attestation",
+  "description": "The cross-stack report contract. The engine produces it, the CLI prints it, the SvelteKit wizard renders it, and the MCP wrapper serves it. Versioned; breaking changes publish a new $id.",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "header",
+    "artifact",
+    "scope",
+    "checks",
+    "findings",
+    "assurance_level",
+    "bounded_statement",
+    "out_of_scope",
+    "promotion_authorization",
+    "verification",
+    "issuer"
+  ],
+  "properties": {
+    "schema_version": { "const": "socair.report/v1" },
+    "header": {
+      "type": "object",
+      "required": ["document_id", "template_version", "issued_utc", "artifact_short", "assurance_level_awarded"],
+      "properties": {
+        "document_id": { "type": "string", "minLength": 1 },
+        "template_version": { "type": "string", "minLength": 1 },
+        "issued_utc": { "type": "string", "minLength": 1 },
+        "rescan_due": { "type": "string" },
+        "artifact_short": { "type": "string" },
+        "assurance_level_awarded": { "type": "string", "minLength": 1 },
+        "signer_name": { "type": "string" },
+        "signer_role": { "type": "string" },
+        "signer_key_id": { "type": "string" },
+        "document_hash": { "type": "string" }
+      }
+    },
+    "artifact": {
+      "type": "object",
+      "required": ["name", "file_name", "sha256", "format", "size_bytes"],
+      "properties": {
+        "name": { "type": "string" },
+        "repo_url": { "type": "string" },
+        "commit_or_tag": { "type": "string" },
+        "commit_sha": { "type": "string" },
+        "publisher": { "type": "string" },
+        "publisher_signing_status": { "type": "string" },
+        "file_name": { "type": "string", "minLength": 1 },
+        "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+        "format": { "type": "string", "minLength": 1 },
+        "size_bytes": { "type": "integer", "minimum": 0 },
+        "quant_declared": { "type": "string" },
+        "quant_observed": { "type": "string" },
+        "tokenizer_hash": { "type": "string" },
+        "chat_template_hash": { "type": "string" }
+      }
+    },
+    "scope": {
+      "type": "object",
+      "required": ["check_set_version", "execution_context", "input_path"],
+      "properties": {
+        "check_set_version": { "type": "string" },
+        "tool_versions": { "type": "string" },
+        "execution_context": { "type": "string" },
+        "input_path": { "type": "string" },
+        "scan_start_utc": { "type": "string" },
+        "scan_end_utc": { "type": "string" },
+        "inference_budget": { "type": "string" }
+      }
+    },
+    "checks": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["name", "looks_for", "status"],
+        "properties": {
+          "name": { "type": "string", "minLength": 1 },
+          "looks_for": { "type": "string" },
+          "status": { "enum": ["PASS", "FAIL", "NOT_TESTED"] },
+          "evidence": { "type": "string" },
+          "notes": { "type": "string" }
+        }
+      }
+    },
+    "findings": {
+      "type": "object",
+      "properties": {
+        "fails": { "type": "array", "items": { "type": "string" } },
+        "not_tested": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "assurance_level": {
+      "type": "object",
+      "required": ["awarded"],
+      "properties": {
+        "awarded": { "type": "string", "minLength": 1 },
+        "definition": { "type": "string" },
+        "does_mean": { "type": "string" },
+        "does_not_mean": { "type": "string" },
+        "tier2_note": { "type": "string" }
+      }
+    },
+    "bounded_statement": {
+      "const": "For the artifact identified by hash in Section 2, served on the node class named in Section 3, the checks listed in Section 4 found no indicators within their stated scope. Every surface outside that scope is enumerated as NOT_TESTED in Section 8."
+    },
+    "out_of_scope": {
+      "type": "object",
+      "required": ["does_not_certify", "ceiling"],
+      "properties": {
+        "does_not_certify": { "type": "string", "minLength": 1 },
+        "ceiling": { "type": "array", "minItems": 1, "items": { "type": "string" } },
+        "unparsed_formats": { "type": "array", "items": { "type": "string" } },
+        "untested_node_classes": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "promotion_authorization": {
+      "type": "object",
+      "required": ["authorized"],
+      "properties": {
+        "authorized": { "type": "boolean" },
+        "level": { "type": "string" },
+        "conditions": { "type": "string" }
+      }
+    },
+    "verification": {
+      "type": "object",
+      "required": ["signing_method", "artifact_sha256"],
+      "properties": {
+        "document_hash": { "type": "string" },
+        "signing_method": { "type": "string" },
+        "signer_key_id": { "type": "string" },
+        "artifact_sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+        "rerun_instructions": { "type": "string" }
+      }
+    },
+    "issuer": {
+      "type": "object",
+      "required": ["authority"],
+      "properties": {
+        "signed_by": { "type": "string" },
+        "authority": { "type": "string" },
+        "warrants": { "type": "string" },
+        "excludes": { "type": "string" }
+      }
+    },
+    "appendices": {
+      "type": "object",
+      "properties": {
+        "check_definitions": { "type": "string" },
+        "sarif_reference": { "type": "string" },
+        "glossary": { "type": "string" }
+      }
+    }
+  }
+}
