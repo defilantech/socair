@@ -40,29 +40,52 @@
   "checks": [
     {
       "name": "Format and structure",
-      "looks_for": "Malformed GGUF structure, unexpected tensors",
+      "looks_for": "Malformed container structure, unexpected tensors",
+      "status": "PASS",
+      "notes": "GGUF v3 parsed: 626 tensors, 44 metadata pairs"
+    },
+    {
+      "name": "File inventory and payloads",
+      "looks_for": "Hidden files, embedded payloads, unexpected executables",
       "status": "NOT_TESTED",
-      "notes": "check not yet implemented"
+      "notes": "artifact: 44 metadata keys, 1532 string bytes, no payload indicator. Repo mirror not provided, so the repo file listing was not inspected."
+    },
+    {
+      "name": "Hash, provenance, lineage",
+      "looks_for": "Traceable origin and declared quantization lineage",
+      "status": "NOT_TESTED",
+      "notes": "no provenance input: no supplied manifest and no signature sidecar next to the artifact"
+    },
+    {
+      "name": "Known-bad hash match",
+      "looks_for": "Match against the known-bad artifact denylist",
+      "status": "PASS",
+      "notes": "no denylist entry matched"
     },
     {
       "name": "Chat template (hero)",
       "looks_for": "Instructions in GGUF metadata that act before user input",
-      "status": "NOT_TESTED",
-      "notes": "check not yet implemented"
+      "status": "PASS",
+      "notes": "no structural indicator and no instruction-language lead matched. Heuristic; not a proof of absence."
+    },
+    {
+      "name": "Tokenizer config",
+      "looks_for": "Tokenizer metadata anomalies",
+      "status": "PASS",
+      "notes": "tokenizer family 'llama' is recognized"
     },
     {
       "name": "Quant match",
       "looks_for": "Declared quantization against observed weight layout",
-      "status": "NOT_TESTED",
-      "notes": "check not yet implemented"
+      "status": "PASS",
+      "notes": "declared Q5_K_M matches observed file type 17"
     }
   ],
   "findings": {
     "fails": [],
     "not_tested": [
-      "Format and structure",
-      "Chat template (hero)",
-      "Quant match"
+      "File inventory and payloads",
+      "Hash, provenance, lineage"
     ]
   },
   "assurance_level": {
@@ -91,9 +114,8 @@
     "level": "Tier 1 only",
     "conditions": "No check has run yet, so nothing is authorized for promotion.",
     "accepted_surfaces": [
-      "Format and structure",
-      "Chat template (hero)",
-      "Quant match"
+      "File inventory and payloads",
+      "Hash, provenance, lineage"
     ]
   },
   "verification": {

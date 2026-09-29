@@ -155,13 +155,8 @@ func TestNewFromManifest(t *testing.T) {
 	}
 	d := NewFromManifest(m)
 
-	if len(d.Checks) == 0 {
-		t.Fatal("expected a check skeleton")
-	}
-	for _, c := range d.Checks {
-		if c.Status != StatusNotTested {
-			t.Errorf("check %q should start NOT_TESTED, got %s", c.Name, c.Status)
-		}
+	if len(d.Checks) != 0 {
+		t.Fatalf("a seeded document runs no checks yet, got %d rows", len(d.Checks))
 	}
 	if d.BoundedStatement != BoundedStatement {
 		t.Error("bounded statement not set from the fixed constant")
@@ -169,14 +164,21 @@ func TestNewFromManifest(t *testing.T) {
 	if d.Artifact.SHA256 != m.SHA256 {
 		t.Error("artifact hash not carried into the report")
 	}
-
-	// The seeded document is not fileable until the header is filled.
-	if len(Validate(d)) == 0 {
-		t.Error("a document with no document_id or issue date must not validate")
+	if d.PromotionAuthorization.State != StateWithheld {
+		t.Errorf("a freshly seeded document must withhold promotion, got %q", d.PromotionAuthorization.State)
 	}
+
+	// The seeded document is not fileable: no document id, no issue date, and no
+	// checks have run.
+	if len(Validate(d)) == 0 {
+		t.Error("a seeded document must not validate")
+	}
+
+	// Once the engine fills the header and the checks, it validates.
 	d.Header.DocumentID = "SOCAIR-TEST-0001"
 	d.Header.IssuedUTC = "2026-09-29T00:00:00Z"
+	d.Checks = []CheckResult{{Name: "Format and structure", LooksFor: "x", Status: StatusPass}}
 	if problems := Validate(d); len(problems) != 0 {
-		t.Fatalf("skeleton should validate once the header is filled, got %v", problems)
+		t.Fatalf("a filled document should validate, got %v", problems)
 	}
 }

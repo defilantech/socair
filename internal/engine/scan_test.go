@@ -29,19 +29,17 @@ func rowStatus(d *report.Document, name string) report.Status {
 
 func promotionDoc(statuses map[string]report.Status) *report.Document {
 	d := report.NewFromIdentity(report.Identity{FileName: "x.gguf", Format: "GGUF", SHA256: "aa"})
-	for i := range d.Checks {
-		if s, ok := statuses[d.Checks[i].Name]; ok {
-			d.Checks[i].Status = s
-		}
+	for name, s := range statuses {
+		d.Checks = append(d.Checks, report.CheckResult{Name: name, Status: s})
 	}
 	return d
 }
 
 func TestPromotionAuthorizedWhenAllPass(t *testing.T) {
-	d := report.NewFromIdentity(report.Identity{FileName: "x.gguf", Format: "GGUF", SHA256: "aa"})
-	for i := range d.Checks {
-		d.Checks[i].Status = report.StatusPass
-	}
+	d := promotionDoc(map[string]report.Status{
+		"Format and structure": report.StatusPass,
+		"Quant match":          report.StatusPass,
+	})
 	pa := promotion(d, "", "")
 	if pa.State != report.StateAuthorized || !pa.Authorized {
 		t.Fatalf("all PASS must authorize, got state=%s authorized=%v", pa.State, pa.Authorized)

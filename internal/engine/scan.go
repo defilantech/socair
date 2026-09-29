@@ -108,15 +108,23 @@ func ScanMode(path string, mode Mode) (*report.Document, error) {
 	d.Scope.ToolVersions = "socair " + Version
 	d.Verification.RerunInstructions = "socair scan <path>"
 
+	// The check set is per format: a GGUF carries metadata checks that a pickle
+	// checkpoint does not, and vice versa. The report lists only what ran.
 	results := []checks.Result{
 		structure.Validate(path),
-		chattemplate.Inspect(chatTemplate),
-		tokenizer.Inspect(tokenizerModel),
-		quant.Compare(quantDeclared, fileType),
 		inventory.Inspect(path, inventory.Options{RepoMirror: os.Getenv("SOCAIR_REPO_MIRROR")}),
 		provenance.Inspect(provenance.Options{ArtifactPath: path, ManifestPath: os.Getenv("SOCAIR_PROVENANCE")}),
 		denylist.Check(id.SHA256, os.Getenv("SOCAIR_DENYLIST")),
-		pickle.Inspect(path),
+	}
+	if id.Format == "GGUF" {
+		results = append(results,
+			chattemplate.Inspect(chatTemplate),
+			tokenizer.Inspect(tokenizerModel),
+			quant.Compare(quantDeclared, fileType),
+		)
+	}
+	if id.Format != "GGUF" && id.Format != "safetensors" {
+		results = append(results, pickle.Inspect(path))
 	}
 	applyResults(d, results)
 
@@ -184,15 +192,15 @@ func promotion(d *report.Document, acceptedBy, expires string) report.PromotionA
 }
 
 func applyResults(d *report.Document, results []checks.Result) {
+	d.Checks = make([]report.CheckResult, 0, len(results))
 	for _, res := range results {
-		for i := range d.Checks {
-			if d.Checks[i].Name != res.Name {
-				continue
-			}
-			d.Checks[i].Status = report.Status(res.Status)
-			d.Checks[i].Notes = res.Notes
-			d.Checks[i].Evidence = evidence(res)
-		}
+		d.Checks = append(d.Checks, report.CheckResult{
+			Name:     res.Name,
+			LooksFor: res.LooksFor,
+			Status:   report.Status(res.Status),
+			Evidence: evidence(res),
+			Notes:    res.Notes,
+		})
 	}
 }
 
