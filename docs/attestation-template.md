@@ -124,7 +124,22 @@ Level: `[Tier 1 only / Tier 2]`
 
 Conditions: `[conditions]`
 
-## 10. Verification and reproducibility
+## 10. Escalation path
+
+A FAIL is actionable, not terminal. This attestation explains the FAIL in Section 5 and records how the artifact can be submitted for escalated review.
+
+Summary: `[escalation_summary]`
+
+Available escalated review:
+
+- Automated Tier 2 battery: forward-pass probes on the production node class. `[tier2_available]`
+- Human analyst addendum: a person reviews the artifact and this report and signs an addendum. `[analyst_available]`
+
+Service levels: `[sla_tiers]`
+
+Escalated review is part of the paid assurance program.
+
+## 11. Verification and reproducibility
 
 | Field | Value |
 |---|---|
@@ -136,7 +151,7 @@ Conditions: `[conditions]`
 
 The artifact hash binds this attestation to one exact file. A re-pulled artifact with a different hash is not covered by this document.
 
-## 11. Issuer and liability
+## 12. Issuer and liability
 
 Signed by: `[signer_name]`, `[signer_role]`, under the authority of Defilan Technologies.
 
