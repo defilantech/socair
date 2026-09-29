@@ -6,7 +6,7 @@
 # Go
 *.test
 *.out
-/vendor/
+# vendor/ is committed on purpose: air-gapped builds must fetch nothing.
 
 # Build and scratch
 /dist/
