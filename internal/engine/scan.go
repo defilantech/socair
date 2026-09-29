@@ -11,7 +11,9 @@ import (
 
 	"github.com/defilantech/socair/internal/checks"
 	"github.com/defilantech/socair/internal/checks/chattemplate"
+	"github.com/defilantech/socair/internal/checks/denylist"
 	"github.com/defilantech/socair/internal/checks/inventory"
+	"github.com/defilantech/socair/internal/checks/provenance"
 	"github.com/defilantech/socair/internal/checks/quant"
 	"github.com/defilantech/socair/internal/checks/structure"
 	"github.com/defilantech/socair/internal/checks/tokenizer"
@@ -70,6 +72,8 @@ func ScanMode(path string, mode Mode) (*report.Document, error) {
 		tokenizer.Inspect(m.TokenizerModel),
 		quant.Compare(m.Quant.Declared, m.Quant.FileType),
 		inventory.Inspect(path, inventory.Options{RepoMirror: os.Getenv("SOCAIR_REPO_MIRROR")}),
+		provenance.Inspect(provenance.Options{ArtifactPath: path, ManifestPath: os.Getenv("SOCAIR_PROVENANCE")}),
+		denylist.Check(m.SHA256, os.Getenv("SOCAIR_DENYLIST")),
 	}
 	applyResults(d, results)
 
