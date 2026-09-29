@@ -28,6 +28,15 @@ func main() {
 			fmt.Fprintln(os.Stderr, "error:", err)
 			os.Exit(1)
 		}
+	case "scan":
+		if len(os.Args) < 3 {
+			fmt.Fprintln(os.Stderr, "usage: socair scan <path>")
+			os.Exit(2)
+		}
+		if err := scan(os.Args[2]); err != nil {
+			fmt.Fprintln(os.Stderr, "error:", err)
+			os.Exit(1)
+		}
 	case "-h", "--help", "help":
 		usage()
 	default:
@@ -43,5 +52,6 @@ func usage() {
 Usage:
   socair version
   socair inspect <path>    read an artifact and print its manifest as JSON
+  socair scan <path>       run the Tier 1 checks and print the report as JSON
 `)
 }

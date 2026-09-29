@@ -63,7 +63,13 @@ type Manifest struct {
 	TokenizerModel      string `json:"tokenizer_model,omitempty"`
 	ChatTemplatePresent bool   `json:"chat_template_present"`
 	ChatTemplateBytes   int    `json:"chat_template_bytes"`
-	Quant               Quant  `json:"quant"`
+	ChatTemplateSHA256  string `json:"chat_template_sha256,omitempty"`
+
+	// ChatTemplate is the raw template bytes, for the hero check. Not serialized
+	// directly; the report carries only its hash.
+	ChatTemplate string `json:"-"`
+
+	Quant Quant `json:"quant"`
 }
 
 // ErrNotGGUF is returned when the file does not start with the GGUF magic.
@@ -189,8 +195,11 @@ func applyWanted(m *Manifest, key string, val any) {
 		m.TokenizerModel = asString(val)
 	case "tokenizer.chat_template":
 		s := asString(val)
+		m.ChatTemplate = s
 		m.ChatTemplatePresent = s != ""
 		m.ChatTemplateBytes = len(s)
+		sum := sha256.Sum256([]byte(s))
+		m.ChatTemplateSHA256 = hex.EncodeToString(sum[:])
 	case "general.file_type":
 		if v, ok := val.(uint32); ok {
 			m.Quant.FileType = &v
