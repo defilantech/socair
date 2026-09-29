@@ -21,6 +21,7 @@ import (
 
 	"github.com/defilantech/socair/internal/checks"
 	"github.com/defilantech/socair/internal/gguf"
+	"github.com/defilantech/socair/internal/safetensors"
 )
 
 // Options configures the inventory check.
@@ -55,18 +56,39 @@ func Inspect(path string, opts Options) checks.Result {
 		LooksFor: "Hidden files, embedded payloads, unexpected executables",
 	}
 
-	inv, err := gguf.Inventory(path)
-	if err != nil {
-		r.Status = checks.NotTested
-		if errors.Is(err, gguf.ErrNotGGUF) {
-			r.Notes = "not a GGUF artifact; cannot inventory"
-		} else {
-			r.Notes = "could not read artifact metadata: " + err.Error()
+	var strings []string
+	var invNote string
+	switch {
+	case safetensors.IsSafetensors(path):
+		sm, err := safetensors.ReadArtifact(path)
+		if err != nil {
+			r.Status = checks.NotTested
+			r.Notes = "could not read safetensors header: " + err.Error()
+			return r
 		}
-		return r
+		for _, v := range sm.Metadata {
+			strings = append(strings, v)
+		}
+		invNote = fmt.Sprintf("artifact: safetensors header, %d tensors, %d metadata keys", sm.TensorCount, len(sm.MetadataKeys))
+	default:
+		inv, err := gguf.Inventory(path)
+		if err != nil {
+			r.Status = checks.NotTested
+			if errors.Is(err, gguf.ErrNotGGUF) {
+				r.Notes = "not a GGUF or safetensors artifact; cannot inventory"
+			} else {
+				r.Notes = "could not read artifact metadata: " + err.Error()
+			}
+			return r
+		}
+		strings = inv.Strings
+		invNote = fmt.Sprintf("artifact: %d metadata keys, %d string bytes", len(inv.Keys), inv.TotalStrings)
+		if inv.Truncated {
+			invNote += " (inventory truncated at the cap)"
+		}
 	}
 
-	for _, s := range inv.Strings {
+	for _, s := range strings {
 		if m := scriptTag.FindString(s); m != "" {
 			r.Findings = append(r.Findings, checks.Finding{
 				Pattern: "embedded-script",
@@ -93,15 +115,11 @@ func Inspect(path string, opts Options) checks.Result {
 	}
 	if len(r.Findings) > 0 {
 		r.Status = checks.Fail
-		r.Notes = fmt.Sprintf("%d embedded payload indicator(s) in artifact metadata (%d metadata keys, %d string bytes)",
-			len(r.Findings), len(inv.Keys), inv.TotalStrings)
+		r.Notes = fmt.Sprintf("%d embedded payload indicator(s) in artifact metadata (%s)", len(r.Findings), invNote)
 		return r
 	}
 
-	artifactNote := fmt.Sprintf("artifact: %d metadata keys, %d string bytes, no payload indicator", len(inv.Keys), inv.TotalStrings)
-	if inv.Truncated {
-		artifactNote += " (inventory truncated at the cap)"
-	}
+	artifactNote := invNote + ", no payload indicator"
 
 	if opts.RepoMirror == "" {
 		r.Status = checks.NotTested

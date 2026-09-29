@@ -8,6 +8,7 @@ import (
 
 	"github.com/defilantech/socair/internal/checks"
 	"github.com/defilantech/socair/internal/gguf/gguftest"
+	"github.com/defilantech/socair/internal/safetensors/safetensorstest"
 )
 
 func writeFixture(t *testing.T, name string, data []byte) string {
@@ -54,6 +55,31 @@ func TestSplitArtifactIsSurfaced(t *testing.T) {
 	}
 	if !strings.Contains(r.Notes, "part 2 of 3") {
 		t.Errorf("a shard must be surfaced in the notes, got: %s", r.Notes)
+	}
+}
+
+func TestValidSafetensorsPasses(t *testing.T) {
+	p := writeFixture(t, "model.safetensors", safetensorstest.Clean())
+	r := Validate(p)
+	if r.Status != checks.Pass {
+		t.Fatalf("status = %s, want PASS (notes: %s)", r.Status, r.Notes)
+	}
+	if !strings.Contains(r.Notes, "2 tensors") {
+		t.Errorf("tensor count not surfaced: %s", r.Notes)
+	}
+}
+
+func TestSafetensorsOffsetsOutOfRangeNotTested(t *testing.T) {
+	p := writeFixture(t, "bad.safetensors", safetensorstest.OutOfRangeOffsets())
+	r := Validate(p)
+	if r.Status == checks.Pass {
+		t.Fatal("a container with offsets beyond its data must not PASS")
+	}
+	if r.Status != checks.NotTested {
+		t.Fatalf("status = %s, want NOT_TESTED", r.Status)
+	}
+	if r.Notes == "" {
+		t.Error("NOT_TESTED must carry a reason")
 	}
 }
 

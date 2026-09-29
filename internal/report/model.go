@@ -119,10 +119,24 @@ type OutOfScope struct {
 	UntestedNodeClasses []string `json:"untested_node_classes,omitempty"`
 }
 
+// Promotion states. A FAIL withholds; a gap needs a named acceptance; the
+// accepted surfaces always travel with the artifact.
+const (
+	StateAuthorized               = "authorized"
+	StateAuthorizedWithConditions = "authorized_with_conditions"
+	StateWithheld                 = "withheld"
+	StateEscalated                = "escalated"
+)
+
 type PromotionAuthorization struct {
-	Authorized bool   `json:"authorized"`
-	Level      string `json:"level,omitempty"`
-	Conditions string `json:"conditions,omitempty"`
+	Authorized        bool     `json:"authorized"`
+	State             string   `json:"state"`
+	Level             string   `json:"level,omitempty"`
+	Conditions        string   `json:"conditions,omitempty"`
+	AcceptedSurfaces  []string `json:"accepted_surfaces,omitempty"`
+	AcceptedBy        string   `json:"accepted_by,omitempty"`
+	AcceptedAt        string   `json:"accepted_at,omitempty"`
+	AcceptanceExpires string   `json:"acceptance_expires,omitempty"`
 }
 
 type Verification struct {
@@ -164,31 +178,41 @@ func DefaultCeiling() []string {
 	}
 }
 
-// NewFromManifest seeds a document from a reader manifest. Every content check
-// starts NOT_TESTED, because no check has run yet. Checks turn into PASS or
-// FAIL as the engine lands.
-func NewFromManifest(m *gguf.Manifest) *Document {
-	observed := ""
-	if m.Quant.FileType != nil {
-		observed = fmt.Sprintf("file_type=%d", *m.Quant.FileType)
-	}
+// Identity is the format-neutral artifact identity every reader maps onto.
+type Identity struct {
+	Name               string
+	Architecture       string
+	FileName           string
+	SHA256             string
+	Format             string
+	SizeBytes          int64
+	QuantDeclared      string
+	QuantObserved      string
+	ChatTemplateSHA256 string
+	Split              string
+}
+
+// NewFromIdentity seeds a document from a reader identity. Every content check
+// starts NOT_TESTED, because no check has run yet.
+func NewFromIdentity(id Identity) *Document {
 	d := &Document{
 		SchemaVersion: SchemaVersion,
 		Header: Header{
 			TemplateVersion:       "0.1",
-			ArtifactShort:         m.Name,
+			ArtifactShort:         id.Name,
 			AssuranceLevelAwarded: "Tier 1 (static), pending checks",
 		},
 		Artifact: ArtifactIdentity{
-			Name:          m.Name,
-			Architecture:  m.Architecture,
-			FileName:      m.FileName,
-			SHA256:        m.SHA256,
-			Format:        m.Format,
-			SizeBytes:     m.SizeBytes,
-			QuantDeclared: m.Quant.Declared,
-			QuantObserved: observed,
-			Split:         splitLabel(m),
+			Name:             id.Name,
+			Architecture:     id.Architecture,
+			FileName:         id.FileName,
+			SHA256:           id.SHA256,
+			Format:           id.Format,
+			SizeBytes:        id.SizeBytes,
+			QuantDeclared:    id.QuantDeclared,
+			QuantObserved:    id.QuantObserved,
+			ChatTemplateHash: id.ChatTemplateSHA256,
+			Split:            id.Split,
 		},
 		Scope: Scope{
 			CheckSetVersion:  "tier1/0.1",
@@ -202,35 +226,44 @@ func NewFromManifest(m *gguf.Manifest) *Document {
 		},
 		Verification: Verification{
 			SigningMethod:  "unsigned (OSS tier)",
-			ArtifactSHA256: m.SHA256,
+			ArtifactSHA256: id.SHA256,
 		},
 		Issuer: Issuer{
 			Authority: "Defilan Technologies",
 		},
+		// A freshly seeded document has run no checks, so promotion is withheld
+		// until the engine evaluates it.
+		PromotionAuthorization: PromotionAuthorization{
+			State:      StateWithheld,
+			Level:      "Tier 1 only",
+			Conditions: "Not yet evaluated.",
+		},
 	}
-	d.Checks = skeletonChecks()
+	// Checks are empty until the engine runs them. A document with no checks is
+	// not fileable, which Validate enforces. The report lists the checks that
+	// actually ran for this artifact's format, not a fixed skeleton with
+	// placeholder rows.
 	return d
 }
 
-func skeletonChecks() []CheckResult {
-	spec := []struct {
-		name     string
-		looksFor string
-	}{
-		{"Format and structure", "Malformed GGUF structure, unexpected tensors"},
-		{"Chat template (hero)", "Instructions in GGUF metadata that act before user input"},
-		{"Tokenizer config", "Tokenizer metadata anomalies"},
-		{"Safetensors header and opcodes", "Serialized code gadgets in headers or pickle opcodes"},
-		{"File inventory and payloads", "Hidden files, embedded payloads, unexpected executables"},
-		{"Hash, provenance, lineage", "Traceable origin and declared quantization lineage"},
-		{"Known-bad hash match", "Match against the known-bad artifact denylist"},
-		{"Quant match", "Declared quantization against observed weight layout"},
+// NewFromManifest maps a GGUF manifest onto a document.
+func NewFromManifest(m *gguf.Manifest) *Document {
+	observed := ""
+	if m.Quant.FileType != nil {
+		observed = fmt.Sprintf("file_type=%d", *m.Quant.FileType)
 	}
-	out := make([]CheckResult, 0, len(spec))
-	for _, s := range spec {
-		out = append(out, CheckResult{Name: s.name, LooksFor: s.looksFor, Status: StatusNotTested, Notes: "check not yet implemented"})
-	}
-	return out
+	return NewFromIdentity(Identity{
+		Name:               m.Name,
+		Architecture:       m.Architecture,
+		FileName:           m.FileName,
+		SHA256:             m.SHA256,
+		Format:             m.Format,
+		SizeBytes:          m.SizeBytes,
+		QuantDeclared:      m.Quant.Declared,
+		QuantObserved:      observed,
+		ChatTemplateSHA256: m.ChatTemplateSHA256,
+		Split:              splitLabel(m),
+	})
 }
 
 // Validate reports problems with a document that would make it un-fileable.
@@ -265,6 +298,39 @@ func Validate(d *Document) []string {
 		if strings.TrimSpace(c.Name) == "" {
 			problems = append(problems, fmt.Sprintf("checks[%d].name empty", i))
 		}
+	}
+	problems = append(problems, validatePromotion(d)...)
+	return problems
+}
+
+// validatePromotion enforces the promotion state machine: a FAIL withholds, a
+// gap needs a named acceptance, and the authorized bool agrees with the state.
+func validatePromotion(d *Document) []string {
+	var problems []string
+	pa := d.PromotionAuthorization
+
+	switch pa.State {
+	case StateAuthorized, StateAuthorizedWithConditions, StateWithheld, StateEscalated:
+	default:
+		problems = append(problems, fmt.Sprintf("promotion_authorization.state invalid: %q", pa.State))
+	}
+
+	wantAuthorized := pa.State == StateAuthorized || pa.State == StateAuthorizedWithConditions
+	if pa.Authorized != wantAuthorized {
+		problems = append(problems, fmt.Sprintf("promotion_authorization.authorized (%v) disagrees with state %q",
+			pa.Authorized, pa.State))
+	}
+
+	if pa.State == StateAuthorizedWithConditions {
+		if strings.TrimSpace(pa.AcceptedBy) == "" {
+			problems = append(problems, "promotion_authorization: authorized_with_conditions needs accepted_by")
+		}
+		if len(pa.AcceptedSurfaces) == 0 {
+			problems = append(problems, "promotion_authorization: authorized_with_conditions needs accepted_surfaces")
+		}
+	}
+	if pa.State == StateAuthorized && len(pa.AcceptedSurfaces) > 0 {
+		problems = append(problems, "promotion_authorization: an authorized report must not carry accepted_surfaces")
 	}
 	return problems
 }

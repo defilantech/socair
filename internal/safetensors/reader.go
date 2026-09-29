@@ -1,0 +1,192 @@
+// Package safetensors reads safetensors artifacts into a manifest.
+//
+// It reads the JSON header only and never reads or executes tensor data. The
+// format is deliberately not pickle, so the pickle opcode scan does not apply
+// to it; that check names the format it looked at.
+package safetensors
+
+import (
+	"crypto/sha256"
+	"encoding/binary"
+	"encoding/hex"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"io"
+	"os"
+	"path/filepath"
+	"sort"
+)
+
+// maxHeaderBytes caps the JSON header so a malformed length cannot drive an
+// unbounded allocation.
+const maxHeaderBytes = 64 << 20
+
+// ErrNotSafetensors is returned when the file is not a safetensors container.
+var ErrNotSafetensors = errors.New("safetensors: not a safetensors file")
+
+// TensorInfo is one tensor's header entry.
+type TensorInfo struct {
+	Dtype string  `json:"dtype"`
+	Shape []int64 `json:"shape"`
+	Begin int64   `json:"-"`
+	End   int64   `json:"-"`
+}
+
+// Manifest is the identity and header summary of one safetensors artifact.
+type Manifest struct {
+	Path         string   `json:"path"`
+	FileName     string   `json:"file_name"`
+	SizeBytes    int64    `json:"size_bytes"`
+	SHA256       string   `json:"sha256"`
+	Format       string   `json:"format"`
+	TensorCount  int      `json:"tensor_count"`
+	MetadataKeys []string `json:"metadata_keys,omitempty"`
+	HeaderSHA256 string   `json:"header_sha256"`
+	DataBytes    int64    `json:"data_bytes"`
+	Malformed    []string `json:"malformed,omitempty"`
+
+	// Metadata holds the decoded __metadata__ values for the inventory check.
+	// Not serialized: the report carries keys, not values.
+	Metadata map[string]string `json:"-"`
+}
+
+type headerEntry struct {
+	Dtype       string  `json:"dtype"`
+	Shape       []int64 `json:"shape"`
+	DataOffsets []int64 `json:"data_offsets"`
+}
+
+// IsSafetensors sniffs the header length and a JSON object start.
+func IsSafetensors(path string) bool {
+	f, err := os.Open(path)
+	if err != nil {
+		return false
+	}
+	defer f.Close()
+
+	info, err := f.Stat()
+	if err != nil {
+		return false
+	}
+	var lenBuf [8]byte
+	if _, err := io.ReadFull(f, lenBuf[:]); err != nil {
+		return false
+	}
+	n := int64(binary.LittleEndian.Uint64(lenBuf[:]))
+	if n <= 0 || n > maxHeaderBytes || 8+n > info.Size() {
+		return false
+	}
+	first := make([]byte, 1)
+	if _, err := f.ReadAt(first, 8); err != nil {
+		return false
+	}
+	return first[0] == '{'
+}
+
+// ReadArtifact parses the safetensors header at path and returns its manifest,
+// including a SHA256 of the exact file bytes. It reads the header only.
+func ReadArtifact(path string) (*Manifest, error) {
+	m, err := ReadHeader(path)
+	if err != nil {
+		return nil, err
+	}
+
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+
+	sum := sha256.New()
+	if _, err := io.Copy(sum, f); err != nil {
+		return nil, err
+	}
+	m.SHA256 = hex.EncodeToString(sum.Sum(nil))
+	return m, nil
+}
+
+// ReadHeader parses the safetensors header at path without hashing the file.
+func ReadHeader(path string) (*Manifest, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+
+	info, err := f.Stat()
+	if err != nil {
+		return nil, err
+	}
+
+	var lenBuf [8]byte
+	if _, err := io.ReadFull(f, lenBuf[:]); err != nil {
+		return nil, ErrNotSafetensors
+	}
+	// An implausible length means this is not a safetensors container, rather
+	// than a separate "header too large" case.
+	n := int64(binary.LittleEndian.Uint64(lenBuf[:]))
+	if n <= 0 || n > maxHeaderBytes || 8+n > info.Size() {
+		return nil, ErrNotSafetensors
+	}
+
+	raw := make([]byte, n)
+	if _, err := io.ReadFull(f, raw); err != nil {
+		return nil, fmt.Errorf("safetensors: reading header: %w", err)
+	}
+
+	headerSum := sha256.Sum256(raw)
+	m := &Manifest{
+		Path:         path,
+		FileName:     filepath.Base(path),
+		SizeBytes:    info.Size(),
+		Format:       "safetensors",
+		HeaderSHA256: hex.EncodeToString(headerSum[:]),
+		DataBytes:    info.Size() - 8 - n,
+	}
+
+	var entries map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &entries); err != nil {
+		return nil, fmt.Errorf("safetensors: header is not valid JSON: %w", err)
+	}
+
+	for name, rawEntry := range entries {
+		if name == "__metadata__" {
+			var meta map[string]string
+			if err := json.Unmarshal(rawEntry, &meta); err != nil {
+				m.Malformed = append(m.Malformed, "__metadata__ is not a string map")
+				continue
+			}
+			m.Metadata = meta
+			for k := range meta {
+				m.MetadataKeys = append(m.MetadataKeys, k)
+			}
+			sort.Strings(m.MetadataKeys)
+			continue
+		}
+
+		var e headerEntry
+		if err := json.Unmarshal(rawEntry, &e); err != nil {
+			m.Malformed = append(m.Malformed, name+": entry is not a tensor header")
+			continue
+		}
+		m.TensorCount++
+		if e.Dtype == "" {
+			m.Malformed = append(m.Malformed, name+": missing dtype")
+		}
+		if len(e.DataOffsets) != 2 {
+			m.Malformed = append(m.Malformed, name+": data_offsets is not a pair")
+			continue
+		}
+		begin, end := e.DataOffsets[0], e.DataOffsets[1]
+		if begin < 0 || end < begin {
+			m.Malformed = append(m.Malformed, fmt.Sprintf("%s: data_offsets [%d,%d] is not a valid range", name, begin, end))
+			continue
+		}
+		if end > m.DataBytes {
+			m.Malformed = append(m.Malformed, fmt.Sprintf("%s: data_offsets end %d exceeds the data section of %d bytes", name, end, m.DataBytes))
+		}
+	}
+
+	return m, nil
+}

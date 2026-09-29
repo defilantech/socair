@@ -109,6 +109,40 @@ func TestSampleMarkIsPresent(t *testing.T) {
 	}
 }
 
+// The condition state must never render as the clean pass badge.
+func TestConditionBadgeIsNotClean(t *testing.T) {
+	d := loadGolden(t)
+	d.PromotionAuthorization = report.PromotionAuthorization{
+		Authorized:       true,
+		State:            report.StateAuthorizedWithConditions,
+		AcceptedBy:       "ciso@example.com",
+		AcceptedAt:       "2026-09-29T00:00:00Z",
+		AcceptedSurfaces: []string{"Hash, provenance, lineage"},
+	}
+	out := renderString(t, d)
+	if !strings.Contains(out, `class="badge promo conditions"`) {
+		t.Error("the condition state must render with its own badge class")
+	}
+	if strings.Contains(out, `class="badge promo authorized"`) {
+		t.Error("the condition state must never render with the clean authorized badge")
+	}
+	if !strings.Contains(out, "Accepted by ciso@example.com") {
+		t.Error("the acceptance owner must appear on the report")
+	}
+	if !strings.Contains(out, "Hash, provenance, lineage") {
+		t.Error("the accepted surfaces must appear on the report")
+	}
+}
+
+func TestPromotionClassMapping(t *testing.T) {
+	if promotionClass(report.StateAuthorizedWithConditions) == promotionClass(report.StateAuthorized) {
+		t.Fatal("the condition state must not share the clean badge class")
+	}
+	if promotionClass(report.StateWithheld) == promotionClass(report.StateAuthorized) {
+		t.Fatal("withheld must not share the clean badge class")
+	}
+}
+
 func TestStatusClassMapping(t *testing.T) {
 	cases := map[report.Status]string{
 		report.StatusPass:      "pass",
