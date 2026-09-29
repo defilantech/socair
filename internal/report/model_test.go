@@ -1,0 +1,143 @@
+package report
+
+import (
+	"bytes"
+	"encoding/json"
+	"os"
+	"path/filepath"
+	"testing"
+
+	"github.com/defilantech/socair/internal/gguf"
+)
+
+func loadGolden(t *testing.T) (*Document, []byte) {
+	t.Helper()
+	raw, err := os.ReadFile(filepath.Join("..", "..", "testdata", "report.json"))
+	if err != nil {
+		t.Fatalf("reading golden: %v", err)
+	}
+	var d Document
+	if err := json.Unmarshal(raw, &d); err != nil {
+		t.Fatalf("unmarshal golden: %v", err)
+	}
+	return &d, raw
+}
+
+func TestGoldenValidates(t *testing.T) {
+	d, _ := loadGolden(t)
+	if problems := Validate(d); len(problems) != 0 {
+		t.Fatalf("golden has validation problems: %v", problems)
+	}
+}
+
+// TestGoldenMatchesSchemaRequired checks the golden carries every top-level key
+// the published schema marks required, without pulling a schema library.
+func TestGoldenMatchesSchemaRequired(t *testing.T) {
+	d, raw := loadGolden(t)
+	_ = d
+
+	schemaRaw, err := os.ReadFile(filepath.Join("..", "..", "docs", "report-schema", "v1.json"))
+	if err != nil {
+		t.Fatalf("reading schema: %v", err)
+	}
+	var schema struct {
+		Required []string `json:"required"`
+		ID       string   `json:"$id"`
+	}
+	if err := json.Unmarshal(schemaRaw, &schema); err != nil {
+		t.Fatalf("schema is not valid JSON: %v", err)
+	}
+	if schema.ID == "" {
+		t.Error("schema has no $id")
+	}
+	var doc map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &doc); err != nil {
+		t.Fatalf("golden is not valid JSON: %v", err)
+	}
+	for _, key := range schema.Required {
+		if _, ok := doc[key]; !ok {
+			t.Errorf("golden is missing schema-required key %q", key)
+		}
+	}
+}
+
+func TestMarshalIsDeterministic(t *testing.T) {
+	d, _ := loadGolden(t)
+	a, err := json.Marshal(d)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	b, err := json.Marshal(d)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	if !bytes.Equal(a, b) {
+		t.Fatal("marshaling the same document twice produced different bytes")
+	}
+}
+
+// TestValidateCatchesRemovedRequiredField is the A2a falsification: removing a
+// required field must fail validation, not render silently.
+func TestValidateCatchesRemovedRequiredField(t *testing.T) {
+	d, _ := loadGolden(t)
+	d.Header.DocumentID = ""
+	problems := Validate(d)
+	if len(problems) == 0 {
+		t.Fatal("blanking header.document_id must fail validation, but it passed")
+	}
+	found := false
+	for _, p := range problems {
+		if p == "missing: header.document_id" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("expected a header.document_id problem, got %v", problems)
+	}
+}
+
+func TestValidateCatchesAlteredBoundedStatement(t *testing.T) {
+	d, _ := loadGolden(t)
+	d.BoundedStatement = "This attestation certifies the model is free of malicious code."
+	if len(Validate(d)) == 0 {
+		t.Fatal("replacing the bounded statement with an absence claim must fail validation")
+	}
+}
+
+func TestNewFromManifest(t *testing.T) {
+	ft := uint32(17)
+	m := &gguf.Manifest{
+		Name:      "Fixture Model",
+		FileName:  "fixture-Q5_K_M.gguf",
+		SHA256:    "0000000000000000000000000000000000000000000000000000000000000000",
+		Format:    "GGUF",
+		SizeBytes: 12345,
+		Quant:     gguf.Quant{Declared: "Q5_K_M", FileType: &ft},
+	}
+	d := NewFromManifest(m)
+
+	if len(d.Checks) == 0 {
+		t.Fatal("expected a check skeleton")
+	}
+	for _, c := range d.Checks {
+		if c.Status != StatusNotTested {
+			t.Errorf("check %q should start NOT_TESTED, got %s", c.Name, c.Status)
+		}
+	}
+	if d.BoundedStatement != BoundedStatement {
+		t.Error("bounded statement not set from the fixed constant")
+	}
+	if d.Artifact.SHA256 != m.SHA256 {
+		t.Error("artifact hash not carried into the report")
+	}
+
+	// The seeded document is not fileable until the header is filled.
+	if len(Validate(d)) == 0 {
+		t.Error("a document with no document_id or issue date must not validate")
+	}
+	d.Header.DocumentID = "SOCAIR-TEST-0001"
+	d.Header.IssuedUTC = "2026-09-29T00:00:00Z"
+	if problems := Validate(d); len(problems) != 0 {
+		t.Fatalf("skeleton should validate once the header is filled, got %v", problems)
+	}
+}

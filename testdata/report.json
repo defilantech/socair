@@ -1,0 +1,111 @@
+{
+  "schema_version": "socair.report/v1",
+  "header": {
+    "document_id": "SOCAIR-2026-0001",
+    "template_version": "0.1",
+    "issued_utc": "2026-09-29T00:00:00Z",
+    "rescan_due": "2027-03-29T00:00:00Z",
+    "artifact_short": "Gemma 3 12b It",
+    "assurance_level_awarded": "Tier 1 (static)",
+    "signer_name": "",
+    "signer_role": "",
+    "signer_key_id": "",
+    "document_hash": ""
+  },
+  "artifact": {
+    "name": "Gemma 3 12b It",
+    "repo_url": "https://huggingface.co/google/gemma-3-12b-it",
+    "commit_or_tag": "main",
+    "commit_sha": "",
+    "publisher": "google",
+    "publisher_signing_status": "unsigned",
+    "file_name": "google_gemma-3-12b-it-Q5_K_M.gguf",
+    "sha256": "13d44e37860489806f575deb0b219c6058c9421fe1982a9311a0e367c4e8f444",
+    "format": "GGUF",
+    "size_bytes": 8444833824,
+    "quant_declared": "Q5_K_M",
+    "quant_observed": "file_type=17",
+    "tokenizer_hash": "",
+    "chat_template_hash": ""
+  },
+  "scope": {
+    "check_set_version": "tier1/0.1",
+    "tool_versions": "socair 0.1.0-dev",
+    "execution_context": "Tier 1 static, portable",
+    "input_path": "local path",
+    "scan_start_utc": "2026-09-29T00:00:00Z",
+    "scan_end_utc": "2026-09-29T00:00:01Z",
+    "inference_budget": ""
+  },
+  "checks": [
+    {
+      "name": "Format and structure",
+      "looks_for": "Malformed GGUF structure, unexpected tensors",
+      "status": "NOT_TESTED",
+      "notes": "check not yet implemented"
+    },
+    {
+      "name": "Chat template (hero)",
+      "looks_for": "Instructions in GGUF metadata that act before user input",
+      "status": "NOT_TESTED",
+      "notes": "check not yet implemented"
+    },
+    {
+      "name": "Quant match",
+      "looks_for": "Declared quantization against observed weight layout",
+      "status": "NOT_TESTED",
+      "notes": "check not yet implemented"
+    }
+  ],
+  "findings": {
+    "fails": [],
+    "not_tested": [
+      "Format and structure",
+      "Chat template (hero)",
+      "Quant match"
+    ]
+  },
+  "assurance_level": {
+    "awarded": "Tier 1 (static)",
+    "definition": "Static, portable checks on the artifact and its metadata.",
+    "does_mean": "The named checks were run on the exact artifact hash within their stated scope.",
+    "does_not_mean": "Nothing outside the named scope was tested, and no absence of unknown backdoors is certified.",
+    "tier2_note": "Tier 2 forward-pass checks on the production node class were not run."
+  },
+  "bounded_statement": "For the artifact identified by hash in Section 2, served on the node class named in Section 3, the checks listed in Section 4 found no indicators within their stated scope. Every surface outside that scope is enumerated as NOT_TESTED in Section 8.",
+  "out_of_scope": {
+    "does_not_certify": "This attestation does not certify the absence of unknown backdoors.",
+    "ceiling": [
+      "Unknown triggers outside our probe library.",
+      "Differential behavior across serving stacks, unless Tier 2 ran on the production node class.",
+      "Sleeper or polymorphic behavior that needs more inference budget than we run.",
+      "Artifact formats we do not parse.",
+      "Malicious behavior that only emerges at runtime under real traffic."
+    ],
+    "unparsed_formats": [],
+    "untested_node_classes": []
+  },
+  "promotion_authorization": {
+    "authorized": false,
+    "level": "Tier 1 only",
+    "conditions": "No check has run yet, so nothing is authorized for promotion."
+  },
+  "verification": {
+    "document_hash": "",
+    "signing_method": "unsigned (OSS tier)",
+    "signer_key_id": "",
+    "artifact_sha256": "13d44e37860489806f575deb0b219c6058c9421fe1982a9311a0e367c4e8f444",
+    "rerun_instructions": "socair inspect <path>"
+  },
+  "issuer": {
+    "signed_by": "",
+    "authority": "Defilan Technologies",
+    "warrants": "",
+    "excludes": "No absence guarantee. See the bounded statement and out-of-scope ceiling."
+  },
+  "appendices": {
+    "check_definitions": "internal/checks",
+    "sarif_reference": "",
+    "glossary": "docs/attestation-template.md Appendix C"
+  }
+}

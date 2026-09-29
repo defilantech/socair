@@ -1,0 +1,26 @@
+# Binaries
+/socair
+/bin/
+*.exe
+
+# Go
+*.test
+*.out
+/vendor/
+
+# Build and scratch
+/dist/
+/tmp/
+*.log
+
+# OS
+.DS_Store
+
+# Local model artifacts and scan scratch, never committed
+/models/
+*.gguf
+!/testdata/**/*.gguf
+
+# Secrets
+.env
+*.pem
