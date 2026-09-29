@@ -176,6 +176,32 @@ func cover(pdf *fpdf.Fpdf, d *report.Document) {
 	pdf.SetTextColor(ink.r, ink.g, ink.b)
 	pdf.CellFormat(contentW, 7, d.Header.AssuranceLevelAwarded, "", 1, "L", false, 0, "")
 
+	// Promotion state, colored by state. The condition state is amber, never the
+	// clean pass ink.
+	state := d.PromotionAuthorization.State
+	label := "withheld"
+	stateRGB := untestedInk
+	switch state {
+	case report.StateAuthorized:
+		label, stateRGB = "authorized", passInk
+	case report.StateAuthorizedWithConditions:
+		label, stateRGB = "authorized with conditions", rgb{122, 90, 0}
+	case report.StateEscalated:
+		label, stateRGB = "escalated", rgb{122, 90, 0}
+	}
+	pdf.SetFont("Helvetica", "B", 10)
+	pdf.SetTextColor(stateRGB.r, stateRGB.g, stateRGB.b)
+	pdf.CellFormat(contentW, 6, "Promotion: "+label, "", 1, "L", false, 0, "")
+	if len(d.PromotionAuthorization.AcceptedSurfaces) > 0 {
+		pdf.SetFont("Helvetica", "", 8)
+		pdf.SetTextColor(122, 90, 0)
+		line := "Accepted, not tested: " + strings.Join(d.PromotionAuthorization.AcceptedSurfaces, ", ")
+		if d.PromotionAuthorization.AcceptedBy != "" {
+			line += ". Accepted by " + d.PromotionAuthorization.AcceptedBy + " on " + d.PromotionAuthorization.AcceptedAt + "."
+		}
+		pdf.MultiCell(contentW, 4, line, "", "L", false)
+	}
+
 	var p, f, n int
 	for _, c := range d.Checks {
 		switch c.Status {

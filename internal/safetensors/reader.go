@@ -87,6 +87,27 @@ func IsSafetensors(path string) bool {
 // ReadArtifact parses the safetensors header at path and returns its manifest,
 // including a SHA256 of the exact file bytes. It reads the header only.
 func ReadArtifact(path string) (*Manifest, error) {
+	m, err := ReadHeader(path)
+	if err != nil {
+		return nil, err
+	}
+
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+
+	sum := sha256.New()
+	if _, err := io.Copy(sum, f); err != nil {
+		return nil, err
+	}
+	m.SHA256 = hex.EncodeToString(sum.Sum(nil))
+	return m, nil
+}
+
+// ReadHeader parses the safetensors header at path without hashing the file.
+func ReadHeader(path string) (*Manifest, error) {
 	f, err := os.Open(path)
 	if err != nil {
 		return nil, err
@@ -166,17 +187,6 @@ func ReadArtifact(path string) (*Manifest, error) {
 			m.Malformed = append(m.Malformed, fmt.Sprintf("%s: data_offsets end %d exceeds the data section of %d bytes", name, end, m.DataBytes))
 		}
 	}
-
-	// Hash the whole file. Seek back to the start: the reads above left the
-	// offset at the end of the header.
-	if _, err := f.Seek(0, io.SeekStart); err != nil {
-		return nil, err
-	}
-	sum := sha256.New()
-	if _, err := io.Copy(sum, f); err != nil {
-		return nil, err
-	}
-	m.SHA256 = hex.EncodeToString(sum.Sum(nil))
 
 	return m, nil
 }

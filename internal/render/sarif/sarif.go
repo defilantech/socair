@@ -21,8 +21,9 @@ type log struct {
 }
 
 type run struct {
-	Tool    tool     `json:"tool"`
-	Results []result `json:"results"`
+	Tool       tool              `json:"tool"`
+	Results    []result          `json:"results"`
+	Properties map[string]string `json:"properties,omitempty"`
 }
 
 type tool struct {
@@ -127,6 +128,10 @@ func Build(d *report.Document) log {
 				Rules:          rules,
 			}},
 			Results: results,
+			Properties: map[string]string{
+				"socairPromotionState": d.PromotionAuthorization.State,
+				"socairArtifactSHA256": d.Artifact.SHA256,
+			},
 		}},
 	}
 }

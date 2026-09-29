@@ -120,8 +120,13 @@
       "required": ["authorized"],
       "properties": {
         "authorized": { "type": "boolean" },
+        "state": { "enum": ["authorized", "authorized_with_conditions", "withheld", "escalated"] },
         "level": { "type": "string" },
-        "conditions": { "type": "string" }
+        "conditions": { "type": "string" },
+        "accepted_surfaces": { "type": "array", "items": { "type": "string" } },
+        "accepted_by": { "type": "string" },
+        "accepted_at": { "type": "string" },
+        "acceptance_expires": { "type": "string" }
       }
     },
     "verification": {

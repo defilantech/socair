@@ -81,6 +81,12 @@
       "notes": "declared Q5_K_M matches observed file type 17"
     },
     {
+      "name": "Pickle opcode scan",
+      "looks_for": "Serialized code gadgets in pickle-based model files",
+      "status": "NOT_TESTED",
+      "notes": "artifact is GGUF, not a pickle format"
+    },
+    {
       "name": "Forward-pass trigger probes (Tier 2)",
       "looks_for": "Behavior under the production serving stack",
       "status": "NOT_TESTED",
@@ -113,8 +119,13 @@
   },
   "promotion_authorization": {
     "authorized": false,
+    "state": "withheld",
     "level": "Tier 1 only",
-    "conditions": "Withheld: the hero check FAILED and two checks are NOT_TESTED. Submit for escalated review."
+    "conditions": "Withheld: the hero check FAILED and two checks are NOT_TESTED. Submit for escalated review.",
+    "accepted_surfaces": [
+      "Safetensors header and opcodes",
+      "Forward-pass trigger probes (Tier 2)"
+    ]
   },
   "verification": {
     "document_hash": "",

@@ -28,6 +28,16 @@
   .cover .facts { margin-top: 12px; color: var(--muted); font-size: 13px; }
   .badge { display: inline-block; margin-top: 14px; padding: 6px 12px; border-radius: 999px;
     border: 1px solid var(--line); background: #fafafa; font-weight: 600; }
+
+  /* Promotion badge. The condition state is amber, never the clean green, so an
+     authorized-with-conditions report never reads as a clean pass. */
+  .badge.promo { margin-left: 8px; }
+  .promo.authorized { background: var(--pass-bg); color: var(--pass-ink); border-color: var(--pass-line); }
+  .promo.conditions { background: #fff4d6; color: #7a5a00; border-color: #f0d68a; }
+  .promo.escalated { background: #fff4d6; color: #7a5a00; border-color: #f0d68a; }
+  .promo.withheld { background: var(--untested-bg); color: var(--untested-ink); border-color: var(--untested-line); }
+  .accepted { margin-top: 12px; font-size: 13px; color: #7a5a00; background: #fffdf5;
+    border: 1px solid #f0d68a; border-radius: 8px; padding: 10px 12px; }
   .counts { display: flex; gap: 22px; margin-top: 16px; }
   .counts .n { font-size: 22px; font-weight: 700; display: block; line-height: 1.1; }
   .counts .l { font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; }
@@ -90,6 +100,15 @@
       {{- if .Document.Header.SignerName }} &middot; Signer {{ .Document.Header.SignerName }}{{ end }}
     </div>
     <div class="badge">{{ .Document.Header.AssuranceLevelAwarded }}</div>
+    <div class="badge promo {{ promotionClass .Document.PromotionAuthorization.State }}">Promotion: {{ promotionLabel .Document.PromotionAuthorization.State }}</div>
+    {{- if .Document.PromotionAuthorization.AcceptedSurfaces }}
+    <div class="accepted">
+      Accepted, not tested: {{ range $i, $s := .Document.PromotionAuthorization.AcceptedSurfaces }}{{ if $i }}, {{ end }}{{ $s }}{{ end }}.
+      {{- if .Document.PromotionAuthorization.AcceptedBy }}
+      Accepted by {{ .Document.PromotionAuthorization.AcceptedBy }} on {{ .Document.PromotionAuthorization.AcceptedAt }}.
+      {{- end }}
+    </div>
+    {{- end }}
     <div class="counts">
       <div><span class="n">{{ .Counts.Pass }}</span><span class="l">Pass</span></div>
       <div><span class="n">{{ .Counts.Fail }}</span><span class="l">Fail</span></div>

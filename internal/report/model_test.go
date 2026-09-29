@@ -104,6 +104,45 @@ func TestValidateCatchesAlteredBoundedStatement(t *testing.T) {
 	}
 }
 
+func TestPromotionStateRules(t *testing.T) {
+	t.Run("unknown state", func(t *testing.T) {
+		d, _ := loadGolden(t)
+		d.PromotionAuthorization.State = "bogus"
+		if len(Validate(d)) == 0 {
+			t.Fatal("an unknown promotion state must fail validation")
+		}
+	})
+	t.Run("authorized bool must agree with state", func(t *testing.T) {
+		d, _ := loadGolden(t)
+		d.PromotionAuthorization.State = StateAuthorized
+		d.PromotionAuthorization.Authorized = false
+		if len(Validate(d)) == 0 {
+			t.Fatal("a mismatched authorized bool must fail validation")
+		}
+	})
+	t.Run("authorized must not carry accepted surfaces", func(t *testing.T) {
+		d, _ := loadGolden(t)
+		d.PromotionAuthorization.State = StateAuthorized
+		d.PromotionAuthorization.Authorized = true
+		if len(Validate(d)) == 0 {
+			t.Fatal("an authorized report with accepted surfaces must fail validation")
+		}
+	})
+	t.Run("conditions need a named acceptance", func(t *testing.T) {
+		d, _ := loadGolden(t)
+		d.PromotionAuthorization.State = StateAuthorizedWithConditions
+		d.PromotionAuthorization.Authorized = true
+		d.PromotionAuthorization.AcceptedBy = ""
+		if len(Validate(d)) == 0 {
+			t.Fatal("authorized_with_conditions without accepted_by must fail validation")
+		}
+		d.PromotionAuthorization.AcceptedBy = "ciso@example.com"
+		if problems := Validate(d); len(problems) != 0 {
+			t.Fatalf("a named acceptance should validate, got %v", problems)
+		}
+	})
+}
+
 func TestNewFromManifest(t *testing.T) {
 	ft := uint32(17)
 	m := &gguf.Manifest{

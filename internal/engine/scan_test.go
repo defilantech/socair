@@ -27,6 +27,69 @@ func rowStatus(d *report.Document, name string) report.Status {
 	return ""
 }
 
+func promotionDoc(statuses map[string]report.Status) *report.Document {
+	d := report.NewFromIdentity(report.Identity{FileName: "x.gguf", Format: "GGUF", SHA256: "aa"})
+	for i := range d.Checks {
+		if s, ok := statuses[d.Checks[i].Name]; ok {
+			d.Checks[i].Status = s
+		}
+	}
+	return d
+}
+
+func TestPromotionAuthorizedWhenAllPass(t *testing.T) {
+	d := report.NewFromIdentity(report.Identity{FileName: "x.gguf", Format: "GGUF", SHA256: "aa"})
+	for i := range d.Checks {
+		d.Checks[i].Status = report.StatusPass
+	}
+	pa := promotion(d, "", "")
+	if pa.State != report.StateAuthorized || !pa.Authorized {
+		t.Fatalf("all PASS must authorize, got state=%s authorized=%v", pa.State, pa.Authorized)
+	}
+	if len(pa.AcceptedSurfaces) != 0 {
+		t.Errorf("a clean report must carry no accepted surfaces, got %v", pa.AcceptedSurfaces)
+	}
+}
+
+func TestPromotionWithheldOnFail(t *testing.T) {
+	d := promotionDoc(map[string]report.Status{
+		"Chat template (hero)": report.StatusFail,
+	})
+	pa := promotion(d, "ciso@example.com", "")
+	if pa.State != report.StateWithheld || pa.Authorized {
+		t.Fatalf("a FAIL must withhold even with an acceptance, got state=%s authorized=%v", pa.State, pa.Authorized)
+	}
+}
+
+func TestPromotionGapsWithoutAcceptanceAreWithheld(t *testing.T) {
+	d := promotionDoc(map[string]report.Status{
+		"Hash, provenance, lineage": report.StatusNotTested,
+	})
+	pa := promotion(d, "", "")
+	if pa.State != report.StateWithheld || pa.Authorized {
+		t.Fatalf("gaps without an acceptance must withhold, got state=%s authorized=%v", pa.State, pa.Authorized)
+	}
+	if len(pa.AcceptedSurfaces) == 0 {
+		t.Error("withheld gaps must still be listed as surfaces")
+	}
+}
+
+func TestPromotionGapsWithAcceptanceAreConditional(t *testing.T) {
+	d := promotionDoc(map[string]report.Status{
+		"Hash, provenance, lineage": report.StatusNotTested,
+	})
+	pa := promotion(d, "ciso@example.com", "2027-01-01T00:00:00Z")
+	if pa.State != report.StateAuthorizedWithConditions || !pa.Authorized {
+		t.Fatalf("gaps with an acceptance must authorize with conditions, got state=%s authorized=%v", pa.State, pa.Authorized)
+	}
+	if pa.AcceptedBy != "ciso@example.com" {
+		t.Errorf("acceptance owner not recorded: %q", pa.AcceptedBy)
+	}
+	if len(pa.AcceptedSurfaces) == 0 {
+		t.Error("the accepted surfaces must travel with the artifact")
+	}
+}
+
 func TestScanCleanFixture(t *testing.T) {
 	p := writeFixture(t, "clean-Q5_K_M.gguf", gguftest.BuildGGUF(gguftest.Clean()))
 	d, err := Scan(p)

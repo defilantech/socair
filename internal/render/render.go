@@ -17,8 +17,10 @@ import (
 var templateHTML string
 
 var tmpl = template.Must(template.New("report").Funcs(template.FuncMap{
-	"statusClass": statusClass,
-	"isNotTested": isNotTested,
+	"statusClass":    statusClass,
+	"isNotTested":    isNotTested,
+	"promotionClass": promotionClass,
+	"promotionLabel": promotionLabel,
 }).Parse(templateHTML))
 
 // Counts tallies check results for the cover block.
@@ -82,4 +84,33 @@ func statusClass(s report.Status) string {
 
 func isNotTested(s report.Status) bool {
 	return s == report.StatusNotTested
+}
+
+// promotionClass maps a promotion state to its badge class. The condition
+// state is deliberately not the clean class, so an authorized-with-conditions
+// report never reads as a clean pass.
+func promotionClass(state string) string {
+	switch state {
+	case report.StateAuthorized:
+		return "authorized"
+	case report.StateAuthorizedWithConditions:
+		return "conditions"
+	case report.StateEscalated:
+		return "escalated"
+	default:
+		return "withheld"
+	}
+}
+
+func promotionLabel(state string) string {
+	switch state {
+	case report.StateAuthorized:
+		return "authorized"
+	case report.StateAuthorizedWithConditions:
+		return "authorized with conditions"
+	case report.StateEscalated:
+		return "escalated"
+	default:
+		return "withheld"
+	}
 }
