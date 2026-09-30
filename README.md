@@ -5,6 +5,7 @@ Socair is a signed, fileable model assurance attestation for open-weight AI mode
 The report comes before the engine. The current core artifact is [docs/attestation-template.md](docs/attestation-template.md). The scanner is designed to produce that document honestly, not the reverse.
 
 - [docs/attestation-template.md](docs/attestation-template.md): the v1 attestation document, section by section.
+- [docs/detection-ceiling.json](docs/detection-ceiling.json): the published detection ceiling, the source for [socair.ai/ceiling](https://socair.ai/ceiling).
 - [docs/brand.md](docs/brand.md): name meaning, domain set, trademark status.
 - [docs/stack.md](docs/stack.md): engine and frontend stack, and the report contract.
 - [docs/airlock.md](docs/airlock.md): the controlled junction between egress and the clean store.

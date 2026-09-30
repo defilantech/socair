@@ -1,0 +1,16 @@
+{
+  "version": "v1",
+  "statement": "This attestation does not certify the absence of unknown backdoors.",
+  "bullets": [
+    "Unknown triggers outside our probe library.",
+    "Differential behavior across serving stacks, unless Tier 2 ran on the production node class.",
+    "Sleeper or polymorphic behavior that needs more inference budget than we run.",
+    "Artifact formats we do not parse.",
+    "Malicious behavior that only emerges at runtime under real traffic."
+  ],
+  "notes": [
+    "The ceiling is the detection boundary of the current check set. It is not a confidence statement about the artifact.",
+    "Every surface outside the checks that ran is enumerated as NOT_TESTED in the attestation.",
+    "A clean attestation is a bounded statement about a named hash on a named node class, never a guarantee."
+  ]
+}

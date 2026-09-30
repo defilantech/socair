@@ -30,11 +30,16 @@ type Counts struct {
 	NotTested int
 }
 
+// CeilingURL is the published detection ceiling page. The report links it so a
+// reader can see the same list outside the document.
+const CeilingURL = "https://socair.ai/ceiling"
+
 // View is what the template renders.
 type View struct {
-	Document *report.Document
-	Counts   Counts
-	Sample   bool
+	Document   *report.Document
+	Counts     Counts
+	Sample     bool
+	CeilingURL string
 }
 
 // Render writes the HTML attestation for d to w.
@@ -51,7 +56,12 @@ type Options struct {
 
 // RenderWith writes the HTML attestation with explicit options.
 func RenderWith(w io.Writer, d *report.Document, opts Options) error {
-	return tmpl.Execute(w, View{Document: d, Counts: countChecks(d), Sample: opts.Sample})
+	return tmpl.Execute(w, View{
+		Document:   d,
+		Counts:     countChecks(d),
+		Sample:     opts.Sample,
+		CeilingURL: CeilingURL,
+	})
 }
 
 func countChecks(d *report.Document) Counts {
