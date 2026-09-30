@@ -1,0 +1,306 @@
+/* Socair wizard styles.
+   Sober and calm, matching the name: at ease and secure, not alarmist.
+   Colour is a signal, not decoration: PASS, FAIL, and NOT_TESTED each get a
+   distinct, accessible treatment, and NOT_TESTED is never green. */
+
+:root {
+	--ink: #1c1a17;
+	--ink-soft: #5a544c;
+	--paper: #faf8f4;
+	--line: #e2ddd4;
+	--pass: #1f6f43;
+	--pass-bg: #e8f2ec;
+	--fail: #9b2c2c;
+	--fail-bg: #f7e9e9;
+	--neutral: #6b6459;
+	--neutral-bg: #efece6;
+}
+
+* {
+	box-sizing: border-box;
+}
+
+body {
+	margin: 0;
+	background: var(--paper);
+	color: var(--ink);
+	font:
+		16px/1.6 ui-serif,
+		Georgia,
+		serif;
+	-webkit-font-smoothing: antialiased;
+}
+
+.shell {
+	max-width: 60rem;
+	margin: 0 auto;
+	padding: 2rem 1.25rem 4rem;
+}
+
+header.masthead {
+	display: flex;
+	align-items: baseline;
+	justify-content: space-between;
+	gap: 1rem;
+	border-bottom: 1px solid var(--line);
+	padding-bottom: 1rem;
+}
+
+.wordmark {
+	font-size: 1.5rem;
+	letter-spacing: 0.01em;
+	margin: 0;
+}
+
+.wordmark span {
+	color: var(--ink-soft);
+	font-size: 0.95rem;
+	margin-left: 0.5rem;
+}
+
+h2 {
+	font-size: 1rem;
+	text-transform: uppercase;
+	letter-spacing: 0.08em;
+	color: var(--ink-soft);
+	margin: 2.5rem 0 0.75rem;
+}
+
+/* Status pills */
+.pill {
+	display: inline-block;
+	padding: 0.1rem 0.5rem;
+	border-radius: 999px;
+	font:
+		700 0.75rem/1.5 ui-monospace,
+		monospace;
+	letter-spacing: 0.04em;
+	border: 1px solid transparent;
+}
+.pill.pass {
+	color: var(--pass);
+	background: var(--pass-bg);
+	border-color: var(--pass);
+}
+.pill.fail {
+	color: var(--fail);
+	background: var(--fail-bg);
+	border-color: var(--fail);
+}
+.pill.not-tested {
+	color: var(--neutral);
+	background: var(--neutral-bg);
+	border-color: var(--neutral);
+	font-weight: 500;
+}
+
+/* Engine status chip */
+.chip {
+	font:
+		600 0.8rem/1.6 ui-monospace,
+		monospace;
+	color: var(--neutral);
+	background: var(--neutral-bg);
+	border: 1px solid var(--line);
+	border-radius: 999px;
+	padding: 0.15rem 0.7rem;
+}
+.chip.ok {
+	color: var(--pass);
+	background: var(--pass-bg);
+	border-color: var(--pass);
+}
+.chip.bad {
+	color: var(--fail);
+	background: var(--fail-bg);
+	border-color: var(--fail);
+}
+
+/* Form */
+form.scan {
+	display: grid;
+	gap: 1rem;
+	background: #fff;
+	border: 1px solid var(--line);
+	border-radius: 8px;
+	padding: 1.25rem;
+	margin-top: 1rem;
+}
+label {
+	display: block;
+	font-weight: 600;
+	margin-bottom: 0.3rem;
+}
+.hint {
+	color: var(--ink-soft);
+	font-size: 0.88rem;
+	margin: 0.25rem 0 0;
+}
+input[type='text'],
+select {
+	width: 100%;
+	padding: 0.55rem 0.7rem;
+	font: inherit;
+	border: 1px solid var(--line);
+	border-radius: 5px;
+	background: var(--paper);
+	color: var(--ink);
+}
+input[type='text']:focus-visible,
+select:focus-visible,
+button:focus-visible {
+	outline: 2px solid var(--ink);
+	outline-offset: 2px;
+}
+.row {
+	display: grid;
+	grid-template-columns: 1fr 18rem;
+	gap: 1rem;
+}
+@media (max-width: 40rem) {
+	.row {
+		grid-template-columns: 1fr;
+	}
+}
+
+button {
+	font: inherit;
+	font-weight: 600;
+	padding: 0.6rem 1.1rem;
+	border-radius: 5px;
+	border: 1px solid var(--ink);
+	background: var(--ink);
+	color: var(--paper);
+	cursor: pointer;
+	justify-self: start;
+}
+button.ghost {
+	background: transparent;
+	color: var(--ink);
+}
+button:disabled {
+	opacity: 0.5;
+	cursor: not-allowed;
+}
+.actions {
+	display: flex;
+	gap: 0.6rem;
+	flex-wrap: wrap;
+}
+
+.spacer {
+	height: 1.9rem;
+}
+
+/* Result */
+.result {
+	margin-top: 1rem;
+}
+.state {
+	border: 1px solid var(--line);
+	border-radius: 8px;
+	padding: 1.25rem;
+	background: #fff;
+}
+.state.failed {
+	border-color: var(--fail);
+	background: var(--fail-bg);
+}
+.error-title {
+	font-weight: 700;
+	color: var(--fail);
+	margin: 0 0 0.4rem;
+}
+.counts {
+	display: flex;
+	gap: 1.5rem;
+	margin: 0.5rem 0 1.25rem;
+}
+.count {
+	display: flex;
+	flex-direction: column;
+}
+.count b {
+	font-size: 1.6rem;
+	font-weight: 700;
+	line-height: 1.1;
+}
+.count span {
+	font-size: 0.8rem;
+	text-transform: uppercase;
+	letter-spacing: 0.07em;
+	color: var(--ink-soft);
+}
+
+table {
+	width: 100%;
+	border-collapse: collapse;
+	margin-top: 0.5rem;
+}
+th,
+td {
+	text-align: left;
+	padding: 0.55rem 0.5rem;
+	border-bottom: 1px solid var(--line);
+	vertical-align: top;
+}
+th {
+	font-size: 0.78rem;
+	text-transform: uppercase;
+	letter-spacing: 0.07em;
+	color: var(--ink-soft);
+}
+td.check {
+	font-weight: 600;
+}
+td.evidence,
+td.notes {
+	color: var(--ink-soft);
+	font-size: 0.9rem;
+}
+
+.bounded {
+	border-left: 3px solid var(--ink);
+	padding: 0.4rem 0 0.4rem 1rem;
+	margin: 1.5rem 0;
+	font-style: italic;
+}
+.ceiling {
+	border: 1px solid var(--line);
+	border-radius: 8px;
+	padding: 1rem 1.25rem;
+	background: var(--neutral-bg);
+	margin-top: 1.5rem;
+}
+.ceiling p {
+	margin: 0 0 0.6rem;
+	font-weight: 700;
+}
+.ceiling ul {
+	margin: 0;
+	padding-left: 1.1rem;
+	color: var(--ink-soft);
+}
+
+.ledger {
+	list-style: none;
+	margin: 0;
+	padding: 0;
+	font:
+		0.85rem/1.7 ui-monospace,
+		monospace;
+	color: var(--ink-soft);
+}
+.ledger li {
+	border-bottom: 1px solid var(--line);
+	padding: 0.3rem 0;
+	overflow-wrap: anywhere;
+}
+
+footer.foot {
+	margin-top: 3rem;
+	border-top: 1px solid var(--line);
+	padding-top: 1rem;
+	color: var(--ink-soft);
+	font-size: 0.85rem;
+}

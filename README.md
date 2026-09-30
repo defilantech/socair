@@ -8,6 +8,8 @@ The report comes before the engine. The current core artifact is [docs/attestati
 - [docs/brand.md](docs/brand.md): name meaning, domain set, trademark status.
 - [docs/stack.md](docs/stack.md): engine and frontend stack, and the report contract.
 - [docs/airlock.md](docs/airlock.md): the controlled junction between egress and the clean store.
+- [docs/api.md](docs/api.md): the stateless engine HTTP/JSON API the wizard consumes.
+- [docs/wizard.md](docs/wizard.md): the click-ops scan wizard.
 - [docs/dev.md](docs/dev.md): build, test, and layout conventions.
 
 License: Apache-2.0.
