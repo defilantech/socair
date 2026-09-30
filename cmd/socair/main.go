@@ -65,6 +65,11 @@ func main() {
 			fmt.Fprintln(os.Stderr, "error:", err)
 			os.Exit(1)
 		}
+	case "serve":
+		if err := serveCmd(os.Args[2:]); err != nil {
+			fmt.Fprintln(os.Stderr, "error:", err)
+			os.Exit(1)
+		}
 	case "demo":
 		if err := demoCmd(); err != nil {
 			fmt.Fprintln(os.Stderr, "error:", err)
@@ -94,6 +99,7 @@ Usage:
   socair airlock ingest    resolve a local path or an offline HF cache entry
   socair airlock promote   promote an attested artifact into the clean store
   socair airlock log       print the append-only airlock activity log
+  socair serve             run the engine HTTP/JSON API for the click-ops wizard
   socair demo              write the SAMPLE attestation for sales
 `)
 }
