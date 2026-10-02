@@ -261,7 +261,11 @@ func (o Options) airlockPull(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	dst := filepath.Join(s.StagingPath(req.SHA256), filepath.Base(req.File))
+	dst, err := s.StagingFile(req.SHA256, req.File)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
 	e, err := airlock.Pull(r.Context(), s, dst, req.Repo, req.Revision, req.SHA256, airlock.DefaultEgressPolicy())
 	if err != nil {
 		writeError(w, http.StatusUnprocessableEntity, err.Error())

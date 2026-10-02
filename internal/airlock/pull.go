@@ -64,11 +64,20 @@ func Pull(ctx context.Context, s *Store, dst, repo, revision, wantSHA string, po
 	if strings.TrimSpace(repo) == "" {
 		return fail("repo is required")
 	}
-	if len(normalizeSHA(wantSHA)) != 64 {
-		return fail("an expected 64-hex artifact hash is required")
+	if err := ValidSHA256(wantSHA); err != nil {
+		return fail(err.Error())
+	}
+	if err := validRepo(repo); err != nil {
+		return fail(err.Error())
 	}
 	if strings.TrimSpace(revision) == "" {
 		revision = "main"
+	}
+	if err := validRevision(revision); err != nil {
+		return fail(err.Error())
+	}
+	if err := validFileName(filepath.Base(dst)); err != nil {
+		return fail(err.Error())
 	}
 	pol = pol.withDefaults()
 
@@ -77,7 +86,7 @@ func Pull(ctx context.Context, s *Store, dst, repo, revision, wantSHA string, po
 		return fail(fmt.Sprintf("egress to %q is denied by policy (set SOCAIR_EGRESS=allow and add the host to the allowlist)", host))
 	}
 
-	src := strings.TrimRight(pol.Endpoint, "/") + "/" + repo + "/resolve/" + revision + "/" + filepath.Base(dst)
+	src := strings.TrimRight(pol.Endpoint, "/") + "/" + repo + "/resolve/" + revision + "/" + url.PathEscape(filepath.Base(dst))
 
 	cctx, cancel := context.WithTimeout(ctx, pol.Timeout)
 	defer cancel()

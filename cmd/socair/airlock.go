@@ -60,7 +60,10 @@ func airlockPull(args []string) error {
 	if err != nil {
 		return err
 	}
-	dst := filepath.Join(s.StagingPath(sha), filepath.Base(file))
+	dst, err := s.StagingFile(sha, file)
+	if err != nil {
+		return err
+	}
 	ev, err := airlock.Pull(context.Background(), s, dst, repo, fs.val("revision"), sha, airlock.DefaultEgressPolicy())
 	if err != nil {
 		return err

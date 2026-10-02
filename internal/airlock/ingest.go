@@ -52,7 +52,22 @@ func ResolveCache(cacheDir, repo, revision, file string) (string, error) {
 		return "", errors.New("no cache directory: set SOCAIR_HF_CACHE or HF_HOME")
 	}
 
-	p := filepath.Join(cacheDir, repoCacheDir(repo), "snapshots", revision, file)
+	if err := validRepo(repo); err != nil {
+		return "", err
+	}
+	if err := validRevision(revision); err != nil {
+		return "", err
+	}
+	// A cache file may sit in a repo subfolder, so file is a relative path,
+	// but never absolute and never with a ".." segment.
+	if filepath.IsAbs(file) || strings.Contains(file, `\`) || hasDotDot(filepath.ToSlash(file)) {
+		return "", fmt.Errorf("artifact file %q must be a relative path inside the repo", file)
+	}
+	snap := filepath.Join(cacheDir, repoCacheDir(repo), "snapshots")
+	p := filepath.Join(snap, revision, file)
+	if !within(snap, p) {
+		return "", fmt.Errorf("cache path %q escapes the cache", p)
+	}
 	fi, err := os.Stat(p)
 	if err != nil {
 		return "", fmt.Errorf("no cached artifact %s/%s (%s) under %s; run a pull first or point --local at the file",
