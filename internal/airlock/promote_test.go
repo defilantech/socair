@@ -157,6 +157,40 @@ func TestPromoteRefusesForgedState(t *testing.T) {
 	}
 }
 
+// TestPromoteCrossesOnlyVerifiedBytes: the gate hashed the artifact, then
+// re-opened it by path to copy, so bytes swapped in between crossed into the
+// clean store unverified. The hook rewrites the file after the gate opens it.
+// The bytes that land in clean/ must be the bytes that were hashed: either the
+// promotion is refused, or the stored file hashes to the attested digest.
+// Falsification: hash first and copy by path, and the swapped bytes cross.
+func TestPromoteCrossesOnlyVerifiedBytes(t *testing.T) {
+	artifact, d := authorizedArtifact(t)
+	s, _ := Init(t.TempDir())
+
+	promoteOpened = func() {
+		if err := os.WriteFile(artifact, []byte("swapped payload"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	t.Cleanup(func() { promoteOpened = nil })
+
+	_, err := Promote(s, artifact, writeReport(t, d))
+	stored := filepath.Join(s.CleanPath(d.Artifact.SHA256), filepath.Base(artifact))
+	if err == nil {
+		got, herr := hashFile(stored)
+		if herr != nil {
+			t.Fatal(herr)
+		}
+		if got != d.Artifact.SHA256 {
+			t.Fatalf("the clean store holds bytes hashing to %s, not the attested %s", got, d.Artifact.SHA256)
+		}
+		return
+	}
+	if _, statErr := os.Stat(stored); statErr == nil {
+		t.Fatal("a refused promotion left bytes in the clean store")
+	}
+}
+
 func TestPromoteRefusesHashMismatch(t *testing.T) {
 	artifact, d := authorizedArtifact(t)
 	// The attestation authorizes a different artifact than the one on disk.
