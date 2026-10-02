@@ -54,7 +54,8 @@ func ScanMode(path string, mode Mode) (*report.Document, error) {
 	start := time.Now().UTC()
 
 	var id report.Identity
-	var chatTemplate string
+	var chatTemplates map[string]string
+	var chatTemplateNonString []string
 	var tokenizerModel string
 	var quantDeclared string
 	var fileType *uint32
@@ -104,7 +105,8 @@ func ScanMode(path string, mode Mode) (*report.Document, error) {
 		if m.MultiPart() {
 			id.Split = fmt.Sprintf("part %d of %d", m.Split.No+1, m.Split.Count)
 		}
-		chatTemplate = m.ChatTemplate
+		chatTemplates = m.ChatTemplates
+		chatTemplateNonString = m.ChatTemplateNonString
 		tokenizerModel = m.TokenizerModel
 		quantDeclared = m.Quant.Declared
 		fileType = m.Quant.FileType
@@ -134,7 +136,7 @@ func ScanMode(path string, mode Mode) (*report.Document, error) {
 	}
 	if id.Format == "GGUF" {
 		results = append(results,
-			chattemplate.Inspect(chatTemplate),
+			chattemplate.InspectAll(chatTemplates, chatTemplateNonString),
 			tokenizer.Inspect(tokenizerModel),
 			quant.Compare(quantDeclared, fileType),
 		)
