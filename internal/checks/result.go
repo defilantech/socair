@@ -1,8 +1,10 @@
 // Package checks holds the shared result types for Socair checks.
 //
-// A check returns PASS, FAIL, or NOT_TESTED. FAIL is reserved for positive
-// evidence; anything ambiguous or unparseable is NOT_TESTED with a named
-// reason, never a silent pass and never a guess dressed as a failure.
+// A check returns PASS, FAIL, LEAD, or NOT_TESTED. FAIL is reserved for
+// positive evidence. LEAD is a suspicious signal that is not conclusive: it is
+// not a FAIL, but it is not a gap either, so only escalated review clears it.
+// Anything ambiguous or unparseable is NOT_TESTED with a named reason, never a
+// silent pass and never a guess dressed as a failure.
 package checks
 
 // Status is a per-check result.
@@ -12,6 +14,7 @@ const (
 	Pass      Status = "PASS"
 	Fail      Status = "FAIL"
 	NotTested Status = "NOT_TESTED"
+	Lead      Status = "LEAD"
 )
 
 // Finding is one piece of positive evidence inside a check.

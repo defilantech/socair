@@ -38,6 +38,8 @@ var (
 	failInk     = rgb{163, 35, 27}
 	untested    = rgb{241, 241, 243}
 	untestedInk = rgb{85, 85, 92}
+	leadBG      = rgb{253, 243, 225}
+	leadInk     = rgb{138, 75, 0}
 )
 
 // RenderPDF writes the PDF attestation for d to w.
@@ -202,27 +204,29 @@ func cover(pdf *fpdf.Fpdf, d *report.Document) {
 		pdf.MultiCell(contentW, 4, line, "", "L", false)
 	}
 
-	var p, f, n int
+	var p, f, l, n int
 	for _, c := range d.Checks {
 		switch c.Status {
 		case report.StatusPass:
 			p++
 		case report.StatusFail:
 			f++
+		case report.StatusLead:
+			l++
 		default:
 			n++
 		}
 	}
 	pdf.SetFont("Helvetica", "", 10)
 	pdf.SetTextColor(muted.r, muted.g, muted.b)
-	pdf.CellFormat(contentW, 6, countsLine(p, f, n), "", 1, "L", false, 0, "")
+	pdf.CellFormat(contentW, 6, countsLine(p, f, l, n), "", 1, "L", false, 0, "")
 }
 
-func countsLine(pass, fail, notTested int) string {
+func countsLine(pass, fail, lead, notTested int) string {
 	part := func(n int, label string) string {
 		return itoa(n) + " " + label
 	}
-	return part(pass, "pass") + "   " + part(fail, "fail") + "   " + part(notTested, "not tested")
+	return part(pass, "pass") + "   " + part(fail, "fail") + "   " + part(lead, "lead") + "   " + part(notTested, "not tested")
 }
 
 func itoa(n int) string {
@@ -278,6 +282,8 @@ func statusColors(s report.Status) (rgb, rgb) {
 		return passBG, passInk
 	case report.StatusFail:
 		return failBG, failInk
+	case report.StatusLead:
+		return leadBG, leadInk
 	default:
 		return untested, untestedInk
 	}

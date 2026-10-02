@@ -4,7 +4,7 @@
 // or badge of its own, and it treats every non-2xx as a failure rather than a
 // partial success.
 
-export type CheckStatus = 'PASS' | 'FAIL' | 'NOT_TESTED';
+export type CheckStatus = 'PASS' | 'FAIL' | 'LEAD' | 'NOT_TESTED';
 
 export interface CheckResult {
 	name: string;
@@ -36,7 +36,7 @@ export interface Document {
 	schema_version: string;
 	artifact: Artifact;
 	checks: CheckResult[];
-	findings: { fails: string[]; not_tested: string[] };
+	findings: { fails: string[]; leads?: string[]; not_tested: string[] };
 	promotion_authorization: PromotionAuthorization;
 	bounded_statement: string;
 	out_of_scope: { does_not_certify: string; ceiling: string[] };

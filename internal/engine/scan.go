@@ -206,15 +206,17 @@ func readSafetensors(path string, mode Mode) (*safetensors.Manifest, error) {
 	return safetensors.ReadArtifact(path)
 }
 
-// promotion computes the promotion state. A FAIL withholds and is clearable
-// only by escalation. A gap (NOT_TESTED) withholds until a named acceptance is
-// supplied, and the accepted surfaces travel with the artifact.
+// promotion computes the promotion state. A FAIL or a LEAD withholds and is
+// clearable only by escalation. A gap (NOT_TESTED) withholds until a named
+// acceptance is supplied, and the accepted surfaces travel with the artifact.
 func promotion(d *report.Document, acceptedBy, expires string) report.PromotionAuthorization {
-	var fails, gaps []string
+	var fails, leads, gaps []string
 	for _, c := range d.Checks {
 		switch c.Status {
 		case report.StatusFail:
 			fails = append(fails, c.Name)
+		case report.StatusLead:
+			leads = append(leads, c.Name)
 		case report.StatusNotTested:
 			gaps = append(gaps, c.Name)
 		}
@@ -223,11 +225,18 @@ func promotion(d *report.Document, acceptedBy, expires string) report.PromotionA
 	pa := report.PromotionAuthorization{Level: "Tier 1 only", AcceptedSurfaces: gaps, AcceptanceExpires: expires}
 
 	switch {
-	case len(fails) > 0:
+	case len(fails) > 0 || len(leads) > 0:
+		var why []string
+		if len(fails) > 0 {
+			why = append(why, "positive evidence on "+strings.Join(fails, ", "))
+		}
+		if len(leads) > 0 {
+			why = append(why, "a suspicious lead on "+strings.Join(leads, ", "))
+		}
 		pa.State = report.StateWithheld
 		pa.Authorized = false
-		pa.Conditions = "Withheld: positive evidence on " + strings.Join(fails, ", ") +
-			". A FAIL is clearable only by escalated review."
+		pa.Conditions = "Withheld: " + strings.Join(why, "; ") +
+			". A FAIL or a LEAD is clearable only by escalated review, never by an acceptance."
 	case len(gaps) == 0:
 		pa.State = report.StateAuthorized
 		pa.Authorized = true
@@ -282,11 +291,14 @@ func evidence(res checks.Result) string {
 
 func finalizeFindings(d *report.Document) {
 	d.Findings.Fails = nil
+	d.Findings.Leads = nil
 	d.Findings.NotTested = nil
 	for _, c := range d.Checks {
 		switch c.Status {
 		case report.StatusFail:
 			d.Findings.Fails = append(d.Findings.Fails, c.Name)
+		case report.StatusLead:
+			d.Findings.Leads = append(d.Findings.Leads, c.Name)
 		case report.StatusNotTested:
 			d.Findings.NotTested = append(d.Findings.NotTested, c.Name)
 		}

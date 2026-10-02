@@ -30,6 +30,10 @@ const (
 	StatusPass      Status = "PASS"
 	StatusFail      Status = "FAIL"
 	StatusNotTested Status = "NOT_TESTED"
+	// StatusLead is a suspicious signal that is not conclusive, such as
+	// instruction-override language in a chat template. It is not a gap: an
+	// acceptance clears NOT_TESTED rows, never a LEAD. Only escalation does.
+	StatusLead Status = "LEAD"
 )
 
 // Document is one rendered attestation.
@@ -101,6 +105,7 @@ type CheckResult struct {
 
 type Findings struct {
 	Fails     []string `json:"fails"`
+	Leads     []string `json:"leads,omitempty"`
 	NotTested []string `json:"not_tested"`
 }
 
@@ -291,7 +296,7 @@ func Validate(d *Document) []string {
 	req(d.Verification.ArtifactSHA256 == d.Artifact.SHA256, "verification.artifact_sha256 (must match artifact.sha256)")
 	for i, c := range d.Checks {
 		switch c.Status {
-		case StatusPass, StatusFail, StatusNotTested:
+		case StatusPass, StatusFail, StatusLead, StatusNotTested:
 		default:
 			problems = append(problems, fmt.Sprintf("checks[%d].status invalid: %q", i, c.Status))
 		}
@@ -355,9 +360,9 @@ func validateStateAgainstChecks(d *Document) []string {
 	}
 	for _, c := range d.Checks {
 		switch c.Status {
-		case StatusFail:
+		case StatusFail, StatusLead:
 			problems = append(problems, fmt.Sprintf(
-				"promotion_authorization: state %q over FAIL row %q; a FAIL clears only by escalation", pa.State, c.Name))
+				"promotion_authorization: state %q over %s row %q; it clears only by escalation", pa.State, c.Status, c.Name))
 		case StatusNotTested:
 			if pa.State == StateAuthorized {
 				problems = append(problems, fmt.Sprintf(
