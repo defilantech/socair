@@ -209,6 +209,17 @@ func TestPromotionStateBoundToChecks(t *testing.T) {
 			t.Fatal("an acceptance that omits a NOT_TESTED row must fail validation")
 		}
 	})
+	t.Run("conditions over a LEAD", func(t *testing.T) {
+		d, _ := loadGolden(t)
+		setStatus(d, "Format and structure", StatusLead)
+		d.PromotionAuthorization.State = StateAuthorizedWithConditions
+		d.PromotionAuthorization.Authorized = true
+		d.PromotionAuthorization.AcceptedBy = "ciso@example.com"
+		d.PromotionAuthorization.AcceptedSurfaces = append(d.PromotionAuthorization.AcceptedSurfaces, "Format and structure")
+		if len(Validate(d)) == 0 {
+			t.Fatal("an acceptance over a LEAD must fail validation; a LEAD clears only by escalation")
+		}
+	})
 	t.Run("all PASS authorizes", func(t *testing.T) {
 		d, _ := loadGolden(t)
 		setStatus(d, "File inventory and payloads", StatusPass)

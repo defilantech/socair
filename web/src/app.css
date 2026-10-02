@@ -1,7 +1,8 @@
 /* Socair wizard styles.
    Sober and calm, matching the name: at ease and secure, not alarmist.
-   Colour is a signal, not decoration: PASS, FAIL, and NOT_TESTED each get a
-   distinct, accessible treatment, and NOT_TESTED is never green. */
+   Colour is a signal, not decoration: PASS, FAIL, LEAD, and NOT_TESTED each
+   get a distinct, accessible treatment. NOT_TESTED is never green, and LEAD
+   (escalate) is amber, neither a pass nor the neutral gap. */
 
 :root {
 	--ink: #1c1a17;
@@ -14,6 +15,8 @@
 	--fail-bg: #f7e9e9;
 	--neutral: #6b6459;
 	--neutral-bg: #efece6;
+	--lead: #8a4b00;
+	--lead-bg: #fbf1df;
 }
 
 * {
@@ -86,6 +89,11 @@ h2 {
 	color: var(--fail);
 	background: var(--fail-bg);
 	border-color: var(--fail);
+}
+.pill.lead {
+	color: var(--lead);
+	background: var(--lead-bg);
+	border-color: var(--lead);
 }
 .pill.not-tested {
 	color: var(--neutral);

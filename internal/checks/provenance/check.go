@@ -3,8 +3,11 @@
 //
 // There is no network call. Provenance comes from a supplied provenance
 // manifest (written by whoever ran the airlock) and from signature sidecars
-// next to the artifact. With neither input the row is NOT_TESTED, never a
-// silent pass: we did not verify, so we say so.
+// next to the artifact. The row PASSes only when the manifest records an
+// origin, a repo and a revision. A sidecar is surfaced but not verified, and a
+// signing status in the manifest is reported as that manifest's claim. With no
+// recorded origin the row is NOT_TESTED, never a silent pass: we did not
+// verify, so we say so.
 package provenance
 
 import (
@@ -70,14 +73,6 @@ func Inspect(opts Options) checks.Result {
 		return r
 	}
 
-	signing := strings.ToLower(strings.TrimSpace(m.SigningStatus))
-	if signing == "" && sidecar != "" {
-		signing = "signed (local sidecar)"
-	}
-	if signing == "" {
-		signing = "unknown"
-	}
-
 	parts := []string{}
 	if haveManifest {
 		if m.Publisher != "" {
@@ -97,16 +92,36 @@ func Inspect(opts Options) checks.Result {
 			parts = append(parts, "aibom "+m.AIBOM)
 		}
 	}
+	// A sidecar is surfaced, never reported as a signature: nothing here
+	// verifies it. Verifying publisher signatures is a separate check.
 	if sidecar != "" {
-		parts = append(parts, "sidecar "+filepath.Base(sidecar))
+		parts = append(parts, "signature sidecar "+filepath.Base(sidecar)+" present, not verified")
 	}
-	parts = append(parts, "signing "+signing)
+
+	// A signing status from the manifest is the manifest's claim. It is
+	// reported as claimed, never as a verification.
+	signing := strings.ToLower(strings.TrimSpace(m.SigningStatus))
+	switch signing {
+	case "":
+		parts = append(parts, "publisher signature not established")
+	case "unsigned":
+		parts = append(parts, "manifest records the upstream as unsigned; publisher signature not established")
+	default:
+		parts = append(parts, "signing claimed "+signing+" by the supplied manifest, not verified")
+	}
+
+	// PASS means an origin is recorded: a repo and a revision. A manifest
+	// without both, or a sidecar alone, is not provenance.
+	origin := haveManifest && strings.TrimSpace(m.RepoURL) != "" &&
+		(strings.TrimSpace(m.CommitOrTag) != "" || strings.TrimSpace(m.CommitSHA) != "")
+	if !origin {
+		r.Status = checks.NotTested
+		r.Notes = "no origin recorded (a provenance manifest needs repo_url and commit_or_tag or commit_sha): " + strings.Join(parts, "; ")
+		return r
+	}
 
 	r.Status = checks.Pass
-	r.Notes = "provenance recorded: " + strings.Join(parts, "; ")
-	if strings.HasPrefix(signing, "unsigned") || signing == "unknown" {
-		r.Notes += ". The publisher signature is not established, so the origin rests on the supplied record, not on a verified signature."
-	}
+	r.Notes = "origin recorded from the supplied manifest: " + strings.Join(parts, "; ")
 	return r
 }
 

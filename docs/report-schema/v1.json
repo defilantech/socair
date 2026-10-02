@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://socair.ai/schema/report/v1.json",
   "title": "Socair Model Assurance Attestation",
-  "description": "The cross-stack report contract. The engine produces it, the CLI prints it, the SvelteKit wizard renders it, and the MCP wrapper serves it. Versioned; breaking changes publish a new $id.",
+  "description": "The cross-stack report contract. The engine produces it, the CLI prints it, the SvelteKit wizard renders it, and the MCP wrapper serves it. Versioned; breaking changes publish a new $id. v1 is frozen at the public release; before it, v1 changed in place with no external consumers (2026-10-02: the LEAD check status and findings.leads were added).",
   "type": "object",
   "required": [
     "schema_version",
@@ -78,7 +78,7 @@
         "properties": {
           "name": { "type": "string", "minLength": 1 },
           "looks_for": { "type": "string" },
-          "status": { "enum": ["PASS", "FAIL", "NOT_TESTED"] },
+          "status": { "enum": ["PASS", "FAIL", "LEAD", "NOT_TESTED"] },
           "evidence": { "type": "string" },
           "notes": { "type": "string" }
         }
@@ -88,6 +88,7 @@
       "type": "object",
       "properties": {
         "fails": { "type": "array", "items": { "type": "string" } },
+        "leads": { "type": "array", "items": { "type": "string" } },
         "not_tested": { "type": "array", "items": { "type": "string" } }
       }
     },

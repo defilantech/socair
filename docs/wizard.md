@@ -37,6 +37,8 @@ for a download. The engine keeps no session.
 
 - Render a `NOT_TESTED` check as a pass. `statusPill` maps it to the neutral
   treatment, and a test holds the line.
+- Render a `LEAD` as a pass or as a gap. It has its own amber treatment, because
+  it needs escalation and no acceptance clears it.
 - Show a promotion state the document does not carry. `promotionLabel` and
   `promotionPill` read `promotion_authorization.state`.
 - Offer a level the engine cannot run. Only Tier 1 is selectable; Tier 2 is the

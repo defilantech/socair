@@ -104,6 +104,29 @@ guards that. A template on the list is still FAILed if it carries structural
 code-execution evidence: the allowlist clears language, never code, and
 `TestAllowlistClearsLeadsButNotStructural` proves it.
 
+## Audit false positives (2026-10-02)
+
+The pre-reveal audit found two FAILs that broke the rule that a FAIL needs
+positive evidence. Both are now regression tests.
+
+- **Two-byte magics in metadata text.** `general.license = "Licensed by AMZ
+  Corp"` FAILed as an embedded PE, because the inventory matched `MZ` (and
+  gzip's `1f 8b`) anywhere in a value. Four-byte magics (ELF, zip, Mach-O)
+  still match anywhere. Two-byte magics now count only at the start of a value
+  and only with confirming structure: a `PE\0\0` signature at `e_lfanew`, or a
+  gzip header with deflate and no reserved flags.
+  `TestShortMagicInTextDoesNotFail`, `TestRealPEInMetadataFails`.
+- **Zip-format PyTorch checkpoints in the repo.** Every `pytorch_model.bin`
+  since PyTorch 1.6 is a zip, and the repo side FAILed any zip. Only a native
+  executable (ELF, verified PE, Mach-O) is now a repo FAIL. An archive is named
+  as unscanned and leaves the row NOT_TESTED, because its contents, a pickle
+  for a checkpoint, were not inspected. `TestRepoTorchCheckpointIsNotAFail`.
+- **Community quant names.** `Model-UD-Q4_K_XL.gguf` (Unsloth) FAILed as a
+  quant mismatch. `Q4_K_XL` and bartowski's `Q4_K_L` are not llama.cpp file
+  types, and those files report `Q4_K_M`, so there is nothing to compare. A
+  declared name outside the llama.cpp set is now NOT_TESTED with the name.
+  `TestCommunityQuantNameIsNotTested`.
+
 ## Follow-ups
 
 1. Verify the GGML file-type mapping against the current llama.cpp enum so the

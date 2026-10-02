@@ -2,12 +2,13 @@
 //
 // These read the document. They never invent a status, a count, or a badge the
 // engine did not return. NOT_TESTED is a deliberate non-signal and must never
-// render with the pass treatment.
+// render with the pass treatment. LEAD is a suspicious signal for escalation
+// with its own treatment, never pass and never the neutral gap look.
 
 import type { CheckStatus, Document } from './api';
 
 // Pill is the visual treatment for a status or a promotion state.
-export type Pill = 'pass' | 'fail' | 'not-tested';
+export type Pill = 'pass' | 'fail' | 'lead' | 'not-tested';
 
 // statusPill maps a check status to its treatment. NOT_TESTED is never pass.
 export function statusPill(status: CheckStatus): Pill {
@@ -16,21 +17,30 @@ export function statusPill(status: CheckStatus): Pill {
 			return 'pass';
 		case 'FAIL':
 			return 'fail';
+		case 'LEAD':
+			return 'lead';
 		default:
 			return 'not-tested';
 	}
 }
 
-export function counts(d: Document): { pass: number; fail: number; notTested: number } {
+export function counts(d: Document): {
+	pass: number;
+	fail: number;
+	lead: number;
+	notTested: number;
+} {
 	let pass = 0;
 	let fail = 0;
+	let lead = 0;
 	let notTested = 0;
 	for (const c of d.checks) {
 		if (c.status === 'PASS') pass++;
 		else if (c.status === 'FAIL') fail++;
+		else if (c.status === 'LEAD') lead++;
 		else notTested++;
 	}
-	return { pass, fail, notTested };
+	return { pass, fail, lead, notTested };
 }
 
 // promotionLabel is the word for the promotion state, taken from the document.

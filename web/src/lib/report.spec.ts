@@ -30,6 +30,11 @@ describe('status treatment', () => {
 		expect(statusPill('PASS')).toBe('pass');
 		expect(statusPill('FAIL')).toBe('fail');
 	});
+	it('gives LEAD its own escalation treatment, never pass or the gap look', () => {
+		expect(statusPill('LEAD')).toBe('lead');
+		expect(statusPill('LEAD')).not.toBe('pass');
+		expect(statusPill('LEAD')).not.toBe('not-tested');
+	});
 });
 
 describe('promotion badge', () => {
@@ -48,9 +53,10 @@ describe('promotion badge', () => {
 
 describe('counts', () => {
 	it('tallies the document statuses', () => {
-		expect(counts(doc('authorized', ['PASS', 'PASS', 'FAIL', 'NOT_TESTED']))).toEqual({
+		expect(counts(doc('authorized', ['PASS', 'PASS', 'FAIL', 'LEAD', 'NOT_TESTED']))).toEqual({
 			pass: 2,
 			fail: 1,
+			lead: 1,
 			notTested: 1
 		});
 	});

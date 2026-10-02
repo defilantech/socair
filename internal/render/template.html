@@ -11,6 +11,7 @@
     --pass-bg: #e6f4ea; --pass-ink: #1e6b3a; --pass-line: #bfe0c9;
     --fail-bg: #fdecea; --fail-ink: #a3231b; --fail-line: #f3c2bd;
     --untested-bg: #f1f1f3; --untested-ink: #55555c; --untested-line: #d8d8dd;
+    --lead-bg: #fdf3e1; --lead-ink: #8a4b00; --lead-line: #efd29b;
   }
   * { box-sizing: border-box; }
   body { margin: 0; padding: 48px; color: var(--ink); background: #fff;
@@ -54,6 +55,8 @@
   .pill.pass { background: var(--pass-bg); color: var(--pass-ink); border-color: var(--pass-line); }
   .pill.fail { background: var(--fail-bg); color: var(--fail-ink); border-color: var(--fail-line); }
   .pill.not-tested { background: var(--untested-bg); color: var(--untested-ink); border-color: var(--untested-line); }
+  /* LEAD: a suspicious signal for escalation. Amber: not a pass, not a FAIL. */
+  .pill.lead { background: var(--lead-bg); color: var(--lead-ink); border-color: var(--lead-line); }
   .tag { display: inline-block; margin-left: 6px; padding: 1px 6px; border-radius: 4px; font-size: 10px;
     text-transform: uppercase; letter-spacing: 0.06em; background: #fff; border: 1px solid var(--untested-line);
     color: var(--untested-ink); font-weight: 600; }
@@ -112,6 +115,7 @@
     <div class="counts">
       <div><span class="n">{{ .Counts.Pass }}</span><span class="l">Pass</span></div>
       <div><span class="n">{{ .Counts.Fail }}</span><span class="l">Fail</span></div>
+      <div><span class="n">{{ .Counts.Lead }}</span><span class="l">Lead</span></div>
       <div><span class="n">{{ .Counts.NotTested }}</span><span class="l">Not tested</span></div>
     </div>
   </section>
@@ -129,6 +133,7 @@
         <td>
           <span class="pill {{ statusClass .Status }}">{{ .Status }}</span>
           {{- if isNotTested .Status }}<span class="tag">not tested</span>{{ end }}
+          {{- if isLead .Status }}<span class="tag">escalate</span>{{ end }}
         </td>
         <td class="evidence">{{ if .Evidence }}{{ .Evidence }}{{ else }}{{ .Notes }}{{ end }}</td>
       </tr>

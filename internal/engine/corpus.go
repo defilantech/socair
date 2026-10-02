@@ -76,6 +76,7 @@ func Counts(entries []CorpusEntry) map[string]int {
 		string(report.StatusPass):      0,
 		string(report.StatusFail):      0,
 		string(report.StatusNotTested): 0,
+		string(report.StatusLead):      0,
 		"error":                        0,
 	}
 	for _, e := range entries {

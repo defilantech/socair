@@ -32,10 +32,10 @@ func corpus(root string) error {
 	}
 
 	c := engine.Counts(entries)
-	fmt.Printf("\nfiles=%d pass=%d fail=%d not_tested=%d error=%d\n",
-		len(entries), c["PASS"], c["FAIL"], c["NOT_TESTED"], c["error"])
+	fmt.Printf("\nfiles=%d pass=%d fail=%d lead=%d not_tested=%d error=%d\n",
+		len(entries), c["PASS"], c["FAIL"], c["LEAD"], c["NOT_TESTED"], c["error"])
 
-	fmt.Println("\nper-check tally (PASS / FAIL / NOT_TESTED):")
+	fmt.Println("\nper-check tally (PASS / FAIL / LEAD / NOT_TESTED):")
 	tally := map[string]map[string]int{}
 	for _, e := range entries {
 		if e.Error != "" {
@@ -55,7 +55,7 @@ func corpus(root string) error {
 	sort.Strings(names)
 	for _, name := range names {
 		t := tally[name]
-		fmt.Printf("  %-30s %d / %d / %d\n", name, t["PASS"], t["FAIL"], t["NOT_TESTED"])
+		fmt.Printf("  %-30s %d / %d / %d / %d\n", name, t["PASS"], t["FAIL"], t["LEAD"], t["NOT_TESTED"])
 	}
 
 	fmt.Println("\nFAILs (these are the false positives to investigate):")

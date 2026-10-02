@@ -4,12 +4,14 @@
 //
 // The artifact side is high-confidence and can FAIL. The repo side is
 // deliberately conservative: model repos legitimately ship config.py and
-// tokenizer files, so those are inventoried, not failed. Only a real binary
-// executable in the repo is a FAIL.
+// tokenizer files, so those are inventoried, not failed. Only a native
+// executable in the repo is a FAIL; an archive such as a zip-format PyTorch
+// checkpoint is named as unscanned, which leaves the row NOT_TESTED.
 package inventory
 
 import (
 	"bytes"
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"io"
@@ -17,6 +19,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strings"
 
 	"github.com/defilantech/socair/internal/checks"
@@ -38,14 +41,74 @@ var (
 	base64Blob = regexp.MustCompile(`[A-Za-z0-9+/]{512,}={0,2}`)
 )
 
-// binaryMagics are executable or archive container headers.
-var binaryMagics = [][]byte{
-	{0x7f, 'E', 'L', 'F'},    // ELF
-	{'M', 'Z'},               // PE
-	{0x50, 0x4b, 0x03, 0x04}, // zip
-	{0x1f, 0x8b},             // gzip
-	{0xfe, 0xed, 0xfa, 0xce}, // Mach-O
-	{0xce, 0xfa, 0xed, 0xfe}, // Mach-O
+// strongMagics are four-byte executable and archive headers, distinctive
+// enough to count anywhere inside a metadata value.
+var strongMagics = []struct {
+	name  string
+	magic []byte
+}{
+	{"ELF", []byte{0x7f, 'E', 'L', 'F'}},
+	{"zip", []byte{0x50, 0x4b, 0x03, 0x04}},
+	{"Mach-O", []byte{0xfe, 0xed, 0xfa, 0xce}},
+	{"Mach-O", []byte{0xce, 0xfa, 0xed, 0xfe}},
+	{"Mach-O", []byte{0xfe, 0xed, 0xfa, 0xcf}},
+	{"Mach-O", []byte{0xcf, 0xfa, 0xed, 0xfe}},
+}
+
+// containerIn names an executable or archive embedded in a metadata value.
+// Two-byte magics ("MZ", gzip's 1f 8b) are ordinary byte pairs in text, as in
+// "AMZ Corp", so they count only at the start of the value and only with the
+// structure that confirms them: a PE signature at e_lfanew, or a gzip header
+// with deflate and no reserved flags.
+func containerIn(v []byte) string {
+	for _, m := range strongMagics {
+		if bytes.Contains(v, m.magic) {
+			return m.name
+		}
+	}
+	if isPE(v) {
+		return "PE"
+	}
+	if len(v) >= 10 && v[0] == 0x1f && v[1] == 0x8b && v[2] == 0x08 && v[3]&0xe0 == 0 {
+		return "gzip"
+	}
+	return ""
+}
+
+// isPE reports whether b starts with a DOS header whose e_lfanew points at a
+// "PE\0\0" signature.
+func isPE(b []byte) bool {
+	if len(b) < 0x40 || b[0] != 'M' || b[1] != 'Z' {
+		return false
+	}
+	off := int64(binary.LittleEndian.Uint32(b[0x3c:0x40]))
+	return off >= 0x40 && off+4 <= int64(len(b)) && bytes.Equal(b[off:off+4], []byte("PE\x00\x00"))
+}
+
+// executableIn names a native executable at the start of a repo file. Only
+// these are a FAIL on the repo side: an archive is not an executable.
+func executableIn(head []byte) string {
+	for _, m := range strongMagics {
+		if m.name != "zip" && bytes.HasPrefix(head, m.magic) {
+			return m.name
+		}
+	}
+	if isPE(head) {
+		return "PE"
+	}
+	return ""
+}
+
+// archiveIn names an archive at the start of a repo file. Its contents are not
+// scanned here, so it makes the repo side NOT_TESTED rather than a pass.
+func archiveIn(head []byte) string {
+	switch {
+	case bytes.HasPrefix(head, []byte{0x50, 0x4b, 0x03, 0x04}):
+		return "zip"
+	case len(head) >= 3 && head[0] == 0x1f && head[1] == 0x8b && head[2] == 0x08:
+		return "gzip"
+	}
+	return ""
 }
 
 // Inspect runs the inventory check over an artifact and an optional repo
@@ -56,7 +119,7 @@ func Inspect(path string, opts Options) checks.Result {
 		LooksFor: "Hidden files, embedded payloads, unexpected executables",
 	}
 
-	var strings []string
+	var values []string
 	var invNote string
 	switch {
 	case safetensors.IsSafetensors(path):
@@ -67,7 +130,7 @@ func Inspect(path string, opts Options) checks.Result {
 			return r
 		}
 		for _, v := range sm.Metadata {
-			strings = append(strings, v)
+			values = append(values, v)
 		}
 		invNote = fmt.Sprintf("artifact: safetensors header, %d tensors, %d metadata keys", sm.TensorCount, len(sm.MetadataKeys))
 	default:
@@ -81,14 +144,14 @@ func Inspect(path string, opts Options) checks.Result {
 			}
 			return r
 		}
-		strings = inv.Strings
+		values = inv.Strings
 		invNote = fmt.Sprintf("artifact: %d metadata keys, %d string bytes", len(inv.Keys), inv.TotalStrings)
 		if inv.Truncated {
 			invNote += " (inventory truncated at the cap)"
 		}
 	}
 
-	for _, s := range strings {
+	for _, s := range values {
 		if m := scriptTag.FindString(s); m != "" {
 			r.Findings = append(r.Findings, checks.Finding{
 				Pattern: "embedded-script",
@@ -103,14 +166,11 @@ func Inspect(path string, opts Options) checks.Result {
 				Detail:  "artifact metadata carries a large base64 blob",
 			})
 		}
-		for _, magic := range binaryMagics {
-			if bytes.Contains([]byte(s), magic) {
-				r.Findings = append(r.Findings, checks.Finding{
-					Pattern: "embedded-binary",
-					Detail:  fmt.Sprintf("artifact metadata contains a container header %x", magic),
-				})
-				break
-			}
+		if kind := containerIn([]byte(s)); kind != "" {
+			r.Findings = append(r.Findings, checks.Finding{
+				Pattern: "embedded-binary",
+				Detail:  "artifact metadata contains a " + kind + " container",
+			})
 		}
 	}
 	if len(r.Findings) > 0 {
@@ -127,7 +187,7 @@ func Inspect(path string, opts Options) checks.Result {
 		return r
 	}
 
-	repoFindings, repoNote, err := scanRepo(opts.RepoMirror)
+	repoFindings, archives, repoNote, err := scanRepo(opts.RepoMirror)
 	if err != nil {
 		r.Status = checks.NotTested
 		r.Notes = artifactNote + ". Could not read repo mirror: " + err.Error()
@@ -139,16 +199,24 @@ func Inspect(path string, opts Options) checks.Result {
 		r.Notes = artifactNote + ". " + repoNote
 		return r
 	}
+	if len(archives) > 0 {
+		r.Status = checks.NotTested
+		r.Notes = artifactNote + ". " + repoNote + ". Archive contents were not scanned: " + strings.Join(archives, ", ")
+		return r
+	}
 
 	r.Status = checks.Pass
 	r.Notes = artifactNote + ". " + repoNote
 	return r
 }
 
-// scanRepo lists a repo mirror and flags real binary executables. Scripts and
-// config files are counted, not failed.
-func scanRepo(root string) ([]checks.Finding, string, error) {
+// scanRepo lists a repo mirror. A native executable is a FAIL. An archive,
+// including every zip-format PyTorch checkpoint, is named as unscanned: it is
+// not an executable, but its contents (a pickle, for a checkpoint) were not
+// inspected. Scripts and config files are counted, not failed.
+func scanRepo(root string) ([]checks.Finding, []string, string, error) {
 	var findings []checks.Finding
+	var archives []string
 	var files, scripts int
 
 	err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
@@ -165,29 +233,33 @@ func scanRepo(root string) ([]checks.Finding, string, error) {
 			scripts++ // inventoried, not a failure: model repos ship these
 			return nil
 		}
-		buf := make([]byte, 4)
+		head := make([]byte, 4096)
 		f, err := os.Open(path)
 		if err != nil {
 			return nil
 		}
-		n, _ := io.ReadFull(f, buf)
+		n, _ := io.ReadFull(f, head)
 		_ = f.Close()
-		for _, magic := range binaryMagics {
-			if n >= len(magic) && bytes.Equal(buf[:len(magic)], magic) {
-				findings = append(findings, checks.Finding{
-					Pattern: "repo-binary",
-					Span:    d.Name(),
-					Detail:  fmt.Sprintf("repo file %q has a binary container header %x", d.Name(), magic),
-				})
-				break
-			}
+		head = head[:n]
+		rel, _ := filepath.Rel(root, path)
+		if kind := executableIn(head); kind != "" {
+			findings = append(findings, checks.Finding{
+				Pattern: "repo-binary",
+				Span:    rel,
+				Detail:  fmt.Sprintf("repo file %q is a %s executable", rel, kind),
+			})
+			return nil
+		}
+		if kind := archiveIn(head); kind != "" {
+			archives = append(archives, fmt.Sprintf("%s (%s)", rel, kind))
 		}
 		return nil
 	})
 	if err != nil {
-		return nil, "", err
+		return nil, nil, "", err
 	}
-	return findings, fmt.Sprintf("repo: %d files, %d scripts inventoried (scripts are expected, not a finding)", files, scripts), nil
+	sort.Strings(archives)
+	return findings, archives, fmt.Sprintf("repo: %d files, %d scripts inventoried (scripts are expected, not a finding)", files, scripts), nil
 }
 
 func excerpt(s string) string {

@@ -50,6 +50,7 @@ func TestSARIFVersionAndShape(t *testing.T) {
 func TestSARIFLevelMapping(t *testing.T) {
 	cases := map[report.Status]string{
 		report.StatusFail:      "error",
+		report.StatusLead:      "warning",
 		report.StatusNotTested: "note",
 		report.StatusPass:      "none",
 	}
