@@ -1,6 +1,7 @@
 package quant
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/defilantech/socair/internal/checks"
@@ -60,5 +61,21 @@ func TestFullEnumMapping(t *testing.T) {
 	}
 	if got := Compare("Q5_K_M", ptr(9999)).Status; got != checks.NotTested {
 		t.Errorf("unknown type = %s, want NOT_TESTED", got)
+	}
+}
+
+// TestCommunityQuantNameIsNotTested: Unsloth's UD-Q4_K_XL and bartowski's
+// Q4_K_L are community names with no llama.cpp file type of their own (the
+// files report Q4_K_M), so comparing them is meaningless and FAIL was a false
+// positive. Falsification: compare any declared name and these FAIL.
+func TestCommunityQuantNameIsNotTested(t *testing.T) {
+	for _, declared := range []string{"Q4_K_XL", "Q4_K_L", "Q8_K_XL", "IQ4_NL_XL"} {
+		r := Compare(declared, ptr(15))
+		if r.Status != checks.NotTested {
+			t.Errorf("declared %s: status = %s, want NOT_TESTED", declared, r.Status)
+		}
+		if !strings.Contains(r.Notes, declared) {
+			t.Errorf("declared %s: the note must name it, got %q", declared, r.Notes)
+		}
 	}
 }
