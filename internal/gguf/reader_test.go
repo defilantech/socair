@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/defilantech/socair/internal/gguf/gguftest"
 )
@@ -213,5 +214,69 @@ func TestNestedArrayRejected(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "nested array") {
 		t.Fatalf("expected a nested-array error, got %v", err)
+	}
+}
+
+// bigArrayGGUF is a header with one uint8 array of n elements and a string key
+// after it, so a reader that mis-skips the array misreads the next key.
+func bigArrayGGUF(n uint64) []byte {
+	var b bytes.Buffer
+	b.WriteString("GGUF")
+	_ = binary.Write(&b, binary.LittleEndian, uint32(3))
+	_ = binary.Write(&b, binary.LittleEndian, uint64(0))
+	_ = binary.Write(&b, binary.LittleEndian, uint64(2))
+	_ = binary.Write(&b, binary.LittleEndian, uint64(len("big")))
+	b.WriteString("big")
+	_ = binary.Write(&b, binary.LittleEndian, uint32(9)) // ARRAY
+	_ = binary.Write(&b, binary.LittleEndian, uint32(0)) // of UINT8
+	_ = binary.Write(&b, binary.LittleEndian, n)
+	b.Write(make([]byte, n))
+	_ = binary.Write(&b, binary.LittleEndian, uint64(len("general.name")))
+	b.WriteString("general.name")
+	_ = binary.Write(&b, binary.LittleEndian, uint32(8)) // STRING
+	_ = binary.Write(&b, binary.LittleEndian, uint64(len("after")))
+	b.WriteString("after")
+	return b.Bytes()
+}
+
+// TestLargeArrayParsesQuickly: the reader issued one unbuffered read syscall
+// per array element, so a 64 MB uint8 array took about a minute and a
+// multi-GB hostile header pinned the API for hours. Fixed-width arrays are now
+// skipped in one bounded copy through a buffered reader. Falsification: go back
+// to per-element unbuffered reads and this blows the budget by an order of
+// magnitude.
+func TestLargeArrayParsesQuickly(t *testing.T) {
+	p := writeFixture(t, "bigarray.gguf", bigArrayGGUF(64<<20))
+
+	start := time.Now()
+	m, err := ReadHeader(p)
+	if err != nil {
+		t.Fatalf("ReadHeader: %v", err)
+	}
+	if elapsed := time.Since(start); elapsed > 5*time.Second {
+		t.Fatalf("a 64 MB array took %s to parse, want well under 5s", elapsed)
+	}
+	if m.Name != "after" {
+		t.Fatalf("the key after the array read as %q; the array was mis-skipped", m.Name)
+	}
+	inv, err := Inventory(p)
+	if err != nil {
+		t.Fatalf("Inventory: %v", err)
+	}
+	if len(inv.Strings) != 1 || inv.Strings[0] != "after" {
+		t.Fatalf("inventory strings = %q, want [after]", inv.Strings)
+	}
+}
+
+// TestArrayCountPastEOF: an array that declares more elements than the file
+// holds must error, not allocate or spin.
+func TestArrayCountPastEOF(t *testing.T) {
+	full := bigArrayGGUF(16)
+	// Rewrite the element count to an absurd value.
+	idx := bytes.Index(full, []byte("big")) + len("big") + 4 + 4
+	binary.LittleEndian.PutUint64(full[idx:], 1<<62)
+	p := writeFixture(t, "pasteof.gguf", full)
+	if _, err := ReadHeader(p); err == nil {
+		t.Fatal("expected an error for an array count past EOF")
 	}
 }

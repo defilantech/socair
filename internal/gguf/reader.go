@@ -6,6 +6,7 @@
 package gguf
 
 import (
+	"bufio"
 	"crypto/sha256"
 	"encoding/binary"
 	"encoding/hex"
@@ -145,7 +146,7 @@ func ReadHeader(path string) (*Manifest, error) {
 		Quant:     Quant{Declared: QuantFromFileName(filepath.Base(path))},
 	}
 
-	if err := readHeader(f, m); err != nil {
+	if err := readHeader(bufio.NewReaderSize(f, readBufSize), m); err != nil {
 		return nil, err
 	}
 	return m, nil
@@ -347,12 +348,41 @@ func skipArray(f io.Reader) error {
 	if err != nil {
 		return err
 	}
+	// Fixed-width elements are skipped in one bounded copy, not one read per
+	// element: a hostile header can declare billions of them. A count past the
+	// end of the file runs out of bytes and errors.
+	if w := fixedWidth(elemType); w > 0 {
+		if count > uint64(math.MaxInt64)/uint64(w) {
+			return fmt.Errorf("array of %d elements of width %d overflows", count, w)
+		}
+		return skipN(f, int64(count)*int64(w))
+	}
 	for i := uint64(0); i < count; i++ {
 		if _, err := scanValue(f, elemType, false); err != nil {
 			return err
 		}
 	}
 	return nil
+}
+
+// readBufSize is the read buffer for header parsing. Metadata is many small
+// fields, so unbuffered reads cost a syscall each.
+const readBufSize = 1 << 20
+
+// fixedWidth is the byte width of a fixed-size metadata type, or 0 for strings,
+// arrays, and unknown types.
+func fixedWidth(t uint32) int {
+	switch t {
+	case typeUint8, typeInt8, typeBool:
+		return 1
+	case typeUint16, typeInt16:
+		return 2
+	case typeUint32, typeInt32, typeFloat32:
+		return 4
+	case typeUint64, typeInt64, typeFloat64:
+		return 8
+	}
+	return 0
 }
 
 func skipN(f io.Reader, n int64) error {
