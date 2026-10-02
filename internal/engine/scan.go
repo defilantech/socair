@@ -4,8 +4,12 @@
 package engine
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
+	"io"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -67,6 +71,18 @@ func ScanMode(path string, mode Mode) (*report.Document, error) {
 			Format:    m.Format,
 			SizeBytes: m.SizeBytes,
 		}
+	} else if isGGUF, err := gguf.IsGGUF(path); err != nil {
+		return nil, err
+	} else if !isGGUF {
+		// Not a container this engine parses: pickle checkpoints and anything
+		// unrecognized. The scan still reports, so the pickle check runs on the
+		// format it exists for and every unparsed surface is NOT_TESTED rather
+		// than an aborted scan.
+		o, err := readOpaque(path, mode)
+		if err != nil {
+			return nil, err
+		}
+		id = o
 	} else {
 		m, err := readGGUF(path, mode)
 		if err != nil {
@@ -139,6 +155,48 @@ func readGGUF(path string, mode Mode) (*gguf.Manifest, error) {
 		return gguf.ReadHeader(path)
 	}
 	return gguf.ReadArtifact(path)
+}
+
+// readOpaque identifies an artifact in no container this engine parses. The
+// format is named from the leading bytes, never from the extension, and the
+// file is hashed in full mode so the attestation still binds to its bytes.
+func readOpaque(path string, mode Mode) (report.Identity, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return report.Identity{}, err
+	}
+	defer f.Close()
+
+	st, err := f.Stat()
+	if err != nil {
+		return report.Identity{}, err
+	}
+	id := report.Identity{
+		FileName:  filepath.Base(path),
+		SizeBytes: st.Size(),
+		Format:    "unknown",
+	}
+
+	var head [4]byte
+	n, _ := io.ReadFull(f, head[:])
+	switch {
+	case n >= 1 && head[0] == 0x80:
+		id.Format = "pickle"
+	case n == 4 && string(head[:]) == "PK\x03\x04":
+		id.Format = "zip"
+	}
+
+	if mode == ModeFull {
+		if _, err := f.Seek(0, io.SeekStart); err != nil {
+			return report.Identity{}, err
+		}
+		h := sha256.New()
+		if _, err := io.Copy(h, f); err != nil {
+			return report.Identity{}, err
+		}
+		id.SHA256 = hex.EncodeToString(h.Sum(nil))
+	}
+	return id, nil
 }
 
 func readSafetensors(path string, mode Mode) (*safetensors.Manifest, error) {

@@ -136,6 +136,27 @@ func TestPromoteRefusesWithheld(t *testing.T) {
 	}
 }
 
+// TestPromoteRefusesForgedState: a report with a FAIL row whose promotion
+// state was hand-edited to authorized used to cross into the clean store,
+// because validation checked the state against its own fields but not against
+// the checks. Falsification: drop validateStateAgainstChecks and this artifact
+// lands in clean/.
+func TestPromoteRefusesForgedState(t *testing.T) {
+	artifact, d := authorizedArtifact(t)
+	d.Checks[0].Status = report.StatusFail
+	d.Findings.Fails = []string{d.Checks[0].Name}
+	// The forgery: the state still claims authorized.
+
+	s, _ := Init(t.TempDir())
+	_, err := Promote(s, artifact, writeReport(t, d))
+	if err == nil {
+		t.Fatal("a forged authorized state over a FAIL must not promote")
+	}
+	if entries, _ := os.ReadDir(s.CleanPath(d.Artifact.SHA256)); len(entries) != 0 {
+		t.Errorf("nothing may cross into the clean store on a forged report, found %d entries", len(entries))
+	}
+}
+
 func TestPromoteRefusesHashMismatch(t *testing.T) {
 	artifact, d := authorizedArtifact(t)
 	// The attestation authorizes a different artifact than the one on disk.

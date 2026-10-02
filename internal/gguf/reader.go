@@ -92,6 +92,22 @@ func (m *Manifest) MultiPart() bool {
 // ErrNotGGUF is returned when the file does not start with the GGUF magic.
 var ErrNotGGUF = errors.New("gguf: not a GGUF file")
 
+// IsGGUF reports whether the file starts with the GGUF magic. It reads four
+// bytes and parses nothing, so a malformed GGUF is still GGUF here and its
+// parse error surfaces from the reader.
+func IsGGUF(path string) (bool, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return false, err
+	}
+	defer f.Close()
+	var b [4]byte
+	if _, err := io.ReadFull(f, b[:]); err != nil {
+		return false, nil
+	}
+	return string(b[:]) == magic, nil
+}
+
 // wanted is the set of metadata keys we capture. The value type determines how
 // each is decoded.
 var wanted = map[string]struct{}{
@@ -320,6 +336,12 @@ func skipArray(f io.Reader) error {
 	elemType, err := readU32(f)
 	if err != nil {
 		return err
+	}
+	// llama.cpp forbids nested arrays. Rejecting them here also bounds the
+	// recursion: without this, nested headers recurse once per level and a
+	// hostile file overflows the stack, a fatal error recover cannot catch.
+	if elemType == typeArray {
+		return errors.New("gguf: nested array in metadata is not valid GGUF")
 	}
 	count, err := readU64(f)
 	if err != nil {

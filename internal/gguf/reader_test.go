@@ -8,6 +8,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/defilantech/socair/internal/gguf/gguftest"
@@ -180,5 +181,37 @@ func TestWholeModelIsNotMultiPart(t *testing.T) {
 	}
 	if m.MultiPart() {
 		t.Error("a model with no split metadata must not report as multi-part")
+	}
+}
+
+// TestNestedArrayRejected: an ARRAY whose element type is ARRAY recursed with
+// no bound, and a few megabytes of nested headers overflowed the goroutine
+// stack, a fatal error that recover cannot catch. llama.cpp forbids nested
+// arrays, so the reader rejects them at the first nested header, before any
+// recursion. Falsification: allow element type ARRAY in skipArray and the
+// reader recurses two million frames deep and fails with EOF, not the named
+// rejection (at ~8M levels it is a fatal stack overflow instead).
+func TestNestedArrayRejected(t *testing.T) {
+	const depth = 2_000_000
+	var b bytes.Buffer
+	b.WriteString("GGUF")
+	_ = binary.Write(&b, binary.LittleEndian, uint32(3))
+	_ = binary.Write(&b, binary.LittleEndian, uint64(0))
+	_ = binary.Write(&b, binary.LittleEndian, uint64(1))
+	_ = binary.Write(&b, binary.LittleEndian, uint64(1))
+	b.WriteString("x")
+	_ = binary.Write(&b, binary.LittleEndian, uint32(9)) // value type ARRAY
+	for i := 0; i < depth; i++ {
+		_ = binary.Write(&b, binary.LittleEndian, uint32(9)) // element type ARRAY
+		_ = binary.Write(&b, binary.LittleEndian, uint64(1)) // one element
+	}
+	p := writeFixture(t, "nested.gguf", b.Bytes())
+
+	_, err := ReadHeader(p)
+	if err == nil {
+		t.Fatal("expected an error on a nested array, got nil")
+	}
+	if !strings.Contains(err.Error(), "nested array") {
+		t.Fatalf("expected a nested-array error, got %v", err)
 	}
 }
