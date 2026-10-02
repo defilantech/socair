@@ -105,7 +105,7 @@ func Compare(declared string, fileType *uint32) checks.Result {
 
 	if observed == declared {
 		r.Status = checks.Pass
-		r.Notes = "declared " + declared + " matches observed file type " + fmt.Sprint(*fileType)
+		r.Notes = "declared " + declared + " matches the metadata file type " + fmt.Sprint(*fileType) + ". Both are labels; the tensor types were not inspected"
 		return r
 	}
 

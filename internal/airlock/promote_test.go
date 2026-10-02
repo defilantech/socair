@@ -9,12 +9,14 @@ import (
 	"testing"
 
 	"github.com/defilantech/socair/internal/engine"
-	"github.com/defilantech/socair/internal/gguf/gguftest"
 	"github.com/defilantech/socair/internal/report"
+	"github.com/defilantech/socair/internal/safetensors/safetensorstest"
 )
 
 // authorizedArtifact returns an on-disk fixture plus the engine's attestation
-// of it, with the three trust inputs supplied so every row PASSes.
+// of it, with the three trust inputs supplied so every row PASSes. It is a
+// safetensors file: a GGUF cannot reach a clean authorization in Tier 1,
+// because its tokenizer row is a label-only NOT_TESTED.
 func authorizedArtifact(t *testing.T) (string, *report.Document) {
 	t.Helper()
 	dir := t.TempDir()
@@ -35,14 +37,14 @@ func authorizedArtifact(t *testing.T) (string, *report.Document) {
 	t.Setenv("SOCAIR_DENYLIST", deny)
 
 	prov := filepath.Join(dir, "provenance.json")
-	if err := os.WriteFile(prov, []byte(`{"publisher":"example","signing_status":"signed"}`), 0o600); err != nil {
+	if err := os.WriteFile(prov, []byte(`{"publisher":"example","signing_status":"signed","repo_url":"https://huggingface.co/example/model","commit_or_tag":"main"}`), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	t.Setenv("SOCAIR_PROVENANCE", prov)
 	t.Setenv("SOCAIR_ACCEPTED_BY", "")
 
-	artifact := filepath.Join(dir, "fixture-Q5_K_M.gguf")
-	if err := os.WriteFile(artifact, gguftest.BuildGGUF(gguftest.Clean()), 0o600); err != nil {
+	artifact := filepath.Join(dir, "fixture.safetensors")
+	if err := os.WriteFile(artifact, safetensorstest.Clean(), 0o600); err != nil {
 		t.Fatal(err)
 	}
 

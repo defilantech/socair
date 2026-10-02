@@ -104,8 +104,8 @@ func TestScanCleanFixture(t *testing.T) {
 	if got := rowStatus(d, "Chat template (hero)"); got != report.StatusPass {
 		t.Errorf("hero = %s, want PASS", got)
 	}
-	if got := rowStatus(d, "Tokenizer config"); got != report.StatusPass {
-		t.Errorf("tokenizer = %s, want PASS", got)
+	if got := rowStatus(d, "Tokenizer config"); got != report.StatusNotTested {
+		t.Errorf("tokenizer = %s, want NOT_TESTED (label only)", got)
 	}
 	// The fixture declares Q5_K_M in its name and file type 17, so quant matches.
 	if got := rowStatus(d, "Quant match"); got != report.StatusPass {

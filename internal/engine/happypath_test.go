@@ -12,6 +12,7 @@ import (
 	"github.com/defilantech/socair/internal/render/pdf"
 	"github.com/defilantech/socair/internal/render/sarif"
 	"github.com/defilantech/socair/internal/report"
+	"github.com/defilantech/socair/internal/safetensors/safetensorstest"
 )
 
 // supplyInputs sets the three operational inputs the trust rows need: a repo
@@ -38,18 +39,18 @@ func supplyInputs(t *testing.T) {
 	t.Setenv("SOCAIR_DENYLIST", deny)
 
 	prov := filepath.Join(dir, "provenance.json")
-	if err := os.WriteFile(prov, []byte(`{"publisher":"example","signing_status":"signed","commit_or_tag":"main"}`), 0o600); err != nil {
+	if err := os.WriteFile(prov, []byte(`{"publisher":"example","signing_status":"signed","repo_url":"https://huggingface.co/example/model","commit_or_tag":"main"}`), 0o600); err != nil {
 		t.Fatalf("provenance: %v", err)
 	}
 	t.Setenv("SOCAIR_PROVENANCE", prov)
 }
 
+// TestHappyPathAllRowsPopulate: with every input supplied, a safetensors
+// artifact PASSes every row and reaches a clean authorization.
 func TestHappyPathAllRowsPopulate(t *testing.T) {
 	supplyInputs(t)
 
-	// A fixture whose declared quant matches the metadata file type, so the
-	// quant row can PASS.
-	p := writeFixture(t, "fixture-Q5_K_M.gguf", gguftest.BuildGGUF(gguftest.Clean()))
+	p := writeFixture(t, "fixture.safetensors", safetensorstest.Clean())
 
 	d, err := Scan(p)
 	if err != nil {
@@ -97,13 +98,46 @@ func TestHappyPathAllRowsPopulate(t *testing.T) {
 	}
 }
 
+// TestGGUFHappyPathIsConditional: a GGUF's tokenizer row is a label-only
+// NOT_TESTED, so with every input supplied the best Tier 1 outcome is an
+// authorization with that one gap named and accepted, never a clean one.
+func TestGGUFHappyPathIsConditional(t *testing.T) {
+	supplyInputs(t)
+	t.Setenv("SOCAIR_ACCEPTED_BY", "ciso@example.com")
+
+	p := writeFixture(t, "fixture-Q5_K_M.gguf", gguftest.BuildGGUF(gguftest.Clean()))
+	d, err := Scan(p)
+	if err != nil {
+		t.Fatalf("Scan: %v", err)
+	}
+	for _, c := range d.Checks {
+		want := report.StatusPass
+		if c.Name == "Tokenizer config" {
+			want = report.StatusNotTested
+		}
+		if c.Status != want {
+			t.Errorf("check %q = %s, want %s (notes: %s)", c.Name, c.Status, want, c.Notes)
+		}
+	}
+	pa := d.PromotionAuthorization
+	if pa.State != report.StateAuthorizedWithConditions {
+		t.Fatalf("state = %s, want authorized_with_conditions", pa.State)
+	}
+	if len(pa.AcceptedSurfaces) != 1 || pa.AcceptedSurfaces[0] != "Tokenizer config" {
+		t.Fatalf("accepted surfaces = %v, want [Tokenizer config]", pa.AcceptedSurfaces)
+	}
+	if problems := report.Validate(d); len(problems) != 0 {
+		t.Fatalf("invalid report: %v", problems)
+	}
+}
+
 // Falsification for the happy path: remove one supplied input and the report
 // must drop to the correct NOT_TESTED, not stay all-PASS.
 func TestHappyPathDropsOneInput(t *testing.T) {
 	supplyInputs(t)
 	t.Setenv("SOCAIR_PROVENANCE", "") // remove the provenance input
 
-	p := writeFixture(t, "fixture-Q5_K_M.gguf", gguftest.BuildGGUF(gguftest.Clean()))
+	p := writeFixture(t, "fixture.safetensors", safetensorstest.Clean())
 	d, err := Scan(p)
 	if err != nil {
 		t.Fatalf("Scan: %v", err)
