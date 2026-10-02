@@ -1,0 +1,29 @@
+# Evasion corpus for the chat-template check.
+#
+# One fixture per line: file, the expected status, and a pattern the result
+# must carry. A "known-miss" fixture records an evasion the check does not
+# catch yet; it is listed on the detection ceiling, and the test fails if the
+# result changes so the list stays true.
+
+pillar-conditional-system.jinja LEAD content-conditional-injection
+pillar-startswith-variant.jinja LEAD content-conditional-injection
+conditional-on-lowered-content.jinja LEAD content-conditional-injection
+concat-split-word.jinja LEAD instruction-override
+reverse-filter.jinja LEAD obfuscated-literal
+slice-reverse.jinja LEAD obfuscated-literal
+join-list.jinja LEAD instruction-override
+format-char-codes.jinja LEAD instruction-override
+split-across-outputs.jinja LEAD instruction-override
+set-indirection.jinja LEAD instruction-override
+zero-width-space.jinja LEAD invisible-character
+bidi-override.jinja LEAD invisible-character
+cyrillic-homoglyph.jinja LEAD mixed-script-word
+fullwidth-letters.jinja LEAD instruction-override
+encoded-blob.jinja LEAD encoded-blob
+attr-hex-dunder.jinja FAIL python-object-escape
+subscript-concat-dunder.jinja FAIL python-object-escape
+map-attribute-dunder.jinja FAIL python-object-escape
+dotted-dunder.jinja FAIL python-object-escape
+known-miss-plain-default-prompt.jinja PASS known-miss
+long-letter-chain.jinja LEAD instruction-override
+unparseable-by-design.jinja LEAD unanalysable-template

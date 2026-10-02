@@ -74,9 +74,20 @@ func TestAllowlistClearsLeadsButNotStructural(t *testing.T) {
 	}
 }
 
-func TestUnbalancedTemplateNotTested(t *testing.T) {
-	if got := Inspect("{{ bos_token }{% for m in messages %}").Status; got != checks.NotTested {
-		t.Fatalf("status = %s, want NOT_TESTED", got)
+// TestUnreadableTemplateIsLead: a template the analyser cannot parse used to
+// be NOT_TESTED, which a blanket acceptance clears. A serving stack may still
+// render it, so unreadability is an evasion and needs a human: LEAD.
+// Falsification: return NOT_TESTED on a parse error and this fails.
+func TestUnreadableTemplateIsLead(t *testing.T) {
+	for _, tmpl := range []string{
+		"{{ bos_token }{% for m in messages %}",
+		"{% include 'other' %}",
+		"valid text then \xff\xfe bytes",
+	} {
+		r := Inspect(tmpl)
+		if r.Status != checks.Lead {
+			t.Errorf("%q: status = %s, want LEAD", tmpl, r.Status)
+		}
 	}
 }
 

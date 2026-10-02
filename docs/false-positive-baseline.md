@@ -127,6 +127,69 @@ positive evidence. Both are now regression tests.
   declared name outside the llama.cpp set is now NOT_TESTED with the name.
   `TestCommunityQuantNameIsNotTested`.
 
+## Syntax-tree analysis of chat templates (2026-10-02)
+
+The hero check used to match phrases with regexes over the raw template. The
+audit's poisoned templates all passed it: a Pillar-style conditional
+system-turn injection, `'Ign' ~ 'ore previous instructions'`, a `|reverse`d
+phrase, and a zero-width space inside "ignore". The check now parses the
+template (`internal/checks/chattemplate/jinja`) and analyses the tree:
+
+- Constant expressions are evaluated (`~`, `+`, `join`, `reverse`, `[::-1]`,
+  `replace`, `format` including `%c`, string escapes such as `\x5f`, and `set`
+  indirection), and text emitted back to back is read as one string.
+- Text is normalized (zero-width and bidi controls stripped, fullwidth and
+  common Cyrillic and Greek lookalikes mapped to Latin) before the phrase leads
+  run, and hidden characters or a word mixing scripts are leads in themselves.
+- A dunder name reached by any route (`.x`, `[k]`, `attr`, `map(attribute=)`,
+  built by concatenation or escapes) is a FAIL.
+- A branch that tests **what message content says** (membership of a
+  constant, equality with a non-empty constant, `startswith`-style probes)
+  and emits a system turn or its own prose is a LEAD.
+- Every named template (`tokenizer.chat_template.<name>`) is checked.
+- A template the analyser cannot read (parse error, over the size or work
+  budget, invalid UTF-8) is a LEAD, not NOT_TESTED, so a blanket acceptance
+  cannot clear an evasion by unreadability.
+
+### False positives
+
+Measured against 49 distinct real templates: the 14 in the local GGUF corpus
+(including Command-R's named `rag` and `tool_use` templates) and 35 fetched
+from the public Hugging Face repos of Qwen 2.5/3, QwQ, Llama 3.1/3.2/3.3/4,
+Gemma 2/3, Mistral 7B/Nemo/Small 3.1, Phi-3.5/4, DeepSeek R1/V3/Coder V2,
+gpt-oss, GLM 4/4.5, Granite 3.3, OLMo 2, SmolLM3, Hermes 3, Kimi K2,
+MiniMax M1, Falcon 3, Nemotron, InternLM 3, Yi 1.5, and LFM2.
+
+| Rule version | PASS | LEAD | FAIL |
+|---|---|---|---|
+| First draft: any branch that reads content | 41 | 8 | 0 |
+| Shipped: only branches that test what content says | 49 | 0 | 0 |
+
+The first draft flagged every template that handles a system message
+(`if messages[0].content is string`, `if system_message`), and gpt-oss's
+`raise_exception` error text. Narrowing the trigger to value tests, and
+skipping `raise_exception` arguments, cleared all eight with no loss on the
+evasion corpus. The end-to-end sweep over the local GGUFs is unchanged from
+the regex check: 27 PASS, 17 NOT_TESTED (calibration vocab files with no
+template), 0 LEAD, 0 FAIL.
+
+Reproduce, with the templates as `*.jinja` files in a directory (they are not
+committed, since they are third-party):
+
+```
+SOCAIR_TEMPLATE_CORPUS=/path/to/templates go test ./internal/checks/chattemplate -run RealTemplates -v
+```
+
+### Evasion corpus
+
+`internal/checks/chattemplate/testdata/evasions` holds 22 self-written
+fixtures with expected results, run by `TestEvasionCorpus`. With the analyser
+removed, 18 of the 21 attack fixtures PASS (the parse step and the old raw
+regex catch the other three). One fixture is a recorded known
+miss: a default system prompt whose instruction reads as ordinary guidance,
+with no lead phrase, URL, obfuscation, or content condition. That class is on
+the published detection ceiling until reviewed-template diffing lands.
+
 ## Follow-ups
 
 1. Verify the GGML file-type mapping against the current llama.cpp enum so the
