@@ -12,6 +12,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"mime"
 	"net"
 	"net/http"
 	"os"
@@ -42,25 +43,98 @@ type Options struct {
 	// StoreRoot is the airlock store. Empty means the airlock endpoints and the
 	// store half of the health check are absent, not failed.
 	StoreRoot string
+	// AllowAnyHost turns off the loopback Host check, for an operator who
+	// binds a public address on purpose (SOCAIR_API_ALLOW_PUBLIC=1) and reaches
+	// the API by a real host name. The origin and content-type rules still
+	// apply.
+	AllowAnyHost bool
 }
+
+// maxHeavy bounds concurrent scans, pulls, and promotions: each reads or
+// writes whole artifacts.
+const maxHeavy = 2
 
 // Handler returns the HTTP handler for the API. A static web directory, when
 // set, is served at / with the SPA fallback, and never shadows /api.
-func (o Options) Handler() http.Handler {
+func (o Options) Handler() http.Handler { return o.handler(make(chan struct{}, maxHeavy)) }
+
+func (o Options) handler(heavy chan struct{}) http.Handler {
+	limit := func(h http.HandlerFunc) http.HandlerFunc {
+		return func(w http.ResponseWriter, r *http.Request) {
+			select {
+			case heavy <- struct{}{}:
+				defer func() { <-heavy }()
+				h(w, r)
+			default:
+				writeError(w, http.StatusServiceUnavailable, "the engine is busy with other scans; retry shortly")
+			}
+		}
+	}
+
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /api/version", o.version)
 	mux.HandleFunc("GET /api/health", o.health)
-	mux.HandleFunc("POST /api/scan", o.scan)
+	mux.HandleFunc("POST /api/scan", limit(o.scan))
 	mux.HandleFunc("POST /api/render", o.render)
 	mux.HandleFunc("GET /api/airlock/log", o.airlockLog)
-	mux.HandleFunc("POST /api/airlock/ingest", o.airlockIngest)
-	mux.HandleFunc("POST /api/airlock/pull", o.airlockPull)
-	mux.HandleFunc("POST /api/airlock/promote", o.airlockPromote)
+	mux.HandleFunc("POST /api/airlock/ingest", limit(o.airlockIngest))
+	mux.HandleFunc("POST /api/airlock/pull", limit(o.airlockPull))
+	mux.HandleFunc("POST /api/airlock/promote", limit(o.airlockPromote))
 
 	if strings.TrimSpace(o.WebDir) != "" {
 		mux.Handle("/", spaHandler(o.WebDir))
 	}
-	return mux
+	return o.guard(mux)
+}
+
+// guard refuses requests a browser could send on another site's behalf. The
+// API has no authentication and binds loopback, so the threats are a page the
+// operator visits:
+//
+//   - DNS rebinding: an attacker's name resolves to 127.0.0.1 and their page
+//     reads responses. The Host header then carries the attacker's name, so
+//     only loopback hosts are served.
+//   - Cross-site requests: a page can POST text/plain to 127.0.0.1 with no
+//     preflight. A POST must be application/json, which a cross-origin page
+//     cannot send without a preflight this API never answers, and a request
+//     whose Origin or Sec-Fetch-Site says another site sent it is refused.
+func (o Options) guard(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !o.AllowAnyHost && !isLoopbackHost(r.Host) {
+			writeError(w, http.StatusForbidden, "host "+r.Host+" is not a loopback address")
+			return
+		}
+		if origin := r.Header.Get("Origin"); origin != "" && origin != "http://"+r.Host && origin != "https://"+r.Host {
+			writeError(w, http.StatusForbidden, "cross-origin request refused")
+			return
+		}
+		if r.Header.Get("Sec-Fetch-Site") == "cross-site" {
+			writeError(w, http.StatusForbidden, "cross-site request refused")
+			return
+		}
+		if r.Method == http.MethodPost {
+			mt, _, err := mime.ParseMediaType(r.Header.Get("Content-Type"))
+			if err != nil || mt != "application/json" {
+				writeError(w, http.StatusUnsupportedMediaType, "POST bodies must be application/json")
+				return
+			}
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
+// isLoopbackHost reports whether a Host header names the loopback interface.
+func isLoopbackHost(hostport string) bool {
+	host := hostport
+	if h, _, err := net.SplitHostPort(hostport); err == nil {
+		host = h
+	}
+	host = strings.TrimSuffix(strings.TrimPrefix(host, "["), "]")
+	if strings.EqualFold(host, "localhost") {
+		return true
+	}
+	ip := net.ParseIP(host)
+	return ip != nil && ip.IsLoopback()
 }
 
 // CheckAddr reports whether the API may bind addr. The API has no
@@ -84,10 +158,18 @@ func Serve(addr string, opts Options) error {
 	if err := CheckAddr(addr); err != nil {
 		return err
 	}
+	if !isLoopback(addr) {
+		opts.AllowAnyHost = true
+	}
+	// No WriteTimeout: a full scan hashes a multi-GB artifact before it
+	// answers. Reads and idle connections are bounded, and heavy work is
+	// capped by maxHeavy.
 	srv := &http.Server{
 		Addr:              addr,
 		Handler:           opts.Handler(),
 		ReadHeaderTimeout: 10 * time.Second,
+		ReadTimeout:       60 * time.Second,
+		IdleTimeout:       120 * time.Second,
 	}
 	return srv.ListenAndServe()
 }
