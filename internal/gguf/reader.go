@@ -6,6 +6,7 @@
 package gguf
 
 import (
+	"bufio"
 	"crypto/sha256"
 	"encoding/binary"
 	"encoding/hex"
@@ -71,6 +72,12 @@ type Manifest struct {
 	// directly; the report carries only its hash.
 	ChatTemplate string `json:"-"`
 
+	// DuplicateKeys lists metadata keys that appear more than once. llama.cpp
+	// rejects such a file and readers disagree on which value wins, so the
+	// first occurrence is kept and the repeat is evidence for the structure
+	// check.
+	DuplicateKeys []string `json:"duplicate_keys,omitempty"`
+
 	Quant Quant  `json:"quant"`
 	Split *Split `json:"split,omitempty"`
 }
@@ -91,6 +98,22 @@ func (m *Manifest) MultiPart() bool {
 
 // ErrNotGGUF is returned when the file does not start with the GGUF magic.
 var ErrNotGGUF = errors.New("gguf: not a GGUF file")
+
+// IsGGUF reports whether the file starts with the GGUF magic. It reads four
+// bytes and parses nothing, so a malformed GGUF is still GGUF here and its
+// parse error surfaces from the reader.
+func IsGGUF(path string) (bool, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return false, err
+	}
+	defer f.Close()
+	var b [4]byte
+	if _, err := io.ReadFull(f, b[:]); err != nil {
+		return false, nil
+	}
+	return string(b[:]) == magic, nil
+}
 
 // wanted is the set of metadata keys we capture. The value type determines how
 // each is decoded.
@@ -129,7 +152,7 @@ func ReadHeader(path string) (*Manifest, error) {
 		Quant:     Quant{Declared: QuantFromFileName(filepath.Base(path))},
 	}
 
-	if err := readHeader(f, m); err != nil {
+	if err := readHeader(bufio.NewReaderSize(f, readBufSize), m); err != nil {
 		return nil, err
 	}
 	return m, nil
@@ -180,6 +203,7 @@ func readHeader(f io.Reader, m *Manifest) error {
 		return fmt.Errorf("gguf: reading kv count: %w", err)
 	}
 
+	seen := make(map[string]bool)
 	for i := uint64(0); i < m.KVCount; i++ {
 		key, err := readString(f)
 		if err != nil {
@@ -195,6 +219,11 @@ func readHeader(f io.Reader, m *Manifest) error {
 		if err != nil {
 			return fmt.Errorf("gguf: reading value for %q: %w", key, err)
 		}
+		if seen[key] {
+			m.DuplicateKeys = append(m.DuplicateKeys, key)
+			continue
+		}
+		seen[key] = true
 		if !isWanted {
 			continue
 		}
@@ -321,9 +350,24 @@ func skipArray(f io.Reader) error {
 	if err != nil {
 		return err
 	}
+	// llama.cpp forbids nested arrays. Rejecting them here also bounds the
+	// recursion: without this, nested headers recurse once per level and a
+	// hostile file overflows the stack, a fatal error recover cannot catch.
+	if elemType == typeArray {
+		return errors.New("gguf: nested array in metadata is not valid GGUF")
+	}
 	count, err := readU64(f)
 	if err != nil {
 		return err
+	}
+	// Fixed-width elements are skipped in one bounded copy, not one read per
+	// element: a hostile header can declare billions of them. A count past the
+	// end of the file runs out of bytes and errors.
+	if w := fixedWidth(elemType); w > 0 {
+		if count > uint64(math.MaxInt64)/uint64(w) {
+			return fmt.Errorf("array of %d elements of width %d overflows", count, w)
+		}
+		return skipN(f, int64(count)*int64(w))
 	}
 	for i := uint64(0); i < count; i++ {
 		if _, err := scanValue(f, elemType, false); err != nil {
@@ -331,6 +375,26 @@ func skipArray(f io.Reader) error {
 		}
 	}
 	return nil
+}
+
+// readBufSize is the read buffer for header parsing. Metadata is many small
+// fields, so unbuffered reads cost a syscall each.
+const readBufSize = 1 << 20
+
+// fixedWidth is the byte width of a fixed-size metadata type, or 0 for strings,
+// arrays, and unknown types.
+func fixedWidth(t uint32) int {
+	switch t {
+	case typeUint8, typeInt8, typeBool:
+		return 1
+	case typeUint16, typeInt16:
+		return 2
+	case typeUint32, typeInt32, typeFloat32:
+		return 4
+	case typeUint64, typeInt64, typeFloat64:
+		return 8
+	}
+	return 0
 }
 
 func skipN(f io.Reader, n int64) error {

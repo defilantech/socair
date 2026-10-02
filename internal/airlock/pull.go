@@ -3,23 +3,32 @@ package airlock
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
+	"net"
 	"net/http"
 	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/defilantech/socair/internal/checks/provenance"
 )
 
 // EgressPolicy controls what the airlock is allowed to reach and how long a
-// pull may take.
+// pull may stall.
 type EgressPolicy struct {
-	// Allow is the set of permitted source hosts.
+	// Allow is the set of permitted hosts, checked on the first request and on
+	// every redirect. An entry with a leading dot, such as ".hf.co", matches
+	// any subdomain of that domain but not the domain itself.
 	Allow []string
-	// Timeout is the hard per-pull budget. A blocked egress fails within it
+	// Timeout is the stall budget: connecting, receiving response headers,
+	// and every gap between body reads must each finish within it. It does
+	// not bound the whole transfer, so a multi-GB model that keeps arriving
+	// completes, and a blocked or stalled egress fails within the budget
 	// rather than hanging.
 	Timeout time.Duration
 	// Endpoint is the base URL, overridable so tests can point at a local
@@ -27,17 +36,32 @@ type EgressPolicy struct {
 	Endpoint string
 }
 
-// DefaultEgressPolicy is the shipped policy: the Hugging Face hub hosts and a
-// thirty second budget. SOCAIR_HF_ENDPOINT and SOCAIR_PULL_TIMEOUT override the
-// endpoint and the budget.
+// DefaultEgressPolicy is the shipped policy: the Hugging Face hub and its CDN
+// subdomains (LFS and Xet downloads redirect to <region>.cdn.hf.co and
+// *.xethub.hf.co), with a thirty second stall budget.
+//
+//   - SOCAIR_HF_ENDPOINT points at a mirror; its host is allowed, since
+//     configuring it is the operator's explicit choice.
+//   - SOCAIR_EGRESS_ALLOW adds comma-separated hosts, such as a mirror's own
+//     redirect targets.
+//   - SOCAIR_PULL_TIMEOUT overrides the stall budget.
+//   - SOCAIR_EGRESS=deny refuses all egress.
 func DefaultEgressPolicy() EgressPolicy {
 	pol := EgressPolicy{
-		Allow:    []string{"huggingface.co", "cdn-lfs.huggingface.co", "cdn-lfs.hf.co"},
+		Allow:    []string{"huggingface.co", ".huggingface.co", "hf.co", ".hf.co"},
 		Timeout:  30 * time.Second,
 		Endpoint: "https://huggingface.co",
 	}
 	if e := strings.TrimSpace(os.Getenv("SOCAIR_HF_ENDPOINT")); e != "" {
 		pol.Endpoint = e
+		if h := hostOf(e); h != "" {
+			pol.Allow = append(pol.Allow, h)
+		}
+	}
+	for _, h := range strings.Split(os.Getenv("SOCAIR_EGRESS_ALLOW"), ",") {
+		if h = strings.TrimSpace(h); h != "" {
+			pol.Allow = append(pol.Allow, h)
+		}
 	}
 	if d, err := time.ParseDuration(strings.TrimSpace(os.Getenv("SOCAIR_PULL_TIMEOUT"))); err == nil && d > 0 {
 		pol.Timeout = d
@@ -64,38 +88,51 @@ func Pull(ctx context.Context, s *Store, dst, repo, revision, wantSHA string, po
 	if strings.TrimSpace(repo) == "" {
 		return fail("repo is required")
 	}
-	if len(normalizeSHA(wantSHA)) != 64 {
-		return fail("an expected 64-hex artifact hash is required")
+	if err := ValidSHA256(wantSHA); err != nil {
+		return fail(err.Error())
+	}
+	if err := validRepo(repo); err != nil {
+		return fail(err.Error())
 	}
 	if strings.TrimSpace(revision) == "" {
 		revision = "main"
+	}
+	if err := validRevision(revision); err != nil {
+		return fail(err.Error())
+	}
+	if err := validFileName(filepath.Base(dst)); err != nil {
+		return fail(err.Error())
 	}
 	pol = pol.withDefaults()
 
 	host, allowed := pol.allows(pol.Endpoint)
 	if !allowed {
-		return fail(fmt.Sprintf("egress to %q is denied by policy (set SOCAIR_EGRESS=allow and add the host to the allowlist)", host))
+		return fail(fmt.Sprintf("egress to %q is denied by policy (unset SOCAIR_EGRESS=deny and add the host to SOCAIR_EGRESS_ALLOW)", host))
 	}
 
-	src := strings.TrimRight(pol.Endpoint, "/") + "/" + repo + "/resolve/" + revision + "/" + filepath.Base(dst)
+	src := strings.TrimRight(pol.Endpoint, "/") + "/" + repo + "/resolve/" + revision + "/" + url.PathEscape(filepath.Base(dst))
 
-	cctx, cancel := context.WithTimeout(ctx, pol.Timeout)
+	cctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	req, err := http.NewRequestWithContext(cctx, http.MethodGet, src, nil)
 	if err != nil {
 		return fail(err.Error())
 	}
-	client := &http.Client{Timeout: pol.Timeout}
-	resp, err := client.Do(req)
+	resp, err := pol.client().Do(req)
 	if err != nil {
-		return fail(fmt.Sprintf("pull failed within the %s budget: %v", pol.Timeout, err))
+		return fail(fmt.Sprintf("pull failed within the %s stall budget: %v", pol.Timeout, err))
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
 		return fail(fmt.Sprintf("source returned HTTP %d for %s", resp.StatusCode, src))
 	}
 
-	if err := writeTemp(filepath.Dir(dst), dst, resp.Body); err != nil {
+	body := newStallReader(resp.Body, pol.Timeout, cancel)
+	defer body.stop()
+	if err := writeTemp(filepath.Dir(dst), dst, body); err != nil {
+		if body.stalled() {
+			return fail(fmt.Sprintf("download stalled for longer than the %s stall budget", pol.Timeout))
+		}
 		return fail("write artifact: " + err.Error())
 	}
 	got, err := hashFile(dst)
@@ -146,13 +183,85 @@ func (p EgressPolicy) allows(endpoint string) (string, bool) {
 	if strings.EqualFold(strings.TrimSpace(os.Getenv("SOCAIR_EGRESS")), "deny") {
 		return host, false
 	}
+	if host == "" {
+		return host, false
+	}
+	h := strings.ToLower(host)
 	for _, a := range p.Allow {
-		if strings.EqualFold(strings.TrimSpace(a), host) {
+		a = strings.ToLower(strings.TrimSpace(a))
+		switch {
+		case a == "":
+		case strings.HasPrefix(a, "."):
+			if strings.HasSuffix(h, a) && len(h) > len(a) {
+				return host, true
+			}
+		case a == h:
 			return host, true
 		}
 	}
 	return host, false
 }
+
+// client is an HTTP client that enforces the policy: bounded connect,
+// handshake, and response-header time, and the allowlist on every redirect.
+// It sets no overall timeout, which would cut off a large download that is
+// still making progress; stalls in the body are bounded by stallReader.
+func (p EgressPolicy) client() *http.Client {
+	dialer := &net.Dialer{Timeout: p.Timeout}
+	return &http.Client{
+		Transport: &http.Transport{
+			Proxy:                 http.ProxyFromEnvironment,
+			DialContext:           dialer.DialContext,
+			TLSHandshakeTimeout:   p.Timeout,
+			ResponseHeaderTimeout: p.Timeout,
+		},
+		CheckRedirect: p.checkRedirect,
+	}
+}
+
+// checkRedirect applies the allowlist to every hop. Checking only the first URL
+// let a listed host bounce the pull anywhere.
+func (p EgressPolicy) checkRedirect(req *http.Request, via []*http.Request) error {
+	if len(via) >= 10 {
+		return errors.New("stopped after 10 redirects")
+	}
+	if len(via) > 0 && via[len(via)-1].URL.Scheme == "https" && req.URL.Scheme != "https" {
+		return fmt.Errorf("redirect from https to %s://%s is refused", req.URL.Scheme, req.URL.Host)
+	}
+	if host, ok := p.allows(req.URL.String()); !ok {
+		return fmt.Errorf("redirect to %q is denied by policy (add it to SOCAIR_EGRESS_ALLOW)", host)
+	}
+	return nil
+}
+
+// stallReader cancels the transfer when no bytes arrive for the budget. The
+// timer resets on every read that makes progress.
+type stallReader struct {
+	r      io.Reader
+	budget time.Duration
+	timer  *time.Timer
+	fired  atomic.Bool
+}
+
+func newStallReader(r io.Reader, budget time.Duration, cancel context.CancelFunc) *stallReader {
+	s := &stallReader{r: r, budget: budget}
+	s.timer = time.AfterFunc(budget, func() {
+		s.fired.Store(true)
+		cancel()
+	})
+	return s
+}
+
+func (s *stallReader) Read(b []byte) (int, error) {
+	n, err := s.r.Read(b)
+	if n > 0 {
+		s.timer.Reset(s.budget)
+	}
+	return n, err
+}
+
+func (s *stallReader) stop()         { s.timer.Stop() }
+func (s *stallReader) stalled() bool { return s.fired.Load() }
 
 func hostOf(endpoint string) string {
 	u, err := url.Parse(endpoint)

@@ -6,6 +6,7 @@
 package safetensors
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"encoding/binary"
 	"encoding/hex"
@@ -45,6 +46,9 @@ type Manifest struct {
 	HeaderSHA256 string   `json:"header_sha256"`
 	DataBytes    int64    `json:"data_bytes"`
 	Malformed    []string `json:"malformed,omitempty"`
+	// Duplicates lists header keys that appear more than once. A JSON object
+	// with a repeated key means different readers see different tensors.
+	Duplicates []string `json:"duplicates,omitempty"`
 
 	// Metadata holds the decoded __metadata__ values for the inventory check.
 	// Not serialized: the report carries keys, not values.
@@ -149,6 +153,9 @@ func ReadHeader(path string) (*Manifest, error) {
 	if err := json.Unmarshal(raw, &entries); err != nil {
 		return nil, fmt.Errorf("safetensors: header is not valid JSON: %w", err)
 	}
+	// Decoding into a map keeps only the last of a repeated key, so the
+	// repeats are found on the raw token stream.
+	m.Duplicates = duplicateTopLevelKeys(raw)
 
 	for name, rawEntry := range entries {
 		if name == "__metadata__" {
@@ -187,6 +194,52 @@ func ReadHeader(path string) (*Manifest, error) {
 			m.Malformed = append(m.Malformed, fmt.Sprintf("%s: data_offsets end %d exceeds the data section of %d bytes", name, end, m.DataBytes))
 		}
 	}
+	// The entries were walked in map order, which Go randomizes. Sort so the
+	// manifest, and every report built from it, is byte-stable.
+	sort.Strings(m.Malformed)
 
 	return m, nil
+}
+
+// duplicateTopLevelKeys returns the keys repeated in a JSON object, sorted. It
+// walks tokens and skips each value whole, so nested objects are not mistaken
+// for top-level keys.
+func duplicateTopLevelKeys(raw []byte) []string {
+	dec := json.NewDecoder(bytes.NewReader(raw))
+	if t, err := dec.Token(); err != nil || t != json.Delim('{') {
+		return nil
+	}
+	seen := make(map[string]bool)
+	dup := make(map[string]bool)
+	for dec.More() {
+		t, err := dec.Token()
+		if err != nil {
+			return sortedKeys(dup)
+		}
+		k, ok := t.(string)
+		if !ok {
+			return sortedKeys(dup)
+		}
+		if seen[k] {
+			dup[k] = true
+		}
+		seen[k] = true
+		var skip json.RawMessage
+		if err := dec.Decode(&skip); err != nil {
+			return sortedKeys(dup)
+		}
+	}
+	return sortedKeys(dup)
+}
+
+func sortedKeys(m map[string]bool) []string {
+	if len(m) == 0 {
+		return nil
+	}
+	out := make([]string, 0, len(m))
+	for k := range m {
+		out = append(out, k)
+	}
+	sort.Strings(out)
+	return out
 }

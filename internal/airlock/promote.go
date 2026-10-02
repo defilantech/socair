@@ -60,14 +60,7 @@ func Promote(s *Store, artifactPath, reportPath string) (Event, error) {
 			d.PromotionAuthorization.State))
 	}
 
-	onDisk, err := hashFile(artifactPath)
-	if err != nil {
-		return Event{}, err
-	}
 	want := normalizeSHA(d.Artifact.SHA256)
-	if onDisk != want {
-		return refuse(fmt.Sprintf("artifact on disk hashes to %s but the attestation authorizes %s", onDisk, want))
-	}
 
 	clean := s.CleanPath(want)
 	attestPath := filepath.Join(clean, "attestation.json")
@@ -86,7 +79,14 @@ func Promote(s *Store, artifactPath, reportPath string) (Event, error) {
 	if already, _ := sameBytes(attestPath, reportBytes); already {
 		detail += "; already promoted"
 	} else {
-		if _, err := s.Place(artifactPath, clean); err != nil {
+		// One read: the bytes are hashed as they are copied, and the copy is
+		// renamed into place only if they match. Hashing first and copying by
+		// path let a file swapped in between cross unverified.
+		if _, err := s.placeVerified(artifactPath, clean, want); err != nil {
+			var mm *hashMismatchError
+			if errors.As(err, &mm) {
+				return refuse(fmt.Sprintf("artifact on disk hashes to %s but the attestation authorizes %s", mm.got, want))
+			}
 			return Event{}, fmt.Errorf("place artifact: %w", err)
 		}
 		if err := s.WriteFile(attestPath, reportBytes); err != nil {

@@ -63,10 +63,20 @@ An artifact crosses only when its attestation validates and authorizes it:
 
 ## Controlled egress
 
-- A pull host must be on the allowlist. The default is the Hugging Face hub
-  hosts; `SOCAIR_EGRESS=deny` refuses everything regardless of the allowlist.
-- Every pull has a hard timeout, so a blocked or stalled egress returns an
-  actionable error within the budget instead of hanging.
+- Every host a pull touches must be on the allowlist: the first request and
+  every redirect hop. An https-to-http redirect is refused. The default is the
+  Hugging Face hub and its CDN subdomains (`huggingface.co`, `hf.co`, and any
+  subdomain of either, which covers the `<region>.cdn.hf.co` and Xet hosts LFS
+  downloads redirect to). An entry with a leading dot (`.hf.co`) matches
+  subdomains only. `SOCAIR_EGRESS=deny` refuses everything regardless of the
+  allowlist.
+- Every pull has a stall budget: connecting, receiving headers, and each gap
+  between body reads must finish within it. It does not cap the whole
+  transfer, so a multi-GB model that keeps arriving completes, while a blocked
+  or stalled egress returns an actionable error within the budget instead of
+  hanging.
+- The hash, repo id, revision, and file name are checked for shape before any
+  path is built, and resolved paths must stay under the store or cache root.
 - A denied pull names the host and says how to allow it.
 - The provenance manifest records origin facts (repo, revision). It never
   asserts a signing status; an unsigned upstream stays unsigned.
@@ -75,8 +85,11 @@ Environment:
 
 - `SOCAIR_STORE`: default store root.
 - `SOCAIR_EGRESS`: `deny` for a hard stop, anything else follows the allowlist.
-- `SOCAIR_HF_ENDPOINT`: base URL, for a mirror or a test server.
-- `SOCAIR_PULL_TIMEOUT`: pull budget, a Go duration such as `30s`.
+- `SOCAIR_HF_ENDPOINT`: base URL, for a mirror or a test server. Its host is
+  added to the allowlist.
+- `SOCAIR_EGRESS_ALLOW`: comma-separated extra hosts, such as a mirror's
+  redirect targets. A leading dot matches subdomains.
+- `SOCAIR_PULL_TIMEOUT`: stall budget, a Go duration such as `30s`.
 - `SOCAIR_HF_CACHE` or `HF_HOME`: the offline cache root for `ingest --cache`.
 
 ## Activity log

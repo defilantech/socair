@@ -6,6 +6,8 @@ package airlock
 
 import (
 	"bytes"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
@@ -94,6 +96,57 @@ func (s *Store) Place(src, dstDir string) (string, error) {
 
 	dst := filepath.Join(dstDir, filepath.Base(src))
 	if err := writeTemp(dstDir, dst, in); err != nil {
+		return "", err
+	}
+	return dst, nil
+}
+
+// promoteOpened is a test hook, called once the promotion has opened the
+// artifact and before it reads a byte.
+var promoteOpened func()
+
+type hashMismatchError struct{ got, want string }
+
+func (e *hashMismatchError) Error() string {
+	return fmt.Sprintf("artifact hashes to %s, want %s", e.got, e.want)
+}
+
+// placeVerified copies src into dstDir, hashing the bytes as they are copied,
+// and renames the copy into place only if they hash to wantSHA. The stored
+// bytes are the verified bytes, whatever happens to src during the copy.
+func (s *Store) placeVerified(src, dstDir, wantSHA string) (string, error) {
+	if err := os.MkdirAll(dstDir, 0o755); err != nil {
+		return "", fmt.Errorf("create destination: %w", err)
+	}
+	in, err := os.Open(src)
+	if err != nil {
+		return "", fmt.Errorf("open artifact %q: %w", src, err)
+	}
+	defer in.Close()
+	if promoteOpened != nil {
+		promoteOpened()
+	}
+
+	tmp, err := os.CreateTemp(dstDir, ".socair-*")
+	if err != nil {
+		return "", err
+	}
+	tmpName := tmp.Name()
+	defer os.Remove(tmpName) // a no-op once the rename lands
+
+	h := sha256.New()
+	if _, err := io.Copy(io.MultiWriter(tmp, h), in); err != nil {
+		tmp.Close()
+		return "", err
+	}
+	if err := tmp.Close(); err != nil {
+		return "", err
+	}
+	if got := hex.EncodeToString(h.Sum(nil)); got != normalizeSHA(wantSHA) {
+		return "", &hashMismatchError{got: got, want: normalizeSHA(wantSHA)}
+	}
+	dst := filepath.Join(dstDir, filepath.Base(src))
+	if err := os.Rename(tmpName, dst); err != nil {
 		return "", err
 	}
 	return dst, nil

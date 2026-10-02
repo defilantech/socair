@@ -163,3 +163,56 @@ func TestScanInstructionLeadWithholds(t *testing.T) {
 		t.Error("promotion must be withheld on an untested hero check")
 	}
 }
+
+// A protocol 2 pickle of os.system as CPython writes it: PROTO 2, GLOBAL
+// "posix system", BINPUT, STOP.
+var posixSystemPickle = []byte("\x80\x02cposix\nsystem\nq\x00.")
+
+// TestPickleArtifactReachesPickleCheck: a non-GGUF, non-safetensors artifact
+// used to abort the scan with "not a GGUF file", so the pickle check never ran
+// on the format it exists for. Falsification: route every non-safetensors path
+// through the GGUF reader again and Scan returns an error here.
+func TestPickleArtifactReachesPickleCheck(t *testing.T) {
+	p := writeFixture(t, "model.pkl", posixSystemPickle)
+
+	d, err := Scan(p)
+	if err != nil {
+		t.Fatalf("Scan of a pickle must produce a report, got error: %v", err)
+	}
+	if d.Artifact.Format != "pickle" {
+		t.Fatalf("format = %q, want pickle", d.Artifact.Format)
+	}
+	if d.Artifact.SHA256 == "" {
+		t.Fatal("a full scan of a pickle must hash the artifact")
+	}
+	if got := rowStatus(d, "Pickle opcode scan"); got != report.StatusFail {
+		t.Fatalf("pickle row = %q, want FAIL on a posix.system global", got)
+	}
+	if d.PromotionAuthorization.Authorized {
+		t.Fatal("a pickle with a code-execution global must not be authorized")
+	}
+	if problems := report.Validate(d); len(problems) != 0 {
+		t.Fatalf("report does not validate: %v", problems)
+	}
+}
+
+// TestUnknownArtifactIsNotTested: bytes in no recognized container still get a
+// report, with every format-specific row NOT_TESTED, never an error and never
+// a pass.
+func TestUnknownArtifactIsNotTested(t *testing.T) {
+	p := writeFixture(t, "mystery.bin", []byte("not a model container at all"))
+
+	d, err := Scan(p)
+	if err != nil {
+		t.Fatalf("Scan of an unrecognized artifact must produce a report, got error: %v", err)
+	}
+	if d.Artifact.Format != "unknown" {
+		t.Fatalf("format = %q, want unknown", d.Artifact.Format)
+	}
+	if got := rowStatus(d, "Pickle opcode scan"); got != report.StatusNotTested {
+		t.Fatalf("pickle row = %q, want NOT_TESTED", got)
+	}
+	if d.PromotionAuthorization.Authorized {
+		t.Fatal("an unrecognized artifact must not be authorized")
+	}
+}
