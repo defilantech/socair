@@ -79,6 +79,9 @@ func BuildGGUF(kvs []KV) []byte {
 	return b.Bytes()
 }
 
+// Key returns the pair's metadata key.
+func (p KV) Key() string { return p.key }
+
 // WithMeta returns Clean() with one metadata pair added or replaced.
 func WithMeta(key string, kv KV) []KV {
 	out := Clean()

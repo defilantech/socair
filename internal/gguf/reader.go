@@ -72,6 +72,12 @@ type Manifest struct {
 	// directly; the report carries only its hash.
 	ChatTemplate string `json:"-"`
 
+	// DuplicateKeys lists metadata keys that appear more than once. llama.cpp
+	// rejects such a file and readers disagree on which value wins, so the
+	// first occurrence is kept and the repeat is evidence for the structure
+	// check.
+	DuplicateKeys []string `json:"duplicate_keys,omitempty"`
+
 	Quant Quant  `json:"quant"`
 	Split *Split `json:"split,omitempty"`
 }
@@ -197,6 +203,7 @@ func readHeader(f io.Reader, m *Manifest) error {
 		return fmt.Errorf("gguf: reading kv count: %w", err)
 	}
 
+	seen := make(map[string]bool)
 	for i := uint64(0); i < m.KVCount; i++ {
 		key, err := readString(f)
 		if err != nil {
@@ -212,6 +219,11 @@ func readHeader(f io.Reader, m *Manifest) error {
 		if err != nil {
 			return fmt.Errorf("gguf: reading value for %q: %w", key, err)
 		}
+		if seen[key] {
+			m.DuplicateKeys = append(m.DuplicateKeys, key)
+			continue
+		}
+		seen[key] = true
 		if !isWanted {
 			continue
 		}

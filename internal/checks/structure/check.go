@@ -38,6 +38,10 @@ func Validate(path string) checks.Result {
 		return r
 	}
 
+	if len(m.DuplicateKeys) > 0 {
+		return duplicateFail(r, m.DuplicateKeys, "GGUF metadata", "llama.cpp rejects the file and other readers disagree on which value wins")
+	}
+
 	r.Status = checks.Pass
 	r.Notes = fmt.Sprintf("GGUF v%d parsed: %d tensors, %d metadata pairs", m.Version, m.TensorCount, m.KVCount)
 	if m.MultiPart() {
@@ -54,6 +58,9 @@ func validateSafetensors(r checks.Result, path string) checks.Result {
 		r.Notes = "could not parse safetensors header: " + err.Error()
 		return r
 	}
+	if len(m.Duplicates) > 0 {
+		return duplicateFail(r, m.Duplicates, "safetensors header", "readers that keep the first and readers that keep the last load different tensors")
+	}
 	if len(m.Malformed) > 0 {
 		r.Status = checks.NotTested
 		r.Notes = "safetensors header parsed but is not sound: " +
@@ -63,5 +70,23 @@ func validateSafetensors(r checks.Result, path string) checks.Result {
 	r.Status = checks.Pass
 	r.Notes = fmt.Sprintf("safetensors parsed: %d tensors, %d metadata keys, %d data bytes",
 		m.TensorCount, len(m.MetadataKeys), m.DataBytes)
+	return r
+}
+
+// duplicateFail reports repeated keys in a container header. A repeat is a
+// parser differential: which value a loader sees depends on the loader, so the
+// scanned artifact and the served artifact can differ. That is positive
+// evidence of a malformed container, so it is a FAIL, not a gap.
+func duplicateFail(r checks.Result, keys []string, where, why string) checks.Result {
+	for _, k := range keys {
+		r.Findings = append(r.Findings, checks.Finding{
+			Pattern: "duplicate-key",
+			Span:    k,
+			Detail:  "key repeated in the " + where,
+		})
+	}
+	r.Status = checks.Fail
+	r.Notes = fmt.Sprintf("%d key(s) repeated in the %s (%s): %s",
+		len(keys), where, why, strings.Join(keys, ", "))
 	return r
 }

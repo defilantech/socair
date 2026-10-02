@@ -280,3 +280,31 @@ func TestArrayCountPastEOF(t *testing.T) {
 		t.Fatal("expected an error for an array count past EOF")
 	}
 }
+
+// TestDuplicateKeysKeepFirstAndAreRecorded: llama.cpp rejects a GGUF with a
+// repeated key, and gguf-py keeps the first. The reader used to keep the last,
+// so a malicious first chat template behind a clean second one was scanned as
+// clean while Python loaders served the malicious one. The reader now keeps
+// the first value and records the duplicate. Falsification: overwrite on
+// repeat and ChatTemplate reads the clean second value.
+func TestDuplicateKeysKeepFirstAndAreRecorded(t *testing.T) {
+	kvs := append(gguftest.Clean(), gguftest.Str("tokenizer.chat_template", "clean second"))
+	for i := range kvs {
+		if kvs[i].Key() == "tokenizer.chat_template" {
+			kvs[i] = gguftest.Str("tokenizer.chat_template", "{{ ''.__class__.__mro__ }} malicious first")
+			break
+		}
+	}
+	p := writeFixture(t, "dup.gguf", gguftest.BuildGGUF(kvs))
+
+	m, err := ReadHeader(p)
+	if err != nil {
+		t.Fatalf("ReadHeader: %v", err)
+	}
+	if !strings.Contains(m.ChatTemplate, "malicious first") {
+		t.Fatalf("chat template = %q, want the first occurrence", m.ChatTemplate)
+	}
+	if len(m.DuplicateKeys) != 1 || m.DuplicateKeys[0] != "tokenizer.chat_template" {
+		t.Fatalf("duplicate keys = %q, want [tokenizer.chat_template]", m.DuplicateKeys)
+	}
+}
