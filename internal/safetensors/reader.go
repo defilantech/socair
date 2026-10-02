@@ -194,6 +194,9 @@ func ReadHeader(path string) (*Manifest, error) {
 			m.Malformed = append(m.Malformed, fmt.Sprintf("%s: data_offsets end %d exceeds the data section of %d bytes", name, end, m.DataBytes))
 		}
 	}
+	// The entries were walked in map order, which Go randomizes. Sort so the
+	// manifest, and every report built from it, is byte-stable.
+	sort.Strings(m.Malformed)
 
 	return m, nil
 }
