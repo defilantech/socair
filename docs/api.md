@@ -66,7 +66,10 @@ A scan that fails is **never a 200**: `422` with `{"error":"..."}` and no report
 
 ### `POST /api/render`
 
-Request `{"report": { ...document... }, "format": "html" | "pdf" | "sarif"}`.
+Request `{"report": { ...document... }, "format": "html" | "pdf" | "sarif" | "cyclonedx"}`.
+`cyclonedx` returns a CycloneDX 1.6 ML-BOM derived from the document
+(`application/vnd.cyclonedx+json; version=1.6`); a header-only report, which
+names no exact bytes, is a 422.
 The default format is `html`.
 
 Returns the bytes with the matching `Content-Type`. An unfilable document is
