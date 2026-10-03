@@ -70,7 +70,7 @@ Each row returns PASS, FAIL, LEAD, or NOT_TESTED. FAIL is positive evidence. LEA
 | Chat template (hero) | Instructions in GGUF metadata that act before user input | `[result]` | `[evidence]` | `[notes]` |
 | Tokenizer config | Tokenizer metadata anomalies | `[result]` | `[evidence]` | `[notes]` |
 | Safetensors header and opcodes | Serialized code gadgets in headers or pickle opcodes | `[result]` | `[evidence]` | `[notes]` |
-| Hash, provenance, lineage | Traceable origin and declared quantization lineage | `[result]` | `[evidence]` | `[notes]` |
+| Hash, provenance, lineage | Traceable origin: a manifest bound to this hash, from an immutable upstream commit | `[result]` | `[evidence]` | `[notes]` |
 | Known-bad hash match | Match against the known-bad artifact denylist | `[result]` | `[evidence]` | `[notes]` |
 | Quant match | Declared quantization against observed weight layout | `[result]` | `[evidence]` | `[notes]` |
 | Forward-pass trigger probes (Tier 2) | Behavior under the production serving stack | `[result / not run]` | `[evidence]` | `[notes]` |

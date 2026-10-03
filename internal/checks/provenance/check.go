@@ -1,32 +1,45 @@
 // Package provenance records where an artifact came from and whether the
 // publisher's signature is present, offline.
 //
-// There is no network call. Provenance comes from a supplied provenance
-// manifest (written by whoever ran the airlock) and from signature sidecars
-// next to the artifact. The row PASSes only when the manifest records an
-// origin, a repo and a revision. A sidecar is surfaced but not verified, and a
-// signing status in the manifest is reported as that manifest's claim. With no
-// recorded origin the row is NOT_TESTED, never a silent pass: we did not
-// verify, so we say so.
+// There is no network call. Provenance comes from a provenance manifest
+// (written by the airlock's pull, or supplied by whoever fetched the artifact)
+// and from signature sidecars next to the artifact.
+//
+// A manifest counts only when it is bound to this artifact: it must name the
+// artifact's sha256, so a manifest for another file, or one that names no
+// file, says nothing about this one. And the row PASSes only when the origin
+// is immutable: a repo and the commit the bytes came from, not a branch such
+// as "main" that can move. A sidecar is surfaced but not verified, and a
+// signing status in the manifest is reported as that manifest's claim. Short
+// of all that the row is NOT_TESTED, never a silent pass.
 package provenance
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 
 	"github.com/defilantech/socair/internal/checks"
 )
 
-// Manifest is a supplied provenance record for one artifact.
+// Manifest is a provenance record for one artifact.
 type Manifest struct {
-	Publisher     string `json:"publisher"`
-	SigningStatus string `json:"signing_status"` // "signed", "unsigned", or empty
-	RepoURL       string `json:"repo_url"`
-	CommitOrTag   string `json:"commit_or_tag"`
-	CommitSHA     string `json:"commit_sha"`
-	AIBOM         string `json:"aibom"`
+	// ArtifactSHA256 binds the record to one artifact. Without it, or with
+	// another artifact's hash, the record does not count.
+	ArtifactSHA256 string `json:"artifact_sha256"`
+	Publisher      string `json:"publisher"`
+	SigningStatus  string `json:"signing_status"` // "signed", "unsigned", or empty
+	RepoURL        string `json:"repo_url"`
+	// CommitOrTag is the revision requested, which may be a movable branch.
+	CommitOrTag string `json:"commit_or_tag"`
+	// CommitSHA is the immutable commit the bytes came from.
+	CommitSHA string `json:"commit_sha"`
+	// Source says how the artifact arrived, such as "airlock pull".
+	Source string `json:"source,omitempty"`
+	AIBOM  string `json:"aibom"`
 }
 
 // Options configures the provenance check.
@@ -34,6 +47,9 @@ type Options struct {
 	// ArtifactPath is the artifact under attestation, used to find a signature
 	// sidecar next to it.
 	ArtifactPath string
+	// ArtifactSHA256 is the scanned artifact's hash, which a manifest must
+	// name. Empty (a header-only scan) means no manifest can bind.
+	ArtifactSHA256 string
 	// ManifestPath is a supplied provenance manifest. Empty means no manifest.
 	ManifestPath string
 }
@@ -41,88 +57,118 @@ type Options struct {
 // sidecarSuffixes are the signature sidecar names we recognise locally.
 var sidecarSuffixes = []string{".sigstore.json", ".sigstore", ".minisig", ".sig"}
 
+// commitHash is a git commit id: 40 hex (SHA-1) or 64 hex (SHA-256).
+var commitHash = regexp.MustCompile(`^([0-9a-f]{40}|[0-9a-f]{64})$`)
+
+// Bind loads the manifest and reports whether it is bound to this artifact.
+// It returns the manifest (nil when there is none) and, when it does not
+// bind, why.
+func Bind(opts Options) (*Manifest, string) {
+	if opts.ManifestPath == "" {
+		return nil, "no provenance manifest supplied"
+	}
+	raw, err := os.ReadFile(opts.ManifestPath)
+	if err != nil {
+		return nil, "could not read provenance manifest: " + err.Error()
+	}
+	var m Manifest
+	if err := json.Unmarshal(raw, &m); err != nil {
+		return nil, "provenance manifest is not valid JSON: " + err.Error()
+	}
+	want := strings.ToLower(strings.TrimSpace(opts.ArtifactSHA256))
+	got := strings.ToLower(strings.TrimSpace(m.ArtifactSHA256))
+	switch {
+	case want == "":
+		return &m, "the artifact was not hashed (a header-only scan), so no manifest can be bound to it"
+	case got == "":
+		return &m, "the provenance manifest names no artifact_sha256, so it is not bound to this artifact"
+	case got != want:
+		return &m, fmt.Sprintf("the provenance manifest is for artifact %s, not this one (%s)", got, want)
+	}
+	return &m, ""
+}
+
 // Inspect reports the provenance result for one artifact.
 func Inspect(opts Options) checks.Result {
 	r := checks.Result{
 		Name:     "Hash, provenance, lineage",
-		LooksFor: "Traceable origin and declared quantization lineage",
+		LooksFor: "Traceable origin: a manifest bound to this hash, from an immutable upstream commit",
 	}
 
-	var m Manifest
-	haveManifest := false
-	if opts.ManifestPath != "" {
-		raw, err := os.ReadFile(opts.ManifestPath)
-		if err != nil {
-			r.Status = checks.NotTested
-			r.Notes = "could not read provenance manifest: " + err.Error()
-			return r
-		}
-		if err := json.Unmarshal(raw, &m); err != nil {
-			r.Status = checks.NotTested
-			r.Notes = "provenance manifest is not valid JSON: " + err.Error()
-			return r
-		}
-		haveManifest = true
+	m, unbound := Bind(opts)
+	if opts.ManifestPath != "" && m == nil {
+		r.Status = checks.NotTested
+		r.Notes = unbound
+		return r
 	}
-
 	sidecar := findSidecar(opts.ArtifactPath)
-
-	if !haveManifest && sidecar == "" {
+	if m == nil && sidecar == "" {
 		r.Status = checks.NotTested
 		r.Notes = "no provenance input: no supplied manifest and no signature sidecar next to the artifact"
 		return r
 	}
 
-	parts := []string{}
-	if haveManifest {
+	var parts []string
+	if m != nil && unbound == "" {
 		if m.Publisher != "" {
 			parts = append(parts, "publisher "+m.Publisher)
-		}
-		if m.CommitOrTag != "" {
-			c := m.CommitOrTag
-			if m.CommitSHA != "" {
-				c += "@" + short(m.CommitSHA)
-			}
-			parts = append(parts, "commit "+c)
 		}
 		if m.RepoURL != "" {
 			parts = append(parts, "repo "+m.RepoURL)
 		}
+		if m.CommitOrTag != "" {
+			parts = append(parts, "revision "+m.CommitOrTag)
+		}
+		if m.CommitSHA != "" {
+			parts = append(parts, "commit "+m.CommitSHA)
+		}
+		if m.Source != "" {
+			parts = append(parts, "via "+m.Source)
+		}
 		if m.AIBOM != "" {
 			parts = append(parts, "aibom "+m.AIBOM)
 		}
+		parts = append(parts, signingClaim(m.SigningStatus))
 	}
 	// A sidecar is surfaced, never reported as a signature: nothing here
-	// verifies it. Verifying publisher signatures is a separate check.
+	// verifies it.
 	if sidecar != "" {
 		parts = append(parts, "signature sidecar "+filepath.Base(sidecar)+" present, not verified")
 	}
-
-	// A signing status from the manifest is the manifest's claim. It is
-	// reported as claimed, never as a verification.
-	signing := strings.ToLower(strings.TrimSpace(m.SigningStatus))
-	switch signing {
-	case "":
-		parts = append(parts, "publisher signature not established")
-	case "unsigned":
-		parts = append(parts, "manifest records the upstream as unsigned; publisher signature not established")
-	default:
-		parts = append(parts, "signing claimed "+signing+" by the supplied manifest, not verified")
+	detail := strings.Join(parts, "; ")
+	if detail != "" {
+		detail = ": " + detail
 	}
 
-	// PASS means an origin is recorded: a repo and a revision. A manifest
-	// without both, or a sidecar alone, is not provenance.
-	origin := haveManifest && strings.TrimSpace(m.RepoURL) != "" &&
-		(strings.TrimSpace(m.CommitOrTag) != "" || strings.TrimSpace(m.CommitSHA) != "")
-	if !origin {
+	switch {
+	case m == nil:
 		r.Status = checks.NotTested
-		r.Notes = "no origin recorded (a provenance manifest needs repo_url and commit_or_tag or commit_sha): " + strings.Join(parts, "; ")
-		return r
+		r.Notes = "no provenance manifest" + detail
+	case unbound != "":
+		r.Status = checks.NotTested
+		r.Notes = unbound + detail
+	case strings.TrimSpace(m.RepoURL) == "":
+		r.Status = checks.NotTested
+		r.Notes = "the bound manifest records no repo, so the origin is not traceable" + detail
+	case !commitHash.MatchString(strings.ToLower(strings.TrimSpace(m.CommitSHA))):
+		r.Status = checks.NotTested
+		r.Notes = "the origin is recorded only at a movable revision, not an immutable commit" + detail
+	default:
+		r.Status = checks.Pass
+		r.Notes = "origin bound to this artifact's hash, at an immutable commit" + detail
 	}
-
-	r.Status = checks.Pass
-	r.Notes = "origin recorded from the supplied manifest: " + strings.Join(parts, "; ")
 	return r
+}
+
+func signingClaim(status string) string {
+	switch s := strings.ToLower(strings.TrimSpace(status)); s {
+	case "":
+		return "publisher signature not established"
+	case "unsigned":
+		return "manifest records the upstream as unsigned; publisher signature not established"
+	default:
+		return "signing claimed " + s + " by the supplied manifest, not verified"
+	}
 }
 
 func findSidecar(artifactPath string) string {
@@ -136,11 +182,4 @@ func findSidecar(artifactPath string) string {
 		}
 	}
 	return ""
-}
-
-func short(sha string) string {
-	if len(sha) > 12 {
-		return sha[:12]
-	}
-	return sha
 }

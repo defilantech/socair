@@ -118,7 +118,20 @@ func Pull(ctx context.Context, s *Store, dst, repo, revision, wantSHA string, po
 	if err != nil {
 		return fail(err.Error())
 	}
-	resp, err := pol.client().Do(req)
+	// The hub names the immutable commit a revision resolved to in
+	// X-Repo-Commit on its first response, before any CDN redirect. It is
+	// captured there, so the record names the commit the bytes came from,
+	// not a branch that can move.
+	client := pol.client()
+	commit := ""
+	checkRedirect := client.CheckRedirect
+	client.CheckRedirect = func(r *http.Request, via []*http.Request) error {
+		if commit == "" && r.Response != nil {
+			commit = repoCommit(r.Response.Header)
+		}
+		return checkRedirect(r, via)
+	}
+	resp, err := client.Do(req)
 	if err != nil {
 		return fail(fmt.Sprintf("pull failed within the %s stall budget: %v", pol.Timeout, err))
 	}
@@ -144,7 +157,16 @@ func Pull(ctx context.Context, s *Store, dst, repo, revision, wantSHA string, po
 		return fail(fmt.Sprintf("downloaded artifact hashes to %s, not the requested %s", got, normalizeSHA(wantSHA)))
 	}
 
-	manifest := provenance.Manifest{RepoURL: "https://huggingface.co/" + repo, CommitOrTag: revision}
+	if commit == "" {
+		commit = repoCommit(resp.Header)
+	}
+	manifest := provenance.Manifest{
+		ArtifactSHA256: got,
+		RepoURL:        strings.TrimRight(pol.Endpoint, "/") + "/" + repo,
+		CommitOrTag:    revision,
+		CommitSHA:      commit,
+		Source:         "airlock pull",
+	}
 	b, err := json.MarshalIndent(manifest, "", "  ")
 	if err != nil {
 		return fail("encode provenance manifest: " + err.Error())
@@ -153,7 +175,13 @@ func Pull(ctx context.Context, s *Store, dst, repo, revision, wantSHA string, po
 		return fail("write provenance manifest: " + err.Error())
 	}
 
-	e := Event{Action: ActionPull, Outcome: OutcomeOK, Repo: repo, SHA256: got, Detail: "revision " + revision}
+	detail := "revision " + revision
+	if commit != "" {
+		detail += " at commit " + commit
+	} else {
+		detail += " (the source named no commit; the revision is not pinned)"
+	}
+	e := Event{Action: ActionPull, Outcome: OutcomeOK, Repo: repo, SHA256: got, Detail: detail}
 	if s != nil {
 		if err := s.Record(e); err != nil {
 			return e, err
@@ -262,6 +290,20 @@ func (s *stallReader) Read(b []byte) (int, error) {
 
 func (s *stallReader) stop()         { s.timer.Stop() }
 func (s *stallReader) stalled() bool { return s.fired.Load() }
+
+// repoCommit returns a well-formed commit id from X-Repo-Commit, or "".
+func repoCommit(h http.Header) string {
+	c := strings.ToLower(strings.TrimSpace(h.Get("X-Repo-Commit")))
+	if len(c) != 40 && len(c) != 64 {
+		return ""
+	}
+	for _, r := range c {
+		if !(r >= '0' && r <= '9' || r >= 'a' && r <= 'f') {
+			return ""
+		}
+	}
+	return c
+}
 
 func hostOf(endpoint string) string {
 	u, err := url.Parse(endpoint)

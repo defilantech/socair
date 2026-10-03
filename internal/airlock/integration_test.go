@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -64,8 +65,14 @@ func TestPullRealEgress(t *testing.T) {
 	if e.SHA256 != sha {
 		t.Errorf("event hash %q, want %q", e.SHA256, sha)
 	}
-	if _, err := os.Stat(filepath.Join(filepath.Dir(dst), "provenance.json")); err != nil {
-		t.Errorf("manifest not written: %v", err)
+	mb, err := os.ReadFile(filepath.Join(filepath.Dir(dst), "provenance.json"))
+	if err != nil {
+		t.Fatalf("manifest not written: %v", err)
+	}
+	// The real hub names the commit "main" resolved to; the manifest must
+	// pin it, or the provenance row can never PASS on a real pull.
+	if !regexp.MustCompile(`"commit_sha": "[0-9a-f]{40}"`).Match(mb) {
+		t.Errorf("manifest records no resolved commit:\n%s", mb)
 	}
 	ev, _ := s.Events()
 	if len(ev) != 1 || !strings.EqualFold(ev[0].Repo, repo) {

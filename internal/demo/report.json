@@ -64,7 +64,7 @@
     },
     {
       "name": "Hash, provenance, lineage",
-      "looks_for": "Traceable origin and declared quantization lineage",
+      "looks_for": "Traceable origin: a manifest bound to this hash, from an immutable upstream commit",
       "status": "PASS",
       "notes": "publisher unsigned; upstream commit resolved"
     },

@@ -158,6 +158,21 @@ func ScanMode(path string, mode Mode) (*report.Document, error) {
 	d.Scope.ToolVersions = "socair " + Version
 	d.Verification.RerunInstructions = "socair scan <path>"
 
+	// Provenance comes only from the manifest the operator names. A
+	// provenance.json found beside the artifact is not read: whoever controls
+	// that directory could write one claiming any origin for these bytes.
+	provOpts := provenance.Options{ArtifactPath: original, ArtifactSHA256: id.SHA256, ManifestPath: os.Getenv("SOCAIR_PROVENANCE")}
+	if m, unbound := provenance.Bind(provOpts); m != nil && unbound == "" {
+		d.Artifact.RepoURL = m.RepoURL
+		d.Artifact.CommitOrTag = m.CommitOrTag
+		d.Artifact.CommitSHA = m.CommitSHA
+		d.Artifact.Publisher = m.Publisher
+		d.Artifact.PublisherSigningState = publisherSigning(m.SigningStatus)
+		if m.Source != "" {
+			d.Scope.InputPath = m.Source
+		}
+	}
+
 	// The check set is per format: a GGUF carries metadata checks that a pickle
 	// checkpoint does not, and vice versa. The report lists only what ran.
 	results := []checks.Result{
@@ -165,7 +180,7 @@ func ScanMode(path string, mode Mode) (*report.Document, error) {
 		inventory.Inspect(path, inventory.Options{RepoMirror: os.Getenv("SOCAIR_REPO_MIRROR")}),
 		// Provenance reads signature sidecars beside the artifact, so it looks
 		// next to the original, not the snapshot.
-		provenance.Inspect(provenance.Options{ArtifactPath: original, ManifestPath: os.Getenv("SOCAIR_PROVENANCE")}),
+		provenance.Inspect(provOpts),
 		denylist.Check(id.SHA256, os.Getenv("SOCAIR_DENYLIST")),
 	}
 	if id.Format == "GGUF" {
@@ -328,4 +343,18 @@ func shortHashOr(sha, fallback string) string {
 		return sha[:8]
 	}
 	return fallback
+}
+
+// publisherSigning states a manifest's signing claim for the identity
+// section. It is the manifest's claim; verifying a publisher signature is a
+// separate check.
+func publisherSigning(status string) string {
+	switch s := strings.ToLower(strings.TrimSpace(status)); s {
+	case "":
+		return "not established"
+	case "unsigned":
+		return "unsigned"
+	default:
+		return s + " (claimed by the provenance manifest, not verified)"
+	}
 }
