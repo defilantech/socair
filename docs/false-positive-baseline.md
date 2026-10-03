@@ -273,6 +273,25 @@ UD-Q6_K is 54% Q6_K and 46% Q8_0; its UD-IQ1_M is 23% IQ1_M and 50% Q5_K; one
 SOCAIR_GGUF_CORPUS=<dir>[:<dir>...] go test ./internal/gguf -run RealGGUF -v
 ```
 
+## Tokenizer inspection (2026-10-03)
+
+The tokenizer row read only the `tokenizer.ggml.model` label, so it was
+NOT_TESTED on every GGUF and no GGUF could reach a clean authorization. It now
+reads the vocabulary, the token types, the score and merge counts, and every
+`*_token_id`, and FAILs on inconsistent tables (a special id outside the
+vocabulary, a type or score table of the wrong length, an undefined token
+type) and LEADs on a control or user-defined token that carries prose or an
+instruction phrase.
+
+Measured before choosing the rules, on 41 distinct tokenizers (Qwen 2/3/3.6/3.8,
+Gemma 3/4, Llama 3, Nemotron, gpt-oss, Command-R, DeepSeek, Falcon, Phi-3,
+StarCoder, BERT, and others): no control token carries three or more words, no
+special id is out of range, and type and score tables always match the
+vocabulary. A third candidate rule, a chat-template marker missing from the
+vocabulary, was dropped to an informational note: gpt-oss's template uses
+`<|final|>`, which its vocabulary does not have. Engine sweep over 59 GGUFs:
+56 PASS, 0 FAIL, 0 LEAD, 3 NOT_TESTED (imatrix files with no vocabulary).
+
 ## Follow-ups
 
 1. Verify the GGML file-type mapping against the current llama.cpp enum so the

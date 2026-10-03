@@ -156,3 +156,23 @@ func TestHappyPathDropsOneInput(t *testing.T) {
 		t.Fatalf("unaccepted gaps must withhold, got %s", d.PromotionAuthorization.State)
 	}
 }
+
+// TestGGUFWithTokenizerAuthorizes: with the tokenizer inspected rather than
+// read as a label, a GGUF whose every row PASSes reaches a clean
+// authorization, which no GGUF could before (#82).
+func TestGGUFWithTokenizerAuthorizes(t *testing.T) {
+	supplyInputs(t)
+	p := writeFixture(t, "fixture-Q5_K_M.gguf", gguftest.BuildGGUF(append(gguftest.Clean(), gguftest.Vocab()...)))
+	d, err := Scan(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range d.Checks {
+		if c.Status != report.StatusPass {
+			t.Errorf("check %q = %s (%s), want PASS", c.Name, c.Status, c.Notes)
+		}
+	}
+	if d.PromotionAuthorization.State != report.StateAuthorized {
+		t.Fatalf("state = %s, want authorized", d.PromotionAuthorization.State)
+	}
+}

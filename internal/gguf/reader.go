@@ -96,6 +96,9 @@ type Manifest struct {
 	DataOffset int64 `json:"data_offset"`
 	// Tensors is the tensor table. Not serialized: it can hold thousands.
 	Tensors []TensorInfo `json:"-"`
+
+	// Tokenizer is the vocabulary and special tokens.
+	Tokenizer Tokenizer `json:"tokenizer"`
 }
 
 // defaultAlignment is GGUF's alignment when general.alignment is absent.
@@ -224,6 +227,7 @@ func ReadArtifact(path string) (*Manifest, error) {
 
 func readHeader(f io.Reader, m *Manifest) error {
 	m.Alignment = defaultAlignment
+	m.Tokenizer.Scores, m.Tokenizer.Merges = -1, -1
 	var magicBuf [4]byte
 	if _, err := io.ReadFull(f, magicBuf[:]); err != nil {
 		return fmt.Errorf("gguf: reading magic: %w", err)
@@ -262,6 +266,27 @@ func readHeader(f io.Reader, m *Manifest) error {
 			return fmt.Errorf("gguf: reading type for %q: %w", key, err)
 		}
 
+		if vtype == typeArray && tokenizerArray(key) && !seen[key] {
+			seen[key] = true
+			if err := readTokenizerArray(f, key, m); err != nil {
+				return fmt.Errorf("gguf: reading %q: %w", key, err)
+			}
+			continue
+		}
+		if name, ok := specialIDKey(key); ok && !seen[key] {
+			v, err := scanValue(f, vtype, true)
+			if err != nil {
+				return fmt.Errorf("gguf: reading value for %q: %w", key, err)
+			}
+			seen[key] = true
+			if id, ok := v.(uint64); ok {
+				if m.Tokenizer.SpecialIDs == nil {
+					m.Tokenizer.SpecialIDs = map[string]uint64{}
+				}
+				m.Tokenizer.SpecialIDs[name] = id
+			}
+			continue
+		}
 		_, isWanted := wanted[key]
 		tmplName, isTmpl := templateName(key)
 		if isTmpl {

@@ -26,6 +26,7 @@ type KV struct {
 	u32   uint32
 	i32   int32
 	strs  []string
+	i32s  []int32
 }
 
 // Str builds a string metadata pair.
@@ -43,6 +44,20 @@ func I32(key string, v int32) KV { return KV{key: key, vtype: typeInt32, i32: v}
 
 // StrArray builds an array-of-strings metadata pair.
 func StrArray(key string, vals ...string) KV { return KV{key: key, vtype: typeArray, strs: vals} }
+
+// I32Array builds an array-of-int32 metadata pair.
+func I32Array(key string, vals ...int32) KV { return KV{key: key, vtype: typeArray, i32s: vals} }
+
+// Vocab is a small consistent tokenizer: four tokens with their types and
+// BOS/EOS ids in range.
+func Vocab() []KV {
+	return []KV{
+		StrArray("tokenizer.ggml.tokens", "<s>", "</s>", "hello", "<|im_start|>"),
+		I32Array("tokenizer.ggml.token_type", 3, 3, 1, 3),
+		U32("tokenizer.ggml.bos_token_id", 0),
+		U32("tokenizer.ggml.eos_token_id", 1),
+	}
+}
 
 // Clean is a standard, benign metadata set for a small GGUF.
 func Clean() []KV {
@@ -78,6 +93,14 @@ func BuildGGUF(kvs []KV) []byte {
 		case typeInt32:
 			_ = binary.Write(&b, binary.LittleEndian, p.i32)
 		case typeArray:
+			if p.i32s != nil {
+				_ = binary.Write(&b, binary.LittleEndian, uint32(typeInt32))
+				_ = binary.Write(&b, binary.LittleEndian, uint64(len(p.i32s)))
+				for _, v := range p.i32s {
+					_ = binary.Write(&b, binary.LittleEndian, v)
+				}
+				break
+			}
 			_ = binary.Write(&b, binary.LittleEndian, uint32(typeString))
 			_ = binary.Write(&b, binary.LittleEndian, uint64(len(p.strs)))
 			for _, s := range p.strs {
