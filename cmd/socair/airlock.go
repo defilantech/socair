@@ -18,7 +18,7 @@ import (
 // store. A pull lands in staging; only a promotion moves bytes across.
 func airlockCmd(args []string) error {
 	if len(args) == 0 {
-		return errors.New("usage: socair airlock <init|pull|ingest|promote|log>")
+		return errors.New("usage: socair airlock <init|pull|ingest|trust|promote|log>")
 	}
 	switch args[0] {
 	case "init":
@@ -27,6 +27,8 @@ func airlockCmd(args []string) error {
 		return airlockPull(args[1:])
 	case "ingest":
 		return airlockIngest(args[1:])
+	case "trust":
+		return airlockTrust(args[1:])
 	case "promote":
 		return airlockPromote(args[1:])
 	case "log":
@@ -119,20 +121,43 @@ func airlockIngest(args []string) error {
 
 func airlockPromote(args []string) error {
 	fs := parseFlags(args)
-	if len(fs.pos) != 1 || fs.val("report") == "" {
-		return errors.New("usage: socair airlock promote <artifact> --report <report.json> [--store <path>]")
+	if fs.val("report") != "" {
+		return errors.New("promote takes a signed attestation, not a bare report: sign it with `socair sign`, then pass --attestation")
+	}
+	if len(fs.pos) != 1 || fs.val("attestation") == "" {
+		return errors.New("usage: socair airlock promote <artifact> --attestation <attestation.dsse.json> [--store <path>]")
 	}
 	s, err := airlock.Open(storeRoot(fs))
 	if err != nil {
 		return err
 	}
 	artifact := fs.pos[0]
-	ev, err := airlock.Promote(s, artifact, fs.val("report"))
+	ev, err := airlock.Promote(s, artifact, fs.val("attestation"))
 	if err != nil {
 		return err
 	}
 	fmt.Printf("promoted %s into the clean store\n  %s\n  outcome: %s (%s)\n",
 		ev.SHA256, s.CleanPath(ev.SHA256), ev.Outcome, ev.Detail)
+	return nil
+}
+
+func airlockTrust(args []string) error {
+	if len(args) == 0 || args[0] != "add" {
+		return errors.New("usage: socair airlock trust add <key.pub> [--store <path>]")
+	}
+	fs := parseFlags(args[1:])
+	if len(fs.pos) != 1 {
+		return errors.New("usage: socair airlock trust add <key.pub> [--store <path>]")
+	}
+	s, err := airlock.Open(storeRoot(fs))
+	if err != nil {
+		return err
+	}
+	id, err := s.Trust(fs.pos[0])
+	if err != nil {
+		return err
+	}
+	fmt.Printf("store %s now trusts signing key %s\n", s.Root, id)
 	return nil
 }
 

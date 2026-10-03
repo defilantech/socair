@@ -89,12 +89,14 @@ the source is unreachable, or the bytes do not hash to the requested hash.
 
 ### `POST /api/airlock/promote`
 
-Request `{"artifact":"/path","report": { ...document... }}`. The document is
-staged to a temp file and handed to the one gate implementation, so the wizard
-can promote straight from what it scanned.
+Request `{"artifact":"/path","attestation": { ...DSSE envelope... }}`. The
+envelope is a signed attestation (`socair sign`), passed through byte for byte
+and handed to the one gate implementation. A bare report document is refused
+with `400`: a document is not a ticket until a trusted key signs it.
 
-`200` `{"event":{...}}`, or `422` when the gate refuses (a withheld or escalated
-state, or an artifact that does not hash to its ticket).
+`200` `{"event":{...}}`, or `422` when the gate refuses: no trusted key in the
+store, a signature that does not verify against it, a withheld or escalated
+state, or an artifact that does not hash to the attested digest.
 
 ## Error shape
 

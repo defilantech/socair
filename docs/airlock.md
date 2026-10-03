@@ -2,8 +2,9 @@
 
 The airlock is the controlled junction between untrusted egress and the on-prem
 clean store. An artifact is pulled or ingested into staging; only a promotion
-moves bytes across into the clean store, and only a validating attestation that
-authorizes the artifact's own hash is a ticket to cross.
+moves bytes across into the clean store, and only an attestation signed by a
+key the store trusts, whose subject is the artifact's own hash, is a ticket to
+cross.
 
 Everything here is offline except an explicit `pull`, which is the one command
 allowed to reach the network.
@@ -15,7 +16,9 @@ allowed to reach the network.
   incoming/<sha256>/<file>            staging: pulled or binned, not trusted
   incoming/<sha256>/provenance.json   origin facts written by a pull
   clean/<sha256>/<file>               the clean store, keyed by artifact hash
-  clean/<sha256>/attestation.json     the attestation that let it cross
+  clean/<sha256>/attestation.dsse.json  the signed attestation that let it cross
+  clean/<sha256>/attestation.json     its report document, for reading
+  trusted-keys/<key id>.pub           the trust policy: keys whose signatures admit
   log.jsonl                           append-only activity log
 ```
 
@@ -33,7 +36,8 @@ socair airlock init [<store>]
 socair airlock pull   --repo <org/name> --file <name> --sha256 <hash> [--revision main]
 socair airlock ingest --local <path> [--scan]
 socair airlock ingest --cache --repo <org/name> --file <name> [--revision main] [--scan]
-socair airlock promote <artifact> --report <report.json>
+socair airlock trust add <key.pub>
+socair airlock promote <artifact> --attestation <attestation.dsse.json>
 socair airlock log
 ```
 
@@ -92,6 +96,36 @@ Environment:
 - `SOCAIR_PULL_TIMEOUT`: stall budget, a Go duration such as `30s`.
 - `SOCAIR_HF_CACHE` or `HF_HOME`: the offline cache root for `ingest --cache`.
 
+## Signing and the trust policy
+
+An attestation is an in-toto Statement v1 in a DSSE envelope, signed with
+Ed25519: subject the artifact's SHA-256, predicate type
+`https://socair.ai/attestation/v1`, predicate the report document. It verifies
+offline; there is no transparency log or certificate authority to reach.
+
+```
+socair key gen --out operator                        # operator.key (0600), operator.pub
+socair scan model.gguf > report.json
+socair sign --key operator.key --report report.json  # report.dsse.json
+socair verify report.dsse.json --trusted operator.pub --artifact model.gguf
+socair airlock trust add operator.pub
+socair airlock promote model.gguf --attestation report.dsse.json
+```
+
+`promote` checks, in order: a signature by a key in `trusted-keys/` over the
+DSSE encoding; the statement and predicate types; that the subject digest is
+the document's artifact hash; the recorded document hash; that the document
+validates, including its promotion state against its checks; that the state
+admits promotion; and, while copying, that the bytes hash to the subject.
+Any failure is a logged refusal. A bare report is not a ticket.
+
+A repeat promotion re-copies and re-verifies the artifact, so a clean copy that
+was deleted or altered is restored. An artifact may not be named
+`attestation.json` or `attestation.dsse.json`.
+
+A private key file readable by other users is refused. Keep it off the
+airlock box if signing happens elsewhere; the store only needs the public key.
+
 ## Activity log
 
 One JSON object per line, append-only. The log is evidence, not state: nothing
@@ -101,7 +135,7 @@ reads it to decide a promotion.
 {"ts":"2026-09-29T20:29:26Z","action":"promote","outcome":"conditional","source":"airlock","repo":"","sha256":"e150...","detail":"authorized with conditions accepted by chris on 1 surface(s)"}
 ```
 
-Actions are `pull`, `ingest`, `promote`, `refuse`. Outcomes are `ok`,
+Actions are `pull`, `ingest`, `trust`, `promote`, `refuse`. Outcomes are `ok`,
 `conditional`, `refused`.
 
 ## Offline and air-gapped customers
@@ -125,7 +159,7 @@ SOCAIR_TEST_EGRESS=1 go test ./internal/airlock -run RealEgress -v
 ## What this is not
 
 - A pull verifies the artifact hash, not a publisher signature.
-- Promotion at Tier 1 keys on a validating attestation, not a cryptographic
-  signature. The Defilan signature is the paid tier.
+- An operator signature says the operator ran the checks and stands behind the
+  report. It is not a Defilan signature; that is the paid tier (#22).
 - The clean store is a directory of bytes and attestations. It is not yet an
   admission gate for a serving stack; that is the v2 webhook.
