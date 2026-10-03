@@ -207,3 +207,18 @@ func TestUnsignedIsMarked(t *testing.T) {
 		t.Fatal("a signed document must say how to verify it")
 	}
 }
+
+// TestOutOfScopeNamesWhatWasNotDone: the not-run checks, unparsed files, and
+// untested node classes are shown, not just carried in the JSON.
+func TestOutOfScopeNamesWhatWasNotDone(t *testing.T) {
+	d := loadGolden(t)
+	d.OutOfScope.NotRun = report.Tier2NotRun()
+	d.OutOfScope.UnparsedFormats = []string{"ONNX: model.onnx"}
+	d.OutOfScope.UntestedNodeClasses = []string{report.Tier1UntestedNodeClasses}
+	out := renderString(t, d)
+	for _, want := range []string{"Forward-pass trigger probes (Tier 2)", "not run", "ONNX: model.onnx", "Node classes not tested"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("rendered report missing %q", want)
+		}
+	}
+}

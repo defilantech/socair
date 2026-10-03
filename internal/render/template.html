@@ -157,11 +157,23 @@
       {{- range .Document.OutOfScope.Ceiling }}<li>{{ . }}</li>{{ end }}
     </ul>
     <p class="source">The same list is published at <a href="{{ .CeilingURL }}">{{ .CeilingURL }}</a>.</p>
+    {{- if .Document.OutOfScope.NotRun }}
+    <h3>Checks not run at this level</h3>
+    <ul>
+      {{- range .Document.OutOfScope.NotRun }}<li><strong>{{ .Name }}</strong> ({{ .LooksFor }}): <span class="tag">not run</span> {{ .Reason }}</li>{{ end }}
+    </ul>
+    {{- end }}
     {{- if .Document.OutOfScope.UnparsedFormats }}
-    <p>Formats not parsed: {{ range .Document.OutOfScope.UnparsedFormats }}{{ . }} {{ end }}</p>
+    <h3>Not parsed by this scan</h3>
+    <ul>
+      {{- range .Document.OutOfScope.UnparsedFormats }}<li>{{ . }}</li>{{ end }}
+    </ul>
     {{- end }}
     {{- if .Document.OutOfScope.UntestedNodeClasses }}
-    <p>Node classes not tested: {{ range .Document.OutOfScope.UntestedNodeClasses }}{{ . }} {{ end }}</p>
+    <h3>Node classes not tested</h3>
+    <ul>
+      {{- range .Document.OutOfScope.UntestedNodeClasses }}<li>{{ . }}</li>{{ end }}
+    </ul>
     {{- end }}
   </section>
 

@@ -44,7 +44,13 @@ export interface Document {
 	findings: { fails: string[]; leads?: string[]; not_tested: string[] };
 	promotion_authorization: PromotionAuthorization;
 	bounded_statement: string;
-	out_of_scope: { does_not_certify: string; ceiling: string[] };
+	out_of_scope: {
+		does_not_certify: string;
+		ceiling: string[];
+		unparsed_formats?: string[];
+		untested_node_classes?: string[];
+		not_run?: { name: string; looks_for: string; reason: string }[];
+	};
 	verification: { artifact_sha256: string };
 }
 
