@@ -9,6 +9,7 @@ package report
 import (
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/defilantech/socair/internal/gguf"
 )
@@ -360,6 +361,16 @@ func validatePromotion(d *Document) []string {
 		}
 		if len(pa.AcceptedSurfaces) == 0 {
 			problems = append(problems, "promotion_authorization: authorized_with_conditions needs accepted_surfaces")
+		}
+		// An acceptance whose expiry cannot be parsed cannot be enforced, so
+		// it is not an acceptance.
+		if _, err := time.Parse(time.RFC3339, pa.AcceptanceExpires); err != nil {
+			problems = append(problems, fmt.Sprintf("promotion_authorization: authorized_with_conditions needs an RFC 3339 acceptance_expires, got %q", pa.AcceptanceExpires))
+		}
+	}
+	if d.Header.RescanDue != "" {
+		if _, err := time.Parse(time.RFC3339, d.Header.RescanDue); err != nil {
+			problems = append(problems, fmt.Sprintf("header.rescan_due must be RFC 3339, got %q", d.Header.RescanDue))
 		}
 	}
 	if pa.State == StateAuthorized && len(pa.AcceptedSurfaces) > 0 {

@@ -10,10 +10,14 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"time"
 
 	"github.com/defilantech/socair/internal/attest"
 	"github.com/defilantech/socair/internal/report"
 )
+
+// now is the clock acceptance expiry is enforced against; tests replace it.
+var now = time.Now
 
 // ErrRefused marks a promotion the gate declined. The reason is in the error.
 var ErrRefused = errors.New("promotion refused")
@@ -76,13 +80,25 @@ func Promote(s *Store, artifactPath, envelopePath string) (Event, error) {
 	}
 
 	clean := s.CleanPath(sha)
-	conditional := d.PromotionAuthorization.State == report.StateAuthorizedWithConditions
+	pa := d.PromotionAuthorization
+	conditional := pa.State == report.StateAuthorizedWithConditions
 	outcome := OutcomeOK
 	detail := "clean attestation signed by " + attest.ShortID(v.KeyID)
 	if conditional {
+		// An acceptance covers its gaps only until it expires. Verify has
+		// already required an RFC 3339 expiry; a lapsed one is refused, and
+		// the gaps need a fresh scan and a fresh acceptance.
+		exp, err := time.Parse(time.RFC3339, pa.AcceptanceExpires)
+		if err != nil {
+			return refuse(fmt.Sprintf("acceptance expiry %q cannot be enforced", pa.AcceptanceExpires))
+		}
+		if !now().Before(exp) {
+			return refuse(fmt.Sprintf("the acceptance by %s of %d untested surface(s) expired at %s; re-scan and re-accept",
+				pa.AcceptedBy, len(pa.AcceptedSurfaces), exp.UTC().Format(time.RFC3339)))
+		}
 		outcome = OutcomeConditional
-		detail = fmt.Sprintf("authorized with conditions accepted by %s on %d surface(s), signed by %s",
-			d.PromotionAuthorization.AcceptedBy, len(d.PromotionAuthorization.AcceptedSurfaces), attest.ShortID(v.KeyID))
+		detail = fmt.Sprintf("authorized with conditions accepted by %s on %d surface(s) until %s, signed by %s",
+			pa.AcceptedBy, len(pa.AcceptedSurfaces), exp.UTC().Format(time.RFC3339), attest.ShortID(v.KeyID))
 	}
 	if already, _ := sameBytes(filepath.Join(clean, attestationEnvelope), envelope); already {
 		detail += "; already promoted"
