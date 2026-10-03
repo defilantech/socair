@@ -24,6 +24,7 @@ import (
 	"github.com/defilantech/socair/internal/airlock"
 	"github.com/defilantech/socair/internal/engine"
 	"github.com/defilantech/socair/internal/render"
+	"github.com/defilantech/socair/internal/render/cyclonedx"
 	"github.com/defilantech/socair/internal/render/pdf"
 	"github.com/defilantech/socair/internal/render/sarif"
 	"github.com/defilantech/socair/internal/report"
@@ -258,6 +259,17 @@ func (o Options) render(w http.ResponseWriter, r *http.Request) {
 	case "sarif":
 		w.Header().Set("Content-Type", "application/sarif+json")
 		if err := sarif.Render(w, req.Report); err != nil {
+			writeError(w, http.StatusInternalServerError, err.Error())
+		}
+	case "cyclonedx":
+		// Build first: a header-only report has no BOM, and that is the
+		// caller's input, not a server fault.
+		if _, err := cyclonedx.Build(req.Report); err != nil {
+			writeError(w, http.StatusUnprocessableEntity, err.Error())
+			return
+		}
+		w.Header().Set("Content-Type", cyclonedx.MediaType)
+		if err := cyclonedx.Render(w, req.Report); err != nil {
 			writeError(w, http.StatusInternalServerError, err.Error())
 		}
 	default:

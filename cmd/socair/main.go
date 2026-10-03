@@ -30,10 +30,10 @@ func main() {
 		}
 	case "scan":
 		if len(os.Args) < 3 {
-			fmt.Fprintln(os.Stderr, "usage: socair scan <path>")
+			fmt.Fprintln(os.Stderr, "usage: socair scan <path> [--format report|cyclonedx]")
 			os.Exit(2)
 		}
-		if err := scan(os.Args[2]); err != nil {
+		if err := scan(os.Args[2:]); err != nil {
 			fmt.Fprintln(os.Stderr, "error:", err)
 			os.Exit(1)
 		}

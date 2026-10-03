@@ -7,6 +7,7 @@ import (
 
 	"github.com/defilantech/socair/internal/engine"
 	"github.com/defilantech/socair/internal/render"
+	"github.com/defilantech/socair/internal/render/cyclonedx"
 	"github.com/defilantech/socair/internal/render/pdf"
 	"github.com/defilantech/socair/internal/render/sarif"
 	"github.com/defilantech/socair/internal/report"
@@ -18,10 +19,11 @@ import (
 //	socair render <path>                   HTML to stdout
 //	socair render <path> --pdf out.pdf     PDF
 //	socair render <path> --sarif out.json  SARIF
+//	socair render <path> --cyclonedx out.json  CycloneDX 1.6 ML-BOM
 //
 // Flags may appear before or after the path.
 func renderCmd(args []string) error {
-	var path, pdfOut, sarifOut string
+	var path, pdfOut, sarifOut, bomOut string
 	for i := 0; i < len(args); i++ {
 		a := args[i]
 		switch {
@@ -41,6 +43,14 @@ func renderCmd(args []string) error {
 			sarifOut = args[i]
 		case strings.HasPrefix(a, "--sarif="):
 			sarifOut = strings.TrimPrefix(a, "--sarif=")
+		case a == "--cyclonedx":
+			i++
+			if i >= len(args) {
+				return fmt.Errorf("--cyclonedx needs a file path")
+			}
+			bomOut = args[i]
+		case strings.HasPrefix(a, "--cyclonedx="):
+			bomOut = strings.TrimPrefix(a, "--cyclonedx=")
 		case strings.HasPrefix(a, "-"):
 			return fmt.Errorf("unknown flag %q", a)
 		default:
@@ -51,7 +61,7 @@ func renderCmd(args []string) error {
 		}
 	}
 	if path == "" {
-		return fmt.Errorf("usage: socair render <path> [--pdf out.pdf] [--sarif out.json]")
+		return fmt.Errorf("usage: socair render <path> [--pdf out.pdf] [--sarif out.json] [--cyclonedx out.json]")
 	}
 
 	d, err := engine.Scan(path)
@@ -75,6 +85,13 @@ func renderCmd(args []string) error {
 			return err
 		}
 		fmt.Fprintln(os.Stderr, "wrote", sarifOut)
+		wrote = true
+	}
+	if bomOut != "" {
+		if err := writeFile(bomOut, func(f *os.File) error { return cyclonedx.Render(f, d) }); err != nil {
+			return err
+		}
+		fmt.Fprintln(os.Stderr, "wrote", bomOut)
 		wrote = true
 	}
 	if wrote {

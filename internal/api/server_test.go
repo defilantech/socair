@@ -317,3 +317,34 @@ func TestAirlockPromoteRefusesABareReport(t *testing.T) {
 		t.Fatalf("a bare report must be refused with 400 naming the signed attestation, got %d %s", code, body)
 	}
 }
+
+func TestRenderCycloneDX(t *testing.T) {
+	d, err := demo.Document()
+	if err != nil {
+		t.Fatal(err)
+	}
+	ts := server(t, Options{})
+	b, _ := json.Marshal(map[string]any{"report": d, "format": "cyclonedx"})
+	resp, err := http.Post(ts.URL+"/api/render", "application/json", bytes.NewReader(b))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode != http.StatusOK || !strings.HasPrefix(resp.Header.Get("Content-Type"), "application/vnd.cyclonedx+json") {
+		t.Fatalf("cyclonedx render: %d %s %s", resp.StatusCode, resp.Header.Get("Content-Type"), body)
+	}
+	var bom struct {
+		BOMFormat   string `json:"bomFormat"`
+		SpecVersion string `json:"specVersion"`
+	}
+	if err := json.Unmarshal(body, &bom); err != nil || bom.BOMFormat != "CycloneDX" || bom.SpecVersion != "1.6" {
+		t.Fatalf("not a CycloneDX 1.6 BOM: %v %s", err, body)
+	}
+
+	d.Artifact.SHA256 = ""
+	d.Verification.ArtifactSHA256 = ""
+	if code, _ := post(t, ts, "/api/render", map[string]any{"report": d, "format": "cyclonedx"}); code != http.StatusUnprocessableEntity && code != http.StatusBadRequest {
+		t.Errorf("a report naming no exact bytes must be refused as input, got %d", code)
+	}
+}
