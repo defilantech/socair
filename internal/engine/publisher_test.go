@@ -60,7 +60,7 @@ const provRow = "Hash, provenance, lineage"
 func TestOMSSignedDirectoryVerifies(t *testing.T) {
 	for _, c := range []struct{ dir, keys, roots, signer string }{
 		{"key256", "p256.pub", "", "key sha256:"},
-		{"cert", "", "ca.pem", "model-release-signer"},
+		{"cert", "", "ca.crt", "model-release-signer"},
 		{"shards", "p256.pub", "", "key sha256:"},
 	} {
 		publisherEnv(t, c.keys, c.roots)
@@ -118,7 +118,7 @@ func TestUntrustedOMSSignatureIsNamedNotTrusted(t *testing.T) {
 func TestOMSSignedSingleFile(t *testing.T) {
 	publisherEnv(t, "p256.pub", "")
 	dir := vectorCopy(t, "single")
-	d, err := Scan(filepath.Join(dir, "model.gguf"))
+	d, err := Scan(filepath.Join(dir, "model.bin"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -126,10 +126,10 @@ func TestOMSSignedSingleFile(t *testing.T) {
 		t.Fatalf("provenance %s (%s)", r.Status, r.Notes)
 	}
 	// The sidecar no longer matches once the file changes.
-	if err := os.WriteFile(filepath.Join(dir, "model.gguf"), []byte("other bytes"), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, "model.bin"), []byte("other bytes"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	d, err = Scan(filepath.Join(dir, "model.gguf"))
+	d, err = Scan(filepath.Join(dir, "model.bin"))
 	if err != nil {
 		t.Fatal(err)
 	}

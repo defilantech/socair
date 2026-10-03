@@ -10,13 +10,13 @@ import (
 // trusted so every path past the trust check is reachable. It must never
 // panic, and never report an unrecognized file as verified.
 func FuzzVerify(f *testing.F) {
-	for _, p := range []string{"key256/model.sig", "cert/model.sig", "shards/model.sig", "single/model.gguf.sig"} {
+	for _, p := range []string{"key256/model.sig", "cert/model.sig", "shards/model.sig", "single/model.bin.sig"} {
 		if b, err := os.ReadFile(filepath.Join(interop, p)); err == nil {
 			f.Add(b)
 		}
 	}
 	f.Add([]byte(`{"dsseEnvelope":{}}`))
-	tr, err := LoadTrust(filepath.Join(interop, "keys", "p256.pub"), filepath.Join(interop, "keys", "ca.pem"))
+	tr, err := LoadTrust(filepath.Join(interop, "keys", "p256.pub"), filepath.Join(interop, "keys", "ca.crt"))
 	if err != nil {
 		f.Fatal(err)
 	}

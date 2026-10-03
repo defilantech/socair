@@ -64,7 +64,7 @@ func TestReferenceSignaturesVerify(t *testing.T) {
 	for _, c := range []struct{ dir, keys, roots, method string }{
 		{"key256", "p256.pub", "", "key"},
 		{"key384", "p384.pub", "", "key"},
-		{"cert", "", "ca.pem", "certificate"},
+		{"cert", "", "ca.crt", "certificate"},
 		{"shards", "p256.pub", "", "key"},
 	} {
 		o := Verify(readSig(t, c.dir+"/model.sig"), trustFrom(t, c.keys, c.roots))
@@ -78,13 +78,13 @@ func TestReferenceSignaturesVerify(t *testing.T) {
 			t.Errorf("%s: files do not match the reference signature: %v %v", c.dir, diffs, err)
 		}
 	}
-	o := Verify(readSig(t, "single/model.gguf.sig"), trustFrom(t, "p256.pub", ""))
-	b, _ := os.ReadFile(filepath.Join(interop, "single", "model.gguf"))
+	o := Verify(readSig(t, "single/model.bin.sig"), trustFrom(t, "p256.pub", ""))
+	b, _ := os.ReadFile(filepath.Join(interop, "single", "model.bin"))
 	sum := sha256.Sum256(b)
 	if diffs, err := CheckFile(o.Manifest, hex.EncodeToString(sum[:])); o.State != Verified || err != nil || len(diffs) != 0 {
 		t.Errorf("single file: %s %v %v (%s)", o.State, diffs, err, o.Detail)
 	}
-	if !strings.Contains(Verify(readSig(t, "cert/model.sig"), trustFrom(t, "", "ca.pem")).Signer, "model-release-signer") {
+	if !strings.Contains(Verify(readSig(t, "cert/model.sig"), trustFrom(t, "", "ca.crt")).Signer, "model-release-signer") {
 		t.Error("a certificate signer must be named by its subject")
 	}
 }
@@ -120,7 +120,7 @@ func TestChangedFilesAreDifferences(t *testing.T) {
 			t.Errorf("%s: diffs %v (%v), want %q", name, diffs, err, c.want)
 		}
 	}
-	o := Verify(readSig(t, "single/model.gguf.sig"), trustFrom(t, "p256.pub", ""))
+	o := Verify(readSig(t, "single/model.bin.sig"), trustFrom(t, "p256.pub", ""))
 	if diffs, _ := CheckFile(o.Manifest, strings.Repeat("0", 64)); len(diffs) == 0 {
 		t.Error("a single file with other bytes must differ")
 	}
@@ -220,7 +220,7 @@ func TestKeylessIsUnverified(t *testing.T) {
 	}
 	b["verificationMaterial"].(map[string]any)["tlogEntries"] = []any{map[string]any{"logIndex": "1"}}
 	raw, _ := json.Marshal(b)
-	if o := Verify(raw, trustFrom(t, "", "ca.pem")); o.State != Unverified || o.Method != "keyless" {
+	if o := Verify(raw, trustFrom(t, "", "ca.crt")); o.State != Unverified || o.Method != "keyless" {
 		t.Fatalf("%s %s (%s)", o.State, o.Method, o.Detail)
 	}
 }
