@@ -142,6 +142,7 @@ func ScanMode(path string, mode Mode) (*report.Document, error) {
 		if m.MultiPart() {
 			id.Split = fmt.Sprintf("part %d of %d", m.Split.No+1, m.Split.Count)
 		}
+		id.TokenizerSHA256 = tokenizer.VocabHash(m.Tokenizer.Tokens)
 		chatTemplates = m.ChatTemplates
 		chatTemplateNonString = m.ChatTemplateNonString
 		tokenizerModel = m.TokenizerModel

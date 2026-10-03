@@ -45,7 +45,7 @@ Section references in the bounded statement point at this template's numbering.
 | File size (bytes) | `[size_bytes]` |
 | Quantization, declared | `[quant_declared]` |
 | Quantization, observed weight layout | `[quant_observed]` |
-| Tokenizer version hash | `[tokenizer_hash]` |
+| Tokenizer version hash | `[tokenizer_hash]` (SHA-256 of `tokenizer.json` for a model directory; of the vocabulary, tokens in id order, for a GGUF) |
 | Chat-template version hash | `[chat_template_hash]` |
 | Files (model directory only) | `[path, role, size, sha256 per file]` |
 

@@ -236,6 +236,10 @@ type Identity struct {
 	ChatTemplateSHA256 string
 	Split              string
 	Files              []ArtifactFile
+	// TokenizerSHA256 identifies the tokenizer: the SHA-256 of tokenizer.json
+	// for a model directory, of the vocabulary (tokens in id order,
+	// NUL-terminated) for a GGUF.
+	TokenizerSHA256 string
 }
 
 // NewFromIdentity seeds a document from a reader identity. Every content check
@@ -260,6 +264,7 @@ func NewFromIdentity(id Identity) *Document {
 			ChatTemplateHash: id.ChatTemplateSHA256,
 			Split:            id.Split,
 			Files:            id.Files,
+			TokenizerHash:    id.TokenizerSHA256,
 		},
 		Scope: Scope{
 			CheckSetVersion:  "tier1/0.1",

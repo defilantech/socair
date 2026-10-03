@@ -67,6 +67,9 @@ func scanDir(dir string, start time.Time) (*report.Document, error) {
 		unparsed = append(unparsed, "base model "+base+": an adapter runs only on its base, which is a separate artifact and needs its own attestation")
 	}
 
+	tok := tokenizer.InspectHF(root, files)
+	id.TokenizerSHA256 = tok.Hash
+
 	d, provOpts, expires, err := begin(start, id, dir)
 	if err != nil {
 		return nil, err
@@ -130,7 +133,7 @@ func scanDir(dir string, start time.Time) (*report.Document, error) {
 		provenance.Inspect(provOpts),
 		denylistRow(files, id.SHA256),
 		tmplRow,
-		tokenizerRow(files),
+		tok.Result,
 		remotecode.Inspect(root, files),
 	}
 	if len(pickleParts) > 0 {
@@ -152,24 +155,6 @@ func denylistRow(files []modeldir.File, digest string) checks.Result {
 		parts = append(parts, checks.Part{File: f.Path, Result: denylist.Check(f.SHA256, list)})
 	}
 	return checks.Merge(whole.Name, whole.LooksFor, parts)
-}
-
-// tokenizerRow: Hugging Face tokenizer files are hashed and listed but not
-// inspected; tokenizer inspection reads GGUF vocabularies.
-func tokenizerRow(files []modeldir.File) checks.Result {
-	r := tokenizer.Inspect("")
-	var names []string
-	for _, f := range files {
-		if f.Role == modeldir.RoleTokenizer {
-			names = append(names, f.Path)
-		}
-	}
-	if len(names) == 0 {
-		r.Notes = "no tokenizer file in the directory"
-		return r
-	}
-	r.Notes = "tokenizer files hashed and listed, not inspected (inspection covers GGUF vocabularies): " + strings.Join(names, ", ")
-	return r
 }
 
 // repoName matches a Hugging Face repo id, org/name.

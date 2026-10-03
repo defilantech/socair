@@ -184,6 +184,9 @@ func TestGGUFWithTokenizerAuthorizes(t *testing.T) {
 			t.Errorf("check %q = %s (%s), want PASS", c.Name, c.Status, c.Notes)
 		}
 	}
+	if len(d.Artifact.TokenizerHash) != 64 {
+		t.Errorf("tokenizer_hash %q, want the vocabulary hash", d.Artifact.TokenizerHash)
+	}
 	if d.PromotionAuthorization.State != report.StateAuthorized {
 		t.Fatalf("state = %s, want authorized", d.PromotionAuthorization.State)
 	}
