@@ -9,6 +9,7 @@ import (
 	"io"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/defilantech/socair/internal/airlock"
 	"github.com/defilantech/socair/internal/attest"
@@ -38,9 +39,13 @@ func keyCmd(args []string) error {
 // signCmd signs a report document into a DSSE attestation.
 func signCmd(args []string) error {
 	fs := parseFlags(args)
+	if fs.val("acceptance") != "" {
+		return reissueCmd(fs)
+	}
 	keyPath, in := fs.val("key"), fs.val("report")
 	if keyPath == "" || in == "" {
-		return errors.New("usage: socair sign --key <key> --report <report.json> [--out <attestation.dsse.json>]")
+		return errors.New("usage: socair sign --key <key> --report <report.json> [--out <attestation.dsse.json>]\n" +
+			"       socair sign --key <key> --attestation <r.dsse.json> --acceptance <a.dsse.json> (--trusted <dir> --acceptors <dir> | --store <path>) [--out <path>]")
 	}
 	k, err := attest.LoadPrivateKey(keyPath)
 	if err != nil {
@@ -127,6 +132,24 @@ func verifyCmd(args []string) error {
 	d := v.Document
 	fmt.Printf("verified: signed by %s\n  artifact %s (%s)\n  promotion %s, %d check(s), document %s\n",
 		v.KeyID, v.SHA256, d.Artifact.FileName, d.PromotionAuthorization.State, len(d.Checks), d.Verification.DocumentHash)
+	if pa := d.PromotionAuthorization; pa.State == report.StateAuthorizedWithConditions {
+		switch {
+		case !pa.Signed():
+			fmt.Printf("  acceptance by %s is UNSIGNED (named at scan time); the airlock will not promote it\n", pa.AcceptedBy)
+		case fs.val("acceptors") == "" && fs.val("store") == "":
+			fmt.Printf("  acceptance by %s is signed; pass --acceptors <key.pub|dir> to verify it\n", pa.AcceptedBy)
+		default:
+			acceptors, err := trustedFor(fs, "acceptors", (*airlock.Store).AcceptorKeys)
+			if err != nil {
+				return err
+			}
+			a, err := attest.VerifyAcceptance(v, acceptors, time.Now())
+			if err != nil {
+				return fmt.Errorf("%w: acceptance: %v", attest.ErrVerify, err)
+			}
+			fmt.Printf("  acceptance verified: %s, acceptor key %s, until %s, of %s\n", a.AcceptedBy, attest.ShortID(a.KeyID), a.Expires, strings.Join(a.AcceptedSurfaces, ", "))
+		}
+	}
 	if fs.val("artifact") == "" {
 		fmt.Println("  the artifact itself was not checked; pass --artifact <path> to bind it")
 	}
@@ -144,4 +167,57 @@ func sha256File(path string) (string, error) {
 		return "", err
 	}
 	return hex.EncodeToString(h.Sum(nil)), nil
+}
+
+// reissueCmd re-issues a reviewed, withheld attestation as
+// authorized_with_conditions, carrying the acceptor's signed acceptance, and
+// signs it with the operator's key.
+func reissueCmd(fs *flagSet) error {
+	keyPath, in, accPath := fs.val("key"), fs.val("attestation"), fs.val("acceptance")
+	if keyPath == "" || in == "" {
+		return errors.New("usage: socair sign --key <key> --attestation <r.dsse.json> --acceptance <a.dsse.json> (--trusted <dir> --acceptors <dir> | --store <path>) [--out <path>]")
+	}
+	signers, err := trustedFor(fs, "trusted", (*airlock.Store).TrustedKeys)
+	if err != nil {
+		return err
+	}
+	acceptors, err := trustedFor(fs, "acceptors", (*airlock.Store).AcceptorKeys)
+	if err != nil {
+		return err
+	}
+	env, err := os.ReadFile(in)
+	if err != nil {
+		return err
+	}
+	v, err := attest.Verify(env, signers)
+	if err != nil {
+		return err
+	}
+	raw, err := os.ReadFile(accPath)
+	if err != nil {
+		return err
+	}
+	d, err := attest.Conditional(v, raw, acceptors, time.Now())
+	if err != nil {
+		return err
+	}
+	k, err := attest.LoadPrivateKey(keyPath)
+	if err != nil {
+		return err
+	}
+	out, err := attest.Sign(d, k)
+	if err != nil {
+		return err
+	}
+	dst := fs.val("out")
+	if dst == "" {
+		dst = strings.TrimSuffix(in, ".dsse.json") + ".conditional.dsse.json"
+	}
+	if err := os.WriteFile(dst, out, 0o644); err != nil {
+		return err
+	}
+	pa := d.PromotionAuthorization
+	fmt.Printf("re-issued %s as authorized_with_conditions: %s accepted %s until %s\n  %s\n",
+		v.Document.Header.DocumentID, pa.AcceptedBy, strings.Join(pa.AcceptedSurfaces, ", "), pa.AcceptanceExpires, dst)
+	return nil
 }

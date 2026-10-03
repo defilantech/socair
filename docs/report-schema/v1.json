@@ -165,7 +165,9 @@
         "accepted_surfaces": { "type": "array", "items": { "type": "string" } },
         "accepted_by": { "type": "string" },
         "accepted_at": { "type": "string" },
-        "acceptance_expires": { "type": "string", "format": "date-time" }
+        "acceptance_expires": { "type": "string", "format": "date-time" },
+        "acceptance": { "type": "string", "contentEncoding": "base64" },
+        "reviewed_document_hash": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
       }
     },
     "verification": {

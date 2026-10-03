@@ -152,7 +152,7 @@ func TestPullScanPromoteADirectory(t *testing.T) {
 		t.Setenv(k, "")
 	}
 	t.Setenv("SOCAIR_PROVENANCE", manifest)
-	t.Setenv("SOCAIR_ACCEPTED_BY", "ciso@example.com")
+	t.Setenv("SOCAIR_ACCEPTED_BY", "")
 	d, err := engine.Scan(staged)
 	if err != nil {
 		t.Fatal(err)
@@ -160,10 +160,10 @@ func TestPullScanPromoteADirectory(t *testing.T) {
 	if d.Artifact.SHA256 != digest || d.Artifact.CommitSHA != hubCommit || d.Artifact.Name != "tiny" {
 		t.Fatalf("scan subject %s commit %q name %q", d.Artifact.SHA256, d.Artifact.CommitSHA, d.Artifact.Name)
 	}
-	if d.PromotionAuthorization.State != report.StateAuthorizedWithConditions {
+	if d.PromotionAuthorization.State != report.StateWithheld {
 		t.Fatalf("state %s", d.PromotionAuthorization.State)
 	}
-	if _, err := Promote(s, staged, writeReport(t, d)); err != nil {
+	if _, err := Promote(s, staged, acceptedTicket(t, s, d, 24*time.Hour)); err != nil {
 		t.Fatalf("promote: %v", err)
 	}
 	if got, _, _ := modeldir.Hash(filepath.Join(s.CleanPath(digest), "tiny")); got != digest {

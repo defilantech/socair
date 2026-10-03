@@ -80,6 +80,11 @@ func main() {
 			fmt.Fprintln(os.Stderr, "error:", err)
 			os.Exit(1)
 		}
+	case "accept":
+		if err := acceptCmd(os.Args[2:]); err != nil {
+			fmt.Fprintln(os.Stderr, "error:", err)
+			os.Exit(1)
+		}
 	case "verify":
 		if err := verifyCmd(os.Args[2:]); err != nil {
 			fmt.Fprintln(os.Stderr, "error:", err)
@@ -111,6 +116,10 @@ Usage:
   socair render <path>     scan and write the HTML attestation to stdout
   socair key gen --out <prefix>   create an Ed25519 signing key pair
   socair sign --key <key> --report <report.json>   sign a report as a DSSE attestation
+  socair accept --attestation <r.dsse.json> --key <acceptor.key> --by <name> --expires <time>
+                           sign an acceptance of a withheld report's untested surfaces
+  socair sign --key <key> --attestation <r.dsse.json> --acceptance <a.dsse.json>
+                           re-issue it as authorized with conditions
   socair verify <attestation> --trusted <key.pub|dir> [--artifact <path>]
                            verify an attestation, and that a file is its artifact
   socair airlock init <store>   create the store, staging, and activity log

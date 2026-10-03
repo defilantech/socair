@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/defilantech/socair/internal/engine"
 	"github.com/defilantech/socair/internal/modeldir"
@@ -13,14 +14,15 @@ import (
 	"github.com/defilantech/socair/internal/safetensors/safetensorstest"
 )
 
-// conditionalDirectory writes a small model directory and scans it. The
-// directory's NOT_TESTED rows are accepted, so it crosses with conditions.
+// conditionalDirectory writes a small model directory and scans it. Its
+// NOT_TESTED rows withhold it; acceptedTicket then has an acceptor sign for
+// them, so it crosses with conditions.
 func conditionalDirectory(t *testing.T) (string, *report.Document) {
 	t.Helper()
 	for _, k := range []string{"SOCAIR_REPO_MIRROR", "SOCAIR_DENYLIST", "SOCAIR_PROVENANCE"} {
 		t.Setenv(k, "")
 	}
-	t.Setenv("SOCAIR_ACCEPTED_BY", "ciso@example.com")
+	t.Setenv("SOCAIR_ACCEPTED_BY", "")
 	dir := filepath.Join(t.TempDir(), "tiny-model")
 	for rel, body := range map[string]string{
 		"config.json":           `{"model_type":"llama"}`,
@@ -40,8 +42,8 @@ func conditionalDirectory(t *testing.T) (string, *report.Document) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if d.PromotionAuthorization.State != report.StateAuthorizedWithConditions {
-		t.Fatalf("fixture state %s, want authorized_with_conditions", d.PromotionAuthorization.State)
+	if d.PromotionAuthorization.State != report.StateWithheld {
+		t.Fatalf("fixture state %s, want withheld for its gaps", d.PromotionAuthorization.State)
 	}
 	return dir, d
 }
@@ -49,7 +51,8 @@ func conditionalDirectory(t *testing.T) (string, *report.Document) {
 func TestPromoteADirectory(t *testing.T) {
 	dir, d := conditionalDirectory(t)
 	s := trustedStore(t)
-	e, err := Promote(s, dir, writeReport(t, d))
+	ticket := acceptedTicket(t, s, d, 24*time.Hour)
+	e, err := Promote(s, dir, ticket)
 	if err != nil {
 		t.Fatalf("an attested directory crosses: %v", err)
 	}
@@ -74,7 +77,7 @@ func TestPromoteADirectory(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(stored, "config.json"), []byte(`{"auto_map":{}}`), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := Promote(s, dir, writeReport(t, d)); err != nil {
+	if _, err := Promote(s, dir, ticket); err != nil {
 		t.Fatal(err)
 	}
 	if got, _, _ := modeldir.Hash(stored); got != d.Artifact.SHA256 {
@@ -104,11 +107,11 @@ func TestPromoteRefusesAChangedDirectory(t *testing.T) {
 	}
 	for name, c := range cases {
 		dir, d := conditionalDirectory(t)
-		ticket := writeReport(t, d)
+		s := trustedStore(t)
+		ticket := acceptedTicket(t, s, d, 24*time.Hour)
 		if err := c.change(dir); err != nil {
 			t.Fatal(err)
 		}
-		s := trustedStore(t)
 		_, err := Promote(s, dir, ticket)
 		if !errors.Is(err, ErrRefused) || !strings.Contains(err.Error(), c.names) {
 			t.Errorf("%s: want a refusal naming %q, got %v", name, c.names, err)
@@ -123,12 +126,12 @@ func TestPromoteRefusesAChangedDirectory(t *testing.T) {
 // stored.
 func TestPromoteDirectoryStoresOnlyVerifiedBytes(t *testing.T) {
 	dir, d := conditionalDirectory(t)
-	ticket := writeReport(t, d)
+	s := trustedStore(t)
+	ticket := acceptedTicket(t, s, d, 24*time.Hour)
 	promoteOpened = func() {
 		_ = os.WriteFile(filepath.Join(dir, "model.safetensors"), []byte("swapped"), 0o644)
 	}
 	t.Cleanup(func() { promoteOpened = nil })
-	s := trustedStore(t)
 	if _, err := Promote(s, dir, ticket); !errors.Is(err, ErrRefused) {
 		t.Fatalf("bytes swapped mid-copy must be refused, got %v", err)
 	}
@@ -137,7 +140,7 @@ func TestPromoteDirectoryStoresOnlyVerifiedBytes(t *testing.T) {
 func TestPromoteRefusesAShapeMismatch(t *testing.T) {
 	dir, d := conditionalDirectory(t)
 	s := trustedStore(t)
-	if _, err := Promote(s, filepath.Join(dir, "model.safetensors"), writeReport(t, d)); !errors.Is(err, ErrRefused) {
+	if _, err := Promote(s, filepath.Join(dir, "model.safetensors"), acceptedTicket(t, s, d, 24*time.Hour)); !errors.Is(err, ErrRefused) || !strings.Contains(err.Error(), "not a directory") {
 		t.Errorf("a directory attestation must not carry a single file: %v", err)
 	}
 	file, fd := authorizedArtifact(t)
