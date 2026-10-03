@@ -72,6 +72,15 @@ type Manifest struct {
 	// directly; the report carries only its hash.
 	ChatTemplate string `json:"-"`
 
+	// ChatTemplates holds every chat template by name: "default" for
+	// tokenizer.chat_template and the suffix for a named template such as
+	// tokenizer.chat_template.tool_use. A serving stack can select any of
+	// them, so the hero check reads them all.
+	ChatTemplates map[string]string `json:"-"`
+	// ChatTemplateNonString names chat-template keys stored as something other
+	// than a string, which cannot be inspected.
+	ChatTemplateNonString []string `json:"chat_template_non_string,omitempty"`
+
 	// DuplicateKeys lists metadata keys that appear more than once. llama.cpp
 	// rejects such a file and readers disagree on which value wins, so the
 	// first occurrence is kept and the repeat is evidence for the structure
@@ -215,6 +224,10 @@ func readHeader(f io.Reader, m *Manifest) error {
 		}
 
 		_, isWanted := wanted[key]
+		tmplName, isTmpl := templateName(key)
+		if isTmpl {
+			isWanted = vtype == typeString
+		}
 		val, err := scanValue(f, vtype, isWanted)
 		if err != nil {
 			return fmt.Errorf("gguf: reading value for %q: %w", key, err)
@@ -224,6 +237,16 @@ func readHeader(f io.Reader, m *Manifest) error {
 			continue
 		}
 		seen[key] = true
+		if isTmpl {
+			if vtype != typeString {
+				m.ChatTemplateNonString = append(m.ChatTemplateNonString, tmplName)
+				continue
+			}
+			if m.ChatTemplates == nil {
+				m.ChatTemplates = map[string]string{}
+			}
+			m.ChatTemplates[tmplName] = asString(val)
+		}
 		if !isWanted {
 			continue
 		}
@@ -270,6 +293,18 @@ func applyWanted(m *Manifest, key string, val any) {
 			m.ensureSplit().TensorCount = v
 		}
 	}
+}
+
+// templateName maps a chat-template metadata key to its template name.
+func templateName(key string) (string, bool) {
+	const base = "tokenizer.chat_template"
+	if key == base {
+		return "default", true
+	}
+	if n, ok := strings.CutPrefix(key, base+"."); ok && n != "" {
+		return n, true
+	}
+	return "", false
 }
 
 func (m *Manifest) ensureSplit() *Split {
@@ -454,4 +489,10 @@ func QuantFromFileName(name string) string {
 		}
 	}
 	return ""
+}
+
+// SHA256Hex is the hex SHA-256 of b.
+func SHA256Hex(b []byte) string {
+	sum := sha256.Sum256(b)
+	return hex.EncodeToString(sum[:])
 }

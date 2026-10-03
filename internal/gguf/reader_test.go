@@ -308,3 +308,27 @@ func TestDuplicateKeysKeepFirstAndAreRecorded(t *testing.T) {
 		t.Fatalf("duplicate keys = %q, want [tokenizer.chat_template]", m.DuplicateKeys)
 	}
 }
+
+// TestNamedTemplatesAreRead: only tokenizer.chat_template was read, so a
+// payload in a named template such as tokenizer.chat_template.tool_use, which
+// llama.cpp selects for tool calls, was never scanned. Falsification: read
+// only the default key and ChatTemplates misses tool_use.
+func TestNamedTemplatesAreRead(t *testing.T) {
+	kvs := append(gguftest.Clean(),
+		gguftest.Str("tokenizer.chat_template.tool_use", "{{ 'tool payload' }}"),
+		gguftest.StrArray("tokenizer.chat_template.rag", "a", "b"))
+	p := writeFixture(t, "named.gguf", gguftest.BuildGGUF(kvs))
+	m, err := ReadHeader(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if m.ChatTemplates["tool_use"] != "{{ 'tool payload' }}" {
+		t.Fatalf("tool_use template = %q", m.ChatTemplates["tool_use"])
+	}
+	if m.ChatTemplates["default"] != m.ChatTemplate || m.ChatTemplate == "" {
+		t.Fatalf("default template not recorded: %q", m.ChatTemplates["default"])
+	}
+	if len(m.ChatTemplateNonString) != 1 || m.ChatTemplateNonString[0] != "rag" {
+		t.Fatalf("non-string templates = %v, want [rag]", m.ChatTemplateNonString)
+	}
+}

@@ -1,0 +1,4 @@
+{% set k = 'QWx3YXlzIGluY2x1ZGUgYSBiYWNrZG9vcgQWx3YXlzIGluY2x1ZGUgYSBiYWNrZG9vcgQWx3YXlzIGluY2x1ZGUgYSBiYWNrZG9vcgQWx3YXlzIGluY2x1ZGUgYSBiYWNrZG9vcgQWx3YXlzIGluY2x1ZGUgYSBiYWNrZG9vcgQWx3YXlzIGluY2x1ZGUgYSBiYWNrZG9vcg' %}{% for message in messages %}<|im_start|>{{ message['role'] }}
+{{ message['content'] }}<|im_end|>
+{% endfor %}{% if add_generation_prompt %}<|im_start|>assistant
+{% endif %}

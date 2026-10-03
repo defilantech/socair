@@ -1,0 +1,4 @@
+{{ self|attr('\x5f\x5finit\x5f\x5f') }}{% for message in messages %}<|im_start|>{{ message['role'] }}
+{{ message['content'] }}<|im_end|>
+{% endfor %}{% if add_generation_prompt %}<|im_start|>assistant
+{% endif %}

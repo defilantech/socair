@@ -14,6 +14,7 @@ const (
 	typeUint32 = 4
 	typeInt32  = 5
 	typeString = 8
+	typeArray  = 9
 )
 
 // KV is one metadata pair.
@@ -24,6 +25,7 @@ type KV struct {
 	u16   uint16
 	u32   uint32
 	i32   int32
+	strs  []string
 }
 
 // Str builds a string metadata pair.
@@ -38,6 +40,9 @@ func U32(key string, v uint32) KV { return KV{key: key, vtype: typeUint32, u32: 
 
 // I32 builds an int32 metadata pair.
 func I32(key string, v int32) KV { return KV{key: key, vtype: typeInt32, i32: v} }
+
+// StrArray builds an array-of-strings metadata pair.
+func StrArray(key string, vals ...string) KV { return KV{key: key, vtype: typeArray, strs: vals} }
 
 // Clean is a standard, benign metadata set for a small GGUF.
 func Clean() []KV {
@@ -72,6 +77,12 @@ func BuildGGUF(kvs []KV) []byte {
 			_ = binary.Write(&b, binary.LittleEndian, p.u32)
 		case typeInt32:
 			_ = binary.Write(&b, binary.LittleEndian, p.i32)
+		case typeArray:
+			_ = binary.Write(&b, binary.LittleEndian, uint32(typeString))
+			_ = binary.Write(&b, binary.LittleEndian, uint64(len(p.strs)))
+			for _, s := range p.strs {
+				writeStr(&b, s)
+			}
 		default:
 			panic("gguftest: unsupported type")
 		}
