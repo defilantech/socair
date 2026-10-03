@@ -77,6 +77,10 @@
     border: 1px solid #f0d68a; text-transform: uppercase; }
   footer { margin-top: 40px; padding-top: 14px; border-top: 1px solid var(--line);
     color: var(--muted); font-size: 12px; }
+  /* UNSIGNED: a report no key has signed is a draft, and says so on its face. */
+  .unsigned-chip { display: inline-block; margin: 0 0 10px 6px; padding: 3px 8px; border-radius: 4px;
+    font-size: 11px; font-weight: 700; letter-spacing: 0.08em; background: #fdecea; color: #a3231b;
+    border: 1px solid #f3c2bd; text-transform: uppercase; }
   @media print { body { padding: 0; } .sheet { max-width: none; } }
 </style>
 </head>
@@ -85,6 +89,7 @@
   {{- if .Sample }}<div class="sample-banner">SAMPLE</div>{{ end }}
 
   {{- if .Sample }}<div class="sample-chip">Sample data &middot; not a real issuance</div>{{ end }}
+  {{- if not .Document.Verification.SignerKeyID }}<div class="unsigned-chip">Unsigned &middot; not an attestation until signed</div>{{ end }}
   <h1>Model Assurance Attestation</h1>
   <div class="issued">
     Issued {{ .Document.Header.IssuedUTC }} &middot; Template {{ .Document.Header.TemplateVersion }}
@@ -170,6 +175,11 @@
   <h2>Verification</h2>
   <p class="evidence">
     Signing: {{ .Document.Verification.SigningMethod }}<br>
+    {{- if .Document.Verification.SignerKeyID }}
+    Signer key: <span class="hash">{{ .Document.Verification.SignerKeyID }}</span><br>
+    Document hash: <span class="hash">{{ .Document.Verification.DocumentHash }}</span><br>
+    A printed report is a claim, not the proof. Check the attestation: <code>socair verify &lt;attestation.dsse.json&gt; --trusted &lt;key.pub&gt; --artifact &lt;file&gt;</code><br>
+    {{- end }}
     Artifact SHA256: <span class="hash">{{ .Document.Verification.ArtifactSHA256 }}</span>
     {{- if .Document.Verification.RerunInstructions }}<br>Re-run: {{ .Document.Verification.RerunInstructions }}{{ end }}
   </p>

@@ -42,6 +42,9 @@ var (
 	leadInk     = rgb{138, 75, 0}
 )
 
+// UnsignedMark is printed on a report that no key has signed.
+const UnsignedMark = "UNSIGNED - not an attestation until signed"
+
 // RenderPDF writes the PDF attestation for d to w.
 func RenderPDF(w io.Writer, d *report.Document) error {
 	pdf := fpdf.New("P", "mm", "A4", "")
@@ -64,6 +67,12 @@ func RenderPDF(w io.Writer, d *report.Document) error {
 
 	title(pdf, "Model Assurance Attestation")
 	sub(pdf, "Issued "+d.Header.IssuedUTC+"  ·  Template "+d.Header.TemplateVersion)
+	if d.Verification.SignerKeyID == "" {
+		// A report no key has signed is a draft, and says so on its face.
+		pdf.SetFont("Helvetica", "B", 9)
+		pdf.SetTextColor(failInk.r, failInk.g, failInk.b)
+		pdf.CellFormat(contentW, 6, UnsignedMark, "", 1, "L", false, 0, "")
+	}
 	pdf.Ln(2)
 
 	cover(pdf, d)
@@ -108,6 +117,11 @@ func RenderPDF(w io.Writer, d *report.Document) error {
 	pdf.SetFont("Helvetica", "", 9)
 	pdf.SetTextColor(muted.r, muted.g, muted.b)
 	pdf.MultiCell(contentW, lineH, "Signing: "+d.Verification.SigningMethod, "", "L", false)
+	if d.Verification.SignerKeyID != "" {
+		pdf.MultiCell(contentW, lineH, "Signer key: "+d.Verification.SignerKeyID, "", "L", false)
+		pdf.MultiCell(contentW, lineH, "Document hash: "+d.Verification.DocumentHash, "", "L", false)
+		pdf.MultiCell(contentW, lineH, "A printed report is a claim, not the proof. Check the attestation: socair verify <attestation.dsse.json> --trusted <key.pub> --artifact <file>", "", "L", false)
+	}
 	pdf.MultiCell(contentW, lineH, "Artifact SHA256: "+d.Verification.ArtifactSHA256, "", "L", false)
 	pdf.Ln(2)
 
