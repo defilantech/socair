@@ -201,6 +201,7 @@ func ScanMode(path string, mode Mode) (*report.Document, error) {
 		results = append(results, pickle.Inspect(path))
 	}
 	applyResults(d, results)
+	d.OutOfScope.UnparsedFormats = unparsedFormats(id)
 
 	d.Scope.ScanEndUTC = time.Now().UTC().Format(time.RFC3339)
 	finalizeFindings(d)
@@ -357,4 +358,23 @@ func publisherSigning(status string) string {
 	default:
 		return s + " (claimed by the provenance manifest, not verified)"
 	}
+}
+
+// unparsedFormats names what this scan did not parse: an artifact in no
+// format it reads, the other shards of a split model, and, when a repo
+// mirror is supplied, the model and serialization files beside the artifact.
+func unparsedFormats(id report.Identity) []string {
+	var out []string
+	if id.Format == "unknown" {
+		out = append(out, "artifact "+id.FileName+": not GGUF, safetensors, or pickle, so no format check ran")
+	}
+	if id.Split != "" {
+		out = append(out, "the other shards of this split model (this file is "+id.Split+"); each shard needs its own attestation")
+	}
+	if mirror := os.Getenv("SOCAIR_REPO_MIRROR"); mirror != "" {
+		if formats, err := inventory.UnparsedFormats(mirror, id.FileName); err == nil {
+			out = append(out, formats...)
+		}
+	}
+	return out
 }

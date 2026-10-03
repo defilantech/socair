@@ -123,7 +123,20 @@
         "does_not_certify": { "type": "string", "minLength": 1 },
         "ceiling": { "type": "array", "minItems": 1, "items": { "type": "string" } },
         "unparsed_formats": { "type": "array", "items": { "type": "string" } },
-        "untested_node_classes": { "type": "array", "items": { "type": "string" } }
+        "untested_node_classes": { "type": "array", "items": { "type": "string" } },
+        "not_run": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["name", "looks_for", "reason"],
+            "properties": {
+              "name": { "type": "string", "minLength": 1 },
+              "looks_for": { "type": "string" },
+              "reason": { "type": "string", "minLength": 1 }
+            }
+          }
+        }
       }
     },
     "promotion_authorization": {

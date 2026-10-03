@@ -269,3 +269,53 @@ func excerpt(s string) string {
 	}
 	return s
 }
+
+// unparsedExt maps the extensions of model and serialization formats Socair
+// does not parse to a format name. These are the files that can carry
+// weights or code and that no check examined.
+var unparsedExt = map[string]string{
+	".onnx": "ONNX", ".h5": "Keras/HDF5", ".hdf5": "Keras/HDF5", ".keras": "Keras",
+	".pb": "TensorFlow graph or SavedModel", ".tflite": "TensorFlow Lite", ".nemo": "NeMo archive",
+	".npy": "NumPy", ".npz": "NumPy", ".joblib": "joblib", ".msgpack": "Flax msgpack",
+	".pkl": "pickle (not this artifact)", ".pickle": "pickle (not this artifact)",
+	".pt": "PyTorch checkpoint (not this artifact)", ".pth": "PyTorch checkpoint (not this artifact)",
+	".bin": "binary weights or PyTorch checkpoint (not this artifact)", ".ckpt": "checkpoint (not this artifact)",
+	".llamafile": "llamafile", ".mlmodel": "Core ML", ".engine": "TensorRT engine", ".plan": "TensorRT engine",
+	".gguf": "GGUF (not this artifact)", ".safetensors": "safetensors (not this artifact)",
+}
+
+// UnparsedFormats lists the files in a repo mirror, other than the attested
+// artifact, whose format can carry weights or code and that this scan did not
+// parse, grouped by format and sorted. The attestation covers one artifact;
+// this is what a reader needs to know sits beside it unexamined.
+func UnparsedFormats(root, artifactName string) ([]string, error) {
+	byFormat := map[string][]string{}
+	err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
+		if err != nil || d.IsDir() {
+			return nil
+		}
+		if d.Name() == artifactName {
+			return nil
+		}
+		if f, ok := unparsedExt[strings.ToLower(filepath.Ext(path))]; ok {
+			rel, _ := filepath.Rel(root, path)
+			byFormat[f] = append(byFormat[f], rel)
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	out := make([]string, 0, len(byFormat))
+	for f, files := range byFormat {
+		sort.Strings(files)
+		shown := files
+		more := ""
+		if len(files) > 5 {
+			shown, more = files[:5], fmt.Sprintf(" and %d more", len(files)-5)
+		}
+		out = append(out, fmt.Sprintf("%s: %s%s", f, strings.Join(shown, ", "), more))
+	}
+	sort.Strings(out)
+	return out, nil
+}

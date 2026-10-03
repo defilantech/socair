@@ -427,3 +427,76 @@ func TestChecksSeeTheHashedBytes(t *testing.T) {
 		t.Fatalf("hero = %s: the checks read different bytes than were hashed", got)
 	}
 }
+
+// TestReportNamesWhatItDidNotExamine: the report never listed the files beside
+// the artifact that no check parsed, never said the Tier 2 checks did not run,
+// and named no node class while its bounded statement refers to one.
+// Falsification: drop the UnparsedFormats assignment and the ONNX file is
+// silently skipped.
+func TestReportNamesWhatItDidNotExamine(t *testing.T) {
+	supplyInputs(t, safetensorstest.Clean())
+	mirror := os.Getenv("SOCAIR_REPO_MIRROR")
+	for name, data := range map[string]string{
+		"model.onnx":         "onnx",
+		"sub/extra.pkl":      "pickle",
+		"tokenizer.json":     "{}",
+		"model.safetensors":  "the artifact itself",
+		"saved_model/x/a.pb": "graph",
+	} {
+		p := filepath.Join(mirror, name)
+		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(p, []byte(data), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	d, err := Scan(writeFixture(t, "model.safetensors", safetensorstest.Clean()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := strings.Join(d.OutOfScope.UnparsedFormats, "\n")
+	for _, want := range []string{"ONNX: model.onnx", "sub/extra.pkl", "saved_model/x/a.pb"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("unparsed formats %q do not name %q", d.OutOfScope.UnparsedFormats, want)
+		}
+	}
+	for _, not := range []string{"tokenizer.json", "model.safetensors"} {
+		if strings.Contains(got, not) {
+			t.Errorf("unparsed formats must not list %q: %q", not, d.OutOfScope.UnparsedFormats)
+		}
+	}
+	if len(d.OutOfScope.NotRun) != 2 || !strings.Contains(d.OutOfScope.NotRun[0].Name, "Tier 2") {
+		t.Errorf("not run = %+v, want the two Tier 2 checks", d.OutOfScope.NotRun)
+	}
+	if len(d.OutOfScope.UntestedNodeClasses) == 0 {
+		t.Error("a Tier 1 report must say no node class was tested")
+	}
+	// Out-of-level checks are not gaps: the all-PASS artifact still authorizes.
+	if d.PromotionAuthorization.State != report.StateAuthorized {
+		t.Errorf("state = %s: Tier 2 checks not run must not count as Tier 1 gaps", d.PromotionAuthorization.State)
+	}
+	if problems := report.Validate(d); len(problems) != 0 {
+		t.Fatalf("invalid report: %v", problems)
+	}
+}
+
+func TestUnparsedNamesUnknownArtifactAndOtherShards(t *testing.T) {
+	d, err := Scan(writeFixture(t, "mystery.bin", []byte("not a model")))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(strings.Join(d.OutOfScope.UnparsedFormats, "|"), "mystery.bin: not GGUF") {
+		t.Errorf("an unrecognized artifact must be named: %q", d.OutOfScope.UnparsedFormats)
+	}
+
+	split := gguftest.BuildGGUF(append(gguftest.Clean(), gguftest.U16("split.no", 0), gguftest.U16("split.count", 3)))
+	d, err = Scan(writeFixture(t, "big-00001-of-00003-Q5_K_M.gguf", split))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(strings.Join(d.OutOfScope.UnparsedFormats, "|"), "other shards") {
+		t.Errorf("a split shard must name the shards it did not scan: %q", d.OutOfScope.UnparsedFormats)
+	}
+}

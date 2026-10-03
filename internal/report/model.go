@@ -122,7 +122,31 @@ type OutOfScope struct {
 	Ceiling             []string `json:"ceiling"`
 	UnparsedFormats     []string `json:"unparsed_formats,omitempty"`
 	UntestedNodeClasses []string `json:"untested_node_classes,omitempty"`
+	// NotRun lists checks of a higher level than the one awarded. They are
+	// outside this attestation's scope, not gaps in it, so they do not count
+	// toward promotion; they are named so a reader sees what was not done.
+	NotRun []NotRunCheck `json:"not_run,omitempty"`
 }
+
+// NotRunCheck is a check that did not run at the awarded level, and why.
+type NotRunCheck struct {
+	Name     string `json:"name"`
+	LooksFor string `json:"looks_for"`
+	Reason   string `json:"reason"`
+}
+
+// Tier2NotRun is what a Tier 1 attestation says about the Tier 2 checks.
+func Tier2NotRun() []NotRunCheck {
+	const why = "Tier 2 (forward-pass, on the production node class) did not run; Tier 1 is static and runs no inference"
+	return []NotRunCheck{
+		{Name: "Forward-pass trigger probes (Tier 2)", LooksFor: "Behavior under the production serving stack", Reason: why},
+		{Name: "Serving-stack differential (Tier 2)", LooksFor: "Same artifact behaving differently across stacks", Reason: why},
+	}
+}
+
+// Tier1UntestedNodeClasses is the node-class statement of a static scan: it
+// ran on no node class, so none is tested.
+const Tier1UntestedNodeClasses = "every node class: Tier 1 is static and ran no inference on any hardware"
 
 // Promotion states. A FAIL withholds; a gap needs a named acceptance; the
 // accepted surfaces always travel with the artifact.
@@ -228,8 +252,10 @@ func NewFromIdentity(id Identity) *Document {
 		},
 		BoundedStatement: BoundedStatement,
 		OutOfScope: OutOfScope{
-			DoesNotCertify: DoesNotCertify,
-			Ceiling:        DefaultCeiling(),
+			DoesNotCertify:      DoesNotCertify,
+			Ceiling:             DefaultCeiling(),
+			UntestedNodeClasses: []string{Tier1UntestedNodeClasses},
+			NotRun:              Tier2NotRun(),
 		},
 		Verification: Verification{
 			SigningMethod:  "unsigned (OSS tier)",

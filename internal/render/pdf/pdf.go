@@ -97,6 +97,27 @@ func RenderPDF(w io.Writer, d *report.Document) error {
 	for _, item := range d.OutOfScope.Ceiling {
 		pdf.MultiCell(contentW, lineH, "• "+item, "", "L", false)
 	}
+	if len(d.OutOfScope.NotRun) > 0 {
+		pdf.Ln(2)
+		pdf.MultiCell(contentW, lineH, "Checks not run at this level:", "", "L", false)
+		for _, c := range d.OutOfScope.NotRun {
+			pdf.MultiCell(contentW, lineH, "• "+c.Name+" ("+c.LooksFor+"): not run. "+c.Reason, "", "L", false)
+		}
+	}
+	if len(d.OutOfScope.UnparsedFormats) > 0 {
+		pdf.Ln(2)
+		pdf.MultiCell(contentW, lineH, "Not parsed by this scan:", "", "L", false)
+		for _, f := range d.OutOfScope.UnparsedFormats {
+			pdf.MultiCell(contentW, lineH, "• "+f, "", "L", false)
+		}
+	}
+	if len(d.OutOfScope.UntestedNodeClasses) > 0 {
+		pdf.Ln(2)
+		pdf.MultiCell(contentW, lineH, "Node classes not tested:", "", "L", false)
+		for _, n := range d.OutOfScope.UntestedNodeClasses {
+			pdf.MultiCell(contentW, lineH, "• "+n, "", "L", false)
+		}
+	}
 	pdf.Ln(4)
 
 	heading(pdf, "Promotion authorization")

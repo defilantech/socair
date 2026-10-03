@@ -147,3 +147,19 @@ func TestRepoFileStartingMZIsNotAFail(t *testing.T) {
 		t.Fatalf("a text file starting MZ FAILed: %+v", r.Findings)
 	}
 }
+
+func TestUnparsedFormatsGroupsAndCaps(t *testing.T) {
+	root := t.TempDir()
+	for i := 0; i < 7; i++ {
+		if err := os.WriteFile(filepath.Join(root, "w"+string(rune('0'+i))+".npy"), nil, 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	got, err := UnparsedFormats(root, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 || !strings.HasPrefix(got[0], "NumPy: w0.npy") || !strings.HasSuffix(got[0], "and 2 more") {
+		t.Fatalf("got %q, want one NumPy entry listing five files and 2 more", got)
+	}
+}
