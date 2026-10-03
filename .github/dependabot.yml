@@ -1,0 +1,17 @@
+version: 2
+updates:
+  # Go modules are vendored; Dependabot re-vendors on update, and CI's
+  # supply-chain job checks vendor/ matches go.mod.
+  - package-ecosystem: gomod
+    directory: /
+    vendor: true
+    schedule:
+      interval: weekly
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+  - package-ecosystem: npm
+    directory: /web
+    schedule:
+      interval: weekly
