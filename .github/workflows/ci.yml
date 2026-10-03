@@ -63,6 +63,44 @@ jobs:
       - name: staticcheck
         run: go run honnef.co/go/tools/cmd/staticcheck@v0.8.1 ./...
 
+  # The optional keyless verifier (tools/socair-sigstore) is its own module
+  # with its own vendor/: its ~70 dependencies stay out of socair's build. It
+  # gets the same air-gap build and the same supply-chain checks.
+  sigstore-verifier:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: tools/socair-sigstore
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
+        with:
+          go-version-file: tools/socair-sigstore/go.mod
+          cache: false
+      - name: gofmt check
+        run: |
+          unformatted="$(gofmt -l *.go)"
+          if [ -n "$unformatted" ]; then
+            echo "gofmt needed on:"
+            echo "$unformatted"
+            exit 1
+          fi
+      - name: vet, build, test (race detector), air-gap
+        env:
+          GOFLAGS: -mod=vendor
+        run: |
+          go vet ./...
+          go build ./...
+          go test -race ./...
+      - name: vendor matches go.mod
+        run: |
+          go mod vendor
+          git diff --exit-code -- vendor go.mod go.sum
+      - name: govulncheck
+        run: go run golang.org/x/vuln/cmd/govulncheck@v1.8.0 ./...
+      - name: staticcheck
+        run: go run honnef.co/go/tools/cmd/staticcheck@v0.8.1 ./...
+
   # Every parser that reads untrusted bytes, for a short budget each. A crasher
   # found here is committed under testdata/fuzz as a regression seed, and the
   # seeds already committed run in the test job on every push.
