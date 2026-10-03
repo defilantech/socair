@@ -123,7 +123,7 @@ func Inspect(path string, opts Options) checks.Result {
 	var invNote string
 	switch {
 	case safetensors.IsSafetensors(path):
-		sm, err := safetensors.ReadArtifact(path)
+		sm, err := safetensors.ReadHeader(path)
 		if err != nil {
 			r.Status = checks.NotTested
 			r.Notes = "could not read safetensors header: " + err.Error()

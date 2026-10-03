@@ -132,3 +132,26 @@ func TestDuplicateSafetensorsKeyFails(t *testing.T) {
 		t.Fatalf("status = %s, want FAIL on a duplicate tensor name (notes: %s)", r.Status, r.Notes)
 	}
 }
+
+// TestSafetensorsLayoutVerdicts: a layout violation is a FAIL (the reference
+// loader rejects it, and a gap can hide a payload); an unknown dtype is
+// NOT_TESTED (the layout cannot be checked, which is not malice).
+func TestSafetensorsLayoutVerdicts(t *testing.T) {
+	cases := []struct {
+		name   string
+		header string
+		data   int
+		want   checks.Status
+	}{
+		{"overlap", `{"a":{"dtype":"F32","shape":[2],"data_offsets":[0,8]},"b":{"dtype":"F32","shape":[2],"data_offsets":[0,8]}}`, 8, checks.Fail},
+		{"hidden gap", `{"a":{"dtype":"F32","shape":[2],"data_offsets":[0,8]},"b":{"dtype":"F32","shape":[2],"data_offsets":[64,72]}}`, 72, checks.Fail},
+		{"unknown dtype", `{"a":{"dtype":"EVIL","shape":[2],"data_offsets":[0,8]}}`, 8, checks.NotTested},
+		{"valid", `{"a":{"dtype":"F32","shape":[2],"data_offsets":[0,8]}}`, 8, checks.Pass},
+	}
+	for _, c := range cases {
+		r := Validate(writeFixture(t, c.name+".safetensors", safetensorsWithHeader(c.header, c.data)))
+		if r.Status != c.want {
+			t.Errorf("%s: status %s (%s), want %s", c.name, r.Status, r.Notes, c.want)
+		}
+	}
+}

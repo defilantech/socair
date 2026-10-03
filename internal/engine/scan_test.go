@@ -8,6 +8,8 @@ import (
 
 	"github.com/defilantech/socair/internal/gguf/gguftest"
 	"github.com/defilantech/socair/internal/report"
+	"github.com/defilantech/socair/internal/safetensors"
+	"github.com/defilantech/socair/internal/safetensors/safetensorstest"
 )
 
 func writeFixture(t *testing.T, name string, data []byte) string {
@@ -289,5 +291,28 @@ func TestNonStringTemplateIsNotTested(t *testing.T) {
 	}
 	if !strings.Contains(notes, "not a string") && !strings.Contains(notes, "non-string") {
 		t.Fatalf("notes must say the template is not a string, got %q", notes)
+	}
+}
+
+// TestSafetensorsIsHashedOnce: the structure and inventory checks each hashed
+// the whole file again, so a 10 GB model cost 30 GB of reads, and header-only
+// mode still hashed it twice. Falsification: have either check call
+// ReadArtifact again and the counts rise.
+func TestSafetensorsIsHashedOnce(t *testing.T) {
+	p := writeFixture(t, "model.safetensors", safetensorstest.Clean())
+
+	before := safetensors.BodyHashes()
+	if _, err := ScanMode(p, ModeFull); err != nil {
+		t.Fatal(err)
+	}
+	if got := safetensors.BodyHashes() - before; got != 1 {
+		t.Fatalf("a full scan hashed the file %d times, want 1", got)
+	}
+	before = safetensors.BodyHashes()
+	if _, err := ScanMode(p, ModeHeaders); err != nil {
+		t.Fatal(err)
+	}
+	if got := safetensors.BodyHashes() - before; got != 0 {
+		t.Fatalf("a header-only scan hashed the file %d times, want 0", got)
 	}
 }
