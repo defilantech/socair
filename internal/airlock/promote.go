@@ -74,6 +74,10 @@ func Promote(s *Store, artifactPath, envelopePath string) (Event, error) {
 			d.PromotionAuthorization.State))
 	}
 
+	if len(d.Artifact.Files) > 0 {
+		return refuse("the attestation is for a model directory; promoting a directory through the airlock is not built yet (#110), so it does not cross")
+	}
+
 	name := filepath.Base(artifactPath)
 	if name == attestationDoc || name == attestationEnvelope {
 		return refuse(fmt.Sprintf("artifact name %q collides with the store's attestation file; rename it", name))

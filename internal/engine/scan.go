@@ -51,6 +51,12 @@ func Scan(path string) (*report.Document, error) { return ScanMode(path, ModeFul
 // report document.
 func ScanMode(path string, mode Mode) (*report.Document, error) {
 	start := time.Now().UTC()
+	if fi, err := os.Stat(path); err == nil && fi.IsDir() {
+		if mode != ModeFull {
+			return nil, fmt.Errorf("%s is a directory; a directory scan always reads every file in full", path)
+		}
+		return scanDir(path, start)
+	}
 
 	// A full scan is an attestation, so it checks a private snapshot whose
 	// bytes it hashed while copying (see snapshot). A header-only sweep
@@ -149,34 +155,9 @@ func ScanMode(path string, mode Mode) (*report.Document, error) {
 	}
 	id.SHA256 = sha
 
-	d := report.NewFromIdentity(id)
-	d.Header.DocumentID = fmt.Sprintf("SOCAIR-%s-%s", start.Format("20060102"), shortHashOr(id.SHA256, "headers"))
-	d.Header.IssuedUTC = start.Format(time.RFC3339)
-	rescanDue, expires, err := acceptancePolicy(start, os.Getenv("SOCAIR_RESCAN_DAYS"), os.Getenv("SOCAIR_ACCEPTANCE_EXPIRES"))
+	d, provOpts, expires, err := begin(start, id, original)
 	if err != nil {
 		return nil, err
-	}
-	d.Header.RescanDue = rescanDue
-	d.Header.ArtifactShort = id.Name
-	d.Header.AssuranceLevelAwarded = "Tier 1 (static)"
-	d.Scope.CheckSetVersion = CheckSetVersion
-	d.Scope.ScanStartUTC = start.Format(time.RFC3339)
-	d.Scope.ToolVersions = "socair " + Version
-	d.Verification.RerunInstructions = "socair scan <path>"
-
-	// Provenance comes only from the manifest the operator names. A
-	// provenance.json found beside the artifact is not read: whoever controls
-	// that directory could write one claiming any origin for these bytes.
-	provOpts := provenance.Options{ArtifactPath: original, ArtifactSHA256: id.SHA256, ManifestPath: os.Getenv("SOCAIR_PROVENANCE")}
-	if m, unbound := provenance.Bind(provOpts); m != nil && unbound == "" {
-		d.Artifact.RepoURL = m.RepoURL
-		d.Artifact.CommitOrTag = m.CommitOrTag
-		d.Artifact.CommitSHA = m.CommitSHA
-		d.Artifact.Publisher = m.Publisher
-		d.Artifact.PublisherSigningState = publisherSigning(m.SigningStatus)
-		if m.Source != "" {
-			d.Scope.InputPath = m.Source
-		}
 	}
 
 	// The check set is per format: a GGUF carries metadata checks that a pickle
@@ -206,13 +187,53 @@ func ScanMode(path string, mode Mode) (*report.Document, error) {
 	if id.Format != "GGUF" && id.Format != "safetensors" {
 		results = append(results, pickle.Inspect(path))
 	}
-	applyResults(d, results)
-	d.OutOfScope.UnparsedFormats = unparsedFormats(id)
+	return finish(d, results, unparsedFormats(id), expires), nil
+}
 
+// begin seeds the document every scan path fills: header, re-scan policy,
+// scope, and identity fields from a provenance manifest bound to id's hash.
+func begin(start time.Time, id report.Identity, original string) (*report.Document, provenance.Options, string, error) {
+	d := report.NewFromIdentity(id)
+	d.Header.DocumentID = fmt.Sprintf("SOCAIR-%s-%s", start.Format("20060102"), shortHashOr(id.SHA256, "headers"))
+	d.Header.IssuedUTC = start.Format(time.RFC3339)
+	rescanDue, expires, err := acceptancePolicy(start, os.Getenv("SOCAIR_RESCAN_DAYS"), os.Getenv("SOCAIR_ACCEPTANCE_EXPIRES"))
+	if err != nil {
+		return nil, provenance.Options{}, "", err
+	}
+	d.Header.RescanDue = rescanDue
+	d.Header.ArtifactShort = id.Name
+	d.Header.AssuranceLevelAwarded = "Tier 1 (static)"
+	d.Scope.CheckSetVersion = CheckSetVersion
+	d.Scope.ScanStartUTC = start.Format(time.RFC3339)
+	d.Scope.ToolVersions = "socair " + Version
+	d.Verification.RerunInstructions = "socair scan <path>"
+
+	// Provenance comes only from the manifest the operator names. A
+	// provenance.json found beside the artifact is not read: whoever controls
+	// that directory could write one claiming any origin for these bytes.
+	provOpts := provenance.Options{ArtifactPath: original, ArtifactSHA256: id.SHA256, ManifestPath: os.Getenv("SOCAIR_PROVENANCE")}
+	if m, unbound := provenance.Bind(provOpts); m != nil && unbound == "" {
+		d.Artifact.RepoURL = m.RepoURL
+		d.Artifact.CommitOrTag = m.CommitOrTag
+		d.Artifact.CommitSHA = m.CommitSHA
+		d.Artifact.Publisher = m.Publisher
+		d.Artifact.PublisherSigningState = publisherSigning(m.SigningStatus)
+		if m.Source != "" {
+			d.Scope.InputPath = m.Source
+		}
+	}
+
+	return d, provOpts, expires, nil
+}
+
+// finish records the check rows and computes the promotion state.
+func finish(d *report.Document, results []checks.Result, unparsed []string, expires string) *report.Document {
+	applyResults(d, results)
+	d.OutOfScope.UnparsedFormats = unparsed
 	d.Scope.ScanEndUTC = time.Now().UTC().Format(time.RFC3339)
 	finalizeFindings(d)
 	d.PromotionAuthorization = promotion(d, os.Getenv("SOCAIR_ACCEPTED_BY"), expires)
-	return d, nil
+	return d
 }
 
 // readOpaque identifies an artifact in no container this engine parses. The

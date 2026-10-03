@@ -19,6 +19,7 @@ import (
 
 	"github.com/defilantech/socair/internal/attest"
 	"github.com/defilantech/socair/internal/engine"
+	"github.com/defilantech/socair/internal/modeldir"
 	"github.com/defilantech/socair/internal/report"
 	"github.com/defilantech/socair/internal/safetensors/safetensorstest"
 )
@@ -497,5 +498,20 @@ func TestPromoteRefusesExpiredAcceptance(t *testing.T) {
 	ev, _ := s.Events()
 	if last := ev[len(ev)-1]; last.Action != ActionRefuse {
 		t.Errorf("the refusal must be logged, got %+v", last)
+	}
+}
+
+// A directory attestation names many files; promote places one, so it must
+// refuse rather than cross a single file on a directory's ticket.
+func TestPromoteRefusesADirectoryAttestation(t *testing.T) {
+	artifact, d := authorizedArtifact(t)
+	d.Artifact.Files = []report.ArtifactFile{{Path: "model.safetensors", SHA256: d.Artifact.SHA256, SizeBytes: d.Artifact.SizeBytes, Role: "weights"}}
+	files := []modeldir.File{{Path: "model.safetensors", SHA256: d.Artifact.SHA256, Size: d.Artifact.SizeBytes, Role: "weights"}}
+	d.Artifact.SHA256 = modeldir.Digest(files)
+	d.Verification.ArtifactSHA256 = d.Artifact.SHA256
+	s := trustedStore(t)
+	_, err := Promote(s, artifact, writeReport(t, d))
+	if !errors.Is(err, ErrRefused) || !strings.Contains(err.Error(), "model directory") {
+		t.Fatalf("a directory attestation must be refused by name, got %v", err)
 	}
 }

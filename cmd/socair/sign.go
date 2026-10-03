@@ -12,6 +12,7 @@ import (
 
 	"github.com/defilantech/socair/internal/airlock"
 	"github.com/defilantech/socair/internal/attest"
+	"github.com/defilantech/socair/internal/modeldir"
 	"github.com/defilantech/socair/internal/report"
 )
 
@@ -98,12 +99,29 @@ func verifyCmd(args []string) error {
 		return err
 	}
 	if a := fs.val("artifact"); a != "" {
-		got, err := sha256File(a)
-		if err != nil {
-			return err
-		}
-		if got != v.SHA256 {
-			return fmt.Errorf("%w: %s hashes to %s, but the attestation is for %s", attest.ErrVerify, a, got, v.SHA256)
+		if fi, err := os.Stat(a); err == nil && fi.IsDir() {
+			// A model directory: recompute the manifest digest, and on a
+			// mismatch name the files that differ from the attested list.
+			got, files, err := modeldir.Hash(a)
+			if err != nil {
+				return err
+			}
+			if got != v.SHA256 {
+				var attested []modeldir.File
+				for _, f := range v.Document.Artifact.Files {
+					attested = append(attested, modeldir.File{Path: f.Path, SHA256: f.SHA256, Size: f.SizeBytes})
+				}
+				return fmt.Errorf("%w: directory %s has manifest digest %s, but the attestation is for %s: %s",
+					attest.ErrVerify, a, got, v.SHA256, strings.Join(modeldir.Diff(attested, files), "; "))
+			}
+		} else {
+			got, err := sha256File(a)
+			if err != nil {
+				return err
+			}
+			if got != v.SHA256 {
+				return fmt.Errorf("%w: %s hashes to %s, but the attestation is for %s", attest.ErrVerify, a, got, v.SHA256)
+			}
 		}
 	}
 	d := v.Document

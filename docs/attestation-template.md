@@ -40,13 +40,19 @@ Section references in the bounded statement point at this template's numbering.
 | Publisher / author | `[publisher]` |
 | Publisher signing status | `[signed_openssf / unsigned]` |
 | Artifact file name | `[artifact_filename]` |
-| Artifact SHA256 (exact file scanned) | `[artifact_sha256]` |
-| Format | `[GGUF / safetensors]` |
+| Artifact SHA256 (exact file scanned, or a model directory's manifest digest) | `[artifact_sha256]` |
+| Format | `[GGUF / safetensors / model directory]` |
 | File size (bytes) | `[size_bytes]` |
 | Quantization, declared | `[quant_declared]` |
 | Quantization, observed weight layout | `[quant_observed]` |
 | Tokenizer version hash | `[tokenizer_hash]` |
 | Chat-template version hash | `[chat_template_hash]` |
+| Files (model directory only) | `[path, role, size, sha256 per file]` |
+
+A model directory (a Hugging Face repo checkout or cache snapshot) is one
+artifact: every file is hashed, and the artifact SHA256 is the digest of the
+canonical manifest of those hashes (`socair.modeldir/v1`, see
+`internal/modeldir`), so changing, adding, or removing any file changes it.
 
 ## 3. Scope and method
 
@@ -72,6 +78,7 @@ Each row returns PASS, FAIL, LEAD, or NOT_TESTED. FAIL is positive evidence. LEA
 | Safetensors header and opcodes | Serialized code gadgets in headers or pickle opcodes | `[result]` | `[evidence]` | `[notes]` |
 | Hash, provenance, lineage | Traceable origin: a manifest bound to this hash, from an immutable upstream commit | `[result]` | `[evidence]` | `[notes]` |
 | Known-bad hash match | Match against the known-bad artifact denylist | `[result]` | `[evidence]` | `[notes]` |
+| Remote code (model directory) | Code a loader would run: auto_map entries and Python files (trust_remote_code) | `[result]` | `[evidence]` | `[notes]` |
 | Quant match | Declared quantization against observed weight layout | `[result]` | `[evidence]` | `[notes]` |
 | Forward-pass trigger probes (Tier 2) | Behavior under the production serving stack | `[result / not run]` | `[evidence]` | `[notes]` |
 | Serving-stack differential (Tier 2) | Same artifact behaving differently across stacks | `[result / not run]` | `[evidence]` | `[notes]` |

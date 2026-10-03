@@ -8,6 +8,7 @@ package report
 
 import (
 	"fmt"
+	"github.com/defilantech/socair/internal/modeldir"
 	"strings"
 	"time"
 
@@ -84,6 +85,18 @@ type ArtifactIdentity struct {
 	QuantObserved         string `json:"quant_observed,omitempty"`
 	TokenizerHash         string `json:"tokenizer_hash,omitempty"`
 	ChatTemplateHash      string `json:"chat_template_hash,omitempty"`
+	// Files lists every file of a model directory. When present, SHA256 is
+	// the digest of their canonical manifest (internal/modeldir), so each
+	// file's bytes are bound to the attestation subject.
+	Files []ArtifactFile `json:"files,omitempty"`
+}
+
+// ArtifactFile is one file of a model directory.
+type ArtifactFile struct {
+	Path      string `json:"path"`
+	SHA256    string `json:"sha256"`
+	SizeBytes int64  `json:"size_bytes"`
+	Role      string `json:"role"`
 }
 
 type Scope struct {
@@ -222,6 +235,7 @@ type Identity struct {
 	QuantObserved      string
 	ChatTemplateSHA256 string
 	Split              string
+	Files              []ArtifactFile
 }
 
 // NewFromIdentity seeds a document from a reader identity. Every content check
@@ -245,6 +259,7 @@ func NewFromIdentity(id Identity) *Document {
 			QuantObserved:    id.QuantObserved,
 			ChatTemplateHash: id.ChatTemplateSHA256,
 			Split:            id.Split,
+			Files:            id.Files,
 		},
 		Scope: Scope{
 			CheckSetVersion:  "tier1/0.1",
@@ -315,6 +330,7 @@ func Validate(d *Document) []string {
 	req(strings.TrimSpace(d.Header.IssuedUTC) != "", "header.issued_utc")
 	req(strings.TrimSpace(d.Header.AssuranceLevelAwarded) != "", "header.assurance_level_awarded")
 	req(strings.TrimSpace(d.Artifact.FileName) != "", "artifact.file_name")
+	problems = append(problems, validateFiles(d)...)
 	req(len(d.Artifact.SHA256) == 64, "artifact.sha256 (64 hex chars)")
 	req(strings.TrimSpace(d.Artifact.Format) != "", "artifact.format")
 	req(len(d.Checks) > 0, "checks (at least one)")
@@ -417,4 +433,24 @@ func validateStateAgainstChecks(d *Document) []string {
 		}
 	}
 	return problems
+}
+
+// validateFiles holds a directory report to its own file list: the artifact
+// hash must be the manifest digest of exactly these files, so no report lists
+// one set of files under another set's hash.
+func validateFiles(d *Document) []string {
+	if len(d.Artifact.Files) == 0 {
+		return nil
+	}
+	files := make([]modeldir.File, len(d.Artifact.Files))
+	for i, f := range d.Artifact.Files {
+		files[i] = modeldir.File{Path: f.Path, SHA256: f.SHA256, Size: f.SizeBytes, Role: f.Role}
+		if i > 0 && d.Artifact.Files[i-1].Path >= f.Path {
+			return []string{"artifact.files must be sorted by path with no repeats"}
+		}
+	}
+	if got := modeldir.Digest(files); got != d.Artifact.SHA256 {
+		return []string{fmt.Sprintf("artifact.sha256 %s is not the manifest digest %s of artifact.files", d.Artifact.SHA256, got)}
+	}
+	return nil
 }

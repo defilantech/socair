@@ -7,6 +7,7 @@
 package pdf
 
 import (
+	"fmt"
 	"io"
 	"strings"
 	"time"
@@ -141,10 +142,21 @@ func RenderPDF(w io.Writer, d *report.Document) error {
 	if d.Verification.SignerKeyID != "" {
 		pdf.MultiCell(contentW, lineH, "Signer key: "+d.Verification.SignerKeyID, "", "L", false)
 		pdf.MultiCell(contentW, lineH, "Document hash: "+d.Verification.DocumentHash, "", "L", false)
-		pdf.MultiCell(contentW, lineH, "A printed report is a claim, not the proof. Check the attestation: socair verify <attestation.dsse.json> --trusted <key.pub> --artifact <file>", "", "L", false)
+		pdf.MultiCell(contentW, lineH, "A printed report is a claim, not the proof. Check the attestation: socair verify <attestation.dsse.json> --trusted <key.pub> --artifact <file or directory>", "", "L", false)
 	}
 	pdf.MultiCell(contentW, lineH, "Artifact SHA256: "+d.Verification.ArtifactSHA256, "", "L", false)
 	pdf.Ln(2)
+
+	if len(d.Artifact.Files) > 0 {
+		heading(pdf, "Files")
+		pdf.SetFont("Helvetica", "", 8)
+		pdf.SetTextColor(muted.r, muted.g, muted.b)
+		pdf.MultiCell(contentW, lineH, "The artifact SHA256 is the digest of this manifest: every file's hash, size, and path (socair.modeldir/v1).", "", "L", false)
+		for _, f := range d.Artifact.Files {
+			pdf.MultiCell(contentW, lineH, fmt.Sprintf("%s  ·  %s  ·  %d bytes  ·  %s", f.Path, f.Role, f.SizeBytes, f.SHA256), "", "L", false)
+		}
+		pdf.Ln(2)
+	}
 
 	pdf.SetFont("Helvetica", "", 8)
 	pdf.SetTextColor(muted.r, muted.g, muted.b)

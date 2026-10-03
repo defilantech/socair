@@ -44,6 +44,7 @@
   .counts .l { font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; }
 
   table { width: 100%; border-collapse: collapse; margin-top: 6px; }
+  table.files td.hash { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 10px; word-break: break-all; }
   th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--line); vertical-align: top; }
   th { font-size: 12px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); }
   td.looks { color: var(--muted); font-size: 13px; }
@@ -192,11 +193,22 @@
     {{- if .Document.Verification.SignerKeyID }}
     Signer key: <span class="hash">{{ .Document.Verification.SignerKeyID }}</span><br>
     Document hash: <span class="hash">{{ .Document.Verification.DocumentHash }}</span><br>
-    A printed report is a claim, not the proof. Check the attestation: <code>socair verify &lt;attestation.dsse.json&gt; --trusted &lt;key.pub&gt; --artifact &lt;file&gt;</code><br>
+    A printed report is a claim, not the proof. Check the attestation: <code>socair verify &lt;attestation.dsse.json&gt; --trusted &lt;key.pub&gt; --artifact &lt;file or directory&gt;</code><br>
     {{- end }}
     Artifact SHA256: <span class="hash">{{ .Document.Verification.ArtifactSHA256 }}</span>
     {{- if .Document.Verification.RerunInstructions }}<br>Re-run: {{ .Document.Verification.RerunInstructions }}{{ end }}
   </p>
+  {{- if .Document.Artifact.Files }}
+
+  <h2>Files</h2>
+  <p class="evidence">The artifact SHA256 above is the digest of this manifest: every file's hash, size, and path (socair.modeldir/v1).</p>
+  <table class="files">
+    <tr><th>Path</th><th>Role</th><th>Bytes</th><th>SHA256</th></tr>
+    {{- range .Document.Artifact.Files }}
+    <tr><td>{{ .Path }}</td><td>{{ .Role }}</td><td>{{ .SizeBytes }}</td><td class="hash">{{ .SHA256 }}</td></tr>
+    {{- end }}
+  </table>
+  {{- end }}
 
   <footer>
     {{ .Document.Issuer.Authority }}{{ if .Document.Issuer.Excludes }} &middot; {{ .Document.Issuer.Excludes }}{{ end }}
