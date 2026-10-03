@@ -54,6 +54,7 @@ func ScanMode(path string, mode Mode) (*report.Document, error) {
 	start := time.Now().UTC()
 
 	var id report.Identity
+	var ggufErr error
 	var chatTemplates map[string]string
 	var chatTemplateNonString []string
 	var tokenizerModel string
@@ -84,11 +85,20 @@ func ScanMode(path string, mode Mode) (*report.Document, error) {
 			return nil, err
 		}
 		id = o
-	} else {
-		m, err := readGGUF(path, mode)
-		if err != nil {
-			return nil, err
+	} else if m, err := readGGUF(path, mode); err != nil {
+		// A GGUF that does not parse (truncated, an unsupported version, a
+		// malformed header) still gets a report: the artifact is identified
+		// and hashed, the structure row names the parse error, and the rows
+		// that read metadata say the metadata was not read. An aborted scan
+		// would leave the operator with nothing to file.
+		o, oerr := readOpaque(path, mode)
+		if oerr != nil {
+			return nil, oerr
 		}
+		o.Format = "GGUF"
+		id = o
+		ggufErr = err
+	} else {
 		id = report.Identity{
 			Name:               m.Name,
 			Architecture:       m.Architecture,
@@ -135,11 +145,18 @@ func ScanMode(path string, mode Mode) (*report.Document, error) {
 		denylist.Check(id.SHA256, os.Getenv("SOCAIR_DENYLIST")),
 	}
 	if id.Format == "GGUF" {
-		results = append(results,
+		meta := []checks.Result{
 			chattemplate.InspectAll(chatTemplates, chatTemplateNonString),
 			tokenizer.Inspect(tokenizerModel),
 			quant.Compare(quantDeclared, fileType),
-		)
+		}
+		if ggufErr != nil {
+			for i := range meta {
+				meta[i] = checks.Result{Name: meta[i].Name, LooksFor: meta[i].LooksFor, Status: checks.NotTested,
+					Notes: "GGUF metadata could not be read, so this was not inspected: " + ggufErr.Error()}
+			}
+		}
+		results = append(results, meta...)
 	}
 	if id.Format != "GGUF" && id.Format != "safetensors" {
 		results = append(results, pickle.Inspect(path))
