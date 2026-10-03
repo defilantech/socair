@@ -64,6 +64,7 @@
   .bounded { border-left: 3px solid var(--line); padding: 4px 0 4px 14px; font-style: italic; color: #333; }
   .ceiling ul { margin: 8px 0 0; padding-left: 20px; }
   .ceiling li { margin-bottom: 4px; }
+  .ceiling .source { font-size: 12px; color: #555; margin-top: 10px; }
   .warn { font-weight: 600; }
 
   /* Sample watermark. Fixed positioning repeats it on each printed page in
@@ -155,6 +156,7 @@
     <ul>
       {{- range .Document.OutOfScope.Ceiling }}<li>{{ . }}</li>{{ end }}
     </ul>
+    <p class="source">The same list is published at <a href="{{ .CeilingURL }}">{{ .CeilingURL }}</a>.</p>
     {{- if .Document.OutOfScope.UnparsedFormats }}
     <p>Formats not parsed: {{ range .Document.OutOfScope.UnparsedFormats }}{{ . }} {{ end }}</p>
     {{- end }}

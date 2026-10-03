@@ -175,6 +175,19 @@ func TestStatusClassMapping(t *testing.T) {
 	}
 }
 
+// The report links the published detection ceiling, so a reader of the
+// attestation can see the same list outside the document.
+func TestReportLinksTheCeiling(t *testing.T) {
+	d := loadGolden(t)
+	html := renderString(t, d)
+	if !strings.Contains(html, CeilingURL) {
+		t.Fatalf("the report must name the published ceiling %q", CeilingURL)
+	}
+	if !strings.Contains(html, `href="`+CeilingURL+`"`) {
+		t.Errorf("the ceiling must be an anchor to %q", CeilingURL)
+	}
+}
+
 // TestUnsignedIsMarked: /api/render renders any document, so an unsigned one
 // must not read as an issued attestation. Falsification: drop the mark and an
 // unsigned golden renders clean.
