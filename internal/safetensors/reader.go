@@ -139,14 +139,25 @@ func ReadHeader(path string) (*Manifest, error) {
 		return nil, fmt.Errorf("safetensors: reading header: %w", err)
 	}
 
+	m, err := parseHeader(raw, info.Size())
+	if err != nil {
+		return nil, err
+	}
+	m.Path = path
+	m.FileName = filepath.Base(path)
+	return m, nil
+}
+
+// parseHeader parses a safetensors JSON header of a file of fileSize bytes.
+// It touches no file, so it can be fuzzed directly.
+func parseHeader(raw []byte, fileSize int64) (*Manifest, error) {
+	n := int64(len(raw))
 	headerSum := sha256.Sum256(raw)
 	m := &Manifest{
-		Path:         path,
-		FileName:     filepath.Base(path),
-		SizeBytes:    info.Size(),
+		SizeBytes:    fileSize,
 		Format:       "safetensors",
 		HeaderSHA256: hex.EncodeToString(headerSum[:]),
-		DataBytes:    info.Size() - 8 - n,
+		DataBytes:    fileSize - 8 - n,
 	}
 
 	var entries map[string]json.RawMessage

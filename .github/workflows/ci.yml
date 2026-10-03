@@ -5,6 +5,12 @@ on:
     branches: ["**"]
   pull_request:
 
+# Read-only token: CI never writes to the repository.
+permissions:
+  contents: read
+
+# Actions are pinned by commit SHA, not by a movable tag. Dependabot proposes
+# updates (.github/dependabot.yml).
 jobs:
   build-and-test:
     runs-on: ubuntu-latest
@@ -13,12 +19,12 @@ jobs:
     env:
       GOFLAGS: -mod=vendor
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
         with:
           go-version-file: go.mod
           cache: false
-      - name: vendor is in sync
+      - name: module checksums
         run: go mod verify
       - name: gofmt check
         run: |
@@ -28,10 +34,59 @@ jobs:
             echo "$unformatted"
             exit 1
           fi
+      - name: vet
+        run: go vet ./...
       - name: build
         run: go build ./...
-      - name: test
-        run: go test ./...
+      - name: test (race detector)
+        run: go test -race ./...
+
+  # Networked checks on the supply chain and the code. They fetch the
+  # vulnerability database and the pinned tools, so they are kept out of the
+  # air-gap job above.
+  supply-chain:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
+        with:
+          go-version-file: go.mod
+          cache: false
+      # go mod verify checks the module cache, not vendor/. Re-vendoring and
+      # diffing catches a vendor/ edit that go.mod and go.sum do not explain.
+      - name: vendor matches go.mod
+        run: |
+          go mod vendor
+          git diff --exit-code -- vendor go.mod go.sum
+      - name: govulncheck
+        run: go run golang.org/x/vuln/cmd/govulncheck@v1.8.0 ./...
+      - name: staticcheck
+        run: go run honnef.co/go/tools/cmd/staticcheck@v0.8.1 ./...
+
+  # Every parser that reads untrusted bytes, for a short budget each. A crasher
+  # found here is committed under testdata/fuzz as a regression seed, and the
+  # seeds already committed run in the test job on every push.
+  fuzz:
+    runs-on: ubuntu-latest
+    env:
+      GOFLAGS: -mod=vendor
+    strategy:
+      fail-fast: false
+      matrix:
+        target:
+          - { pkg: ./internal/gguf, fn: FuzzGGUFHeader }
+          - { pkg: ./internal/safetensors, fn: FuzzSafetensorsHeader }
+          - { pkg: ./internal/checks/pickle, fn: FuzzPickleInspect }
+          - { pkg: ./internal/checks/chattemplate/jinja, fn: FuzzParse }
+          - { pkg: ./internal/checks/chattemplate, fn: FuzzInspect }
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: fuzz ${{ matrix.target.fn }}
+        run: go test ${{ matrix.target.pkg }} -run '^$' -fuzz '^${{ matrix.target.fn }}$' -fuzztime 10s
 
   # The Go build is air-gap: dependencies are vendored and nothing is fetched.
   # The wizard is not: it builds from the npm registry in a networked step, and
@@ -42,8 +97,8 @@ jobs:
       run:
         working-directory: web
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: 22
           cache: npm
