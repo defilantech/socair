@@ -73,6 +73,7 @@ func ScanMode(path string, mode Mode) (*report.Document, error) {
 	var chatTemplates map[string]string
 	var chatTemplateNonString []string
 	var tokenizerModel string
+	var tok gguf.Tokenizer
 	var quantDeclared string
 	var fileType *uint32
 	var observedTypes []gguf.TypeShare
@@ -137,6 +138,7 @@ func ScanMode(path string, mode Mode) (*report.Document, error) {
 		chatTemplates = m.ChatTemplates
 		chatTemplateNonString = m.ChatTemplateNonString
 		tokenizerModel = m.TokenizerModel
+		tok = m.Tokenizer
 		quantDeclared = m.Quant.Declared
 		fileType = m.Quant.FileType
 	}
@@ -169,7 +171,7 @@ func ScanMode(path string, mode Mode) (*report.Document, error) {
 	if id.Format == "GGUF" {
 		meta := []checks.Result{
 			chattemplate.InspectAll(chatTemplates, chatTemplateNonString),
-			tokenizer.Inspect(tokenizerModel),
+			tokenizer.InspectGGUF(tokenizerModel, tok, chatTemplates),
 			quant.CompareObserved(quantDeclared, fileType, observedTypes),
 		}
 		if ggufErr != nil {
