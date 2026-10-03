@@ -305,3 +305,11 @@ func Diff(attested, actual []File) []string {
 	sort.Strings(out)
 	return out
 }
+
+// Skipped reports whether a directory of this name is left out of a scan, and
+// why. A pull uses it so a fetched tree and a scanned tree agree on what the
+// manifest covers.
+func Skipped(name string) (string, bool) {
+	why, ok := skipDirs[name]
+	return why, ok
+}

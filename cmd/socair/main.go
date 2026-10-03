@@ -114,10 +114,10 @@ Usage:
   socair verify <attestation> --trusted <key.pub|dir> [--artifact <path>]
                            verify an attestation, and that a file is its artifact
   socair airlock init <store>   create the store, staging, and activity log
-  socair airlock pull      pull an artifact through controlled egress into staging
-  socair airlock ingest    resolve a local path or an offline HF cache entry
+  socair airlock pull      pull a file, or a whole repo at a pinned commit, into staging
+  socair airlock ingest    resolve a local file or directory, or an offline HF cache entry
   socair airlock trust add <key.pub>   trust a signing key for promotion
-  socair airlock promote   promote an artifact with a signed attestation
+  socair airlock promote   promote a file or model directory with a signed attestation
   socair airlock log       print the airlock activity log (--verify checks its hash chain)
   socair serve             run the engine HTTP/JSON API for the click-ops wizard
   socair demo              write the SAMPLE attestation for sales

@@ -14,13 +14,19 @@ allowed to reach the network.
 ```
 <store>/
   incoming/<sha256>/<file>            staging: pulled or binned, not trusted
+  incoming/<digest>/<name>/           staging for a model directory (a whole repo)
   incoming/<sha256>/provenance.json   origin facts written by a pull
   clean/<sha256>/<file>               the clean store, keyed by artifact hash
+  clean/<digest>/<name>/              a promoted model directory, keyed by manifest digest
   clean/<sha256>/attestation.dsse.json  the signed attestation that let it cross
   clean/<sha256>/attestation.json     its report document, for reading
   trusted-keys/<key id>.pub           the trust policy: keys whose signatures admit
   log.jsonl                           append-only activity log
+  .tmp/                               in-progress copies, renamed into place when verified
 ```
+
+A model directory's `<digest>` is its manifest digest (`socair.modeldir/v1`,
+see `docs/dev.md`): the attestation subject a directory scan computes.
 
 The clean store is content-addressed: the hash is the ticket, so promotion is
 idempotent and the store holds one identity per artifact. "In the clean store"
@@ -34,10 +40,11 @@ carry the attestation state, never assume a clean entry.
 ```
 socair airlock init [<store>]
 socair airlock pull   --repo <org/name> --file <name> --sha256 <hash> [--revision main]
-socair airlock ingest --local <path> [--scan]
-socair airlock ingest --cache --repo <org/name> --file <name> [--revision main] [--scan]
+socair airlock pull   --repo <org/name> (--revision <commit> | --sha256 <manifest digest>)
+socair airlock ingest --local <file or directory> [--scan]
+socair airlock ingest --cache --repo <org/name> [--file <name>] [--revision main] [--scan]
 socair airlock trust add <key.pub>
-socair airlock promote <artifact> --attestation <attestation.dsse.json>
+socair airlock promote <artifact or directory> --attestation <attestation.dsse.json>
 socair airlock log
 ```
 
@@ -56,10 +63,29 @@ socair airlock log
   The scan reads only the manifest named this way, never one it finds beside
   the artifact, and counts it only if it names the scanned hash. A source that
   names no commit leaves `commit_sha` empty and the row NOT_TESTED.
-- `ingest` resolves a local path or an offline Hugging Face cache entry and
-  records it. With `--scan` it also runs the engine and prints the report, so an
+- `pull` without `--file` fetches a whole repo as a model directory. It must be
+  pinned: `--revision` a full 40-hex commit, or `--sha256` the expected
+  manifest digest, because a branch alone could deliver different bytes
+  tomorrow. The revision is resolved to its commit, the file list is read from
+  the hub at that commit, and every file is fetched at that commit and checked
+  against the hub's own hash for it (the SHA-256 of a large file, the git blob
+  id of a small one). A file that does not verify, a path that would leave the
+  directory, two names differing only in case, or a file listed without a
+  hash refuses the whole pull, and nothing is staged. Every request, including
+  each page of the file list, goes through the egress policy. The tree lands
+  at `incoming/<digest>/<name>/` with a provenance manifest bound to the
+  digest; the command prints the scan invocation.
+- `ingest` resolves a local path (a file or a model directory) or an offline
+  Hugging Face cache entry and records it. Without `--file`, `--cache`
+  resolves the whole snapshot; a branch name resolves through the cache's
+  `refs/`, as the hub cache stores it. With `--scan` it also runs the engine and prints the report, so an
   ingested artifact fills Sections 2 and 3 like any other.
-- `promote` gates an artifact into the clean store on its attestation.
+- `promote` gates an artifact into the clean store on its attestation. For a
+  directory attestation it copies every file, hashing while copying under the
+  scan's rules, and renames the tree into `clean/<digest>/<name>/` only when the
+  recomputed manifest digest is the attested subject. Otherwise it refuses and
+  names each file added, removed, or changed. A repeat promotion replaces the
+  stored tree, so an altered one is restored.
 - `log` prints the activity log; `log --verify` checks its hash chain.
 
 ## The promotion gate

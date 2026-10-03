@@ -74,11 +74,21 @@ func Promote(s *Store, artifactPath, envelopePath string) (Event, error) {
 			d.PromotionAuthorization.State))
 	}
 
-	if len(d.Artifact.Files) > 0 {
-		return refuse("the attestation is for a model directory; promoting a directory through the airlock is not built yet (#110), so it does not cross")
+	isDir := false
+	if fi, err := os.Stat(artifactPath); err == nil && fi.IsDir() {
+		isDir = true
+	}
+	switch {
+	case len(d.Artifact.Files) > 0 && !isDir:
+		return refuse("the attestation is for a model directory, but " + artifactPath + " is not a directory")
+	case len(d.Artifact.Files) == 0 && isDir:
+		return refuse("the attestation is for a single file, but " + artifactPath + " is a directory")
 	}
 
-	name := filepath.Base(artifactPath)
+	name := filepath.Base(filepath.Clean(artifactPath))
+	if err := validFileName(name); err != nil {
+		return refuse(err.Error())
+	}
 	if name == attestationDoc || name == attestationEnvelope {
 		return refuse(fmt.Sprintf("artifact name %q collides with the store's attestation file; rename it", name))
 	}
@@ -112,7 +122,15 @@ func Promote(s *Store, artifactPath, envelopePath string) (Event, error) {
 	// hashes the bytes as they are copied and renames the copy into place only
 	// on a match, so a clean copy that was deleted or altered is restored, and
 	// a file swapped mid-copy never lands.
-	if _, err := s.placeVerified(artifactPath, clean, sha); err != nil {
+	if isDir {
+		if err := s.placeVerifiedDir(artifactPath, clean, name, sha, d.Artifact.Files); err != nil {
+			var mm *dirMismatchError
+			if errors.As(err, &mm) {
+				return refuse(mm.Error())
+			}
+			return Event{}, fmt.Errorf("place model directory: %w", err)
+		}
+	} else if _, err := s.placeVerified(artifactPath, clean, sha); err != nil {
 		var mm *hashMismatchError
 		if errors.As(err, &mm) {
 			return refuse(fmt.Sprintf("artifact on disk hashes to %s but the attestation is for %s", mm.got, sha))

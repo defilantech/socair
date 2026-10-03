@@ -53,7 +53,9 @@ artifact:
 - HF tokenizer files are hashed and listed, not inspected (NOT_TESTED).
 - An adapter (`adapter_config.json`) names its base model as a separate
   artifact that needs its own attestation.
-- `airlock promote` refuses a directory attestation until #110 lands.
+- `airlock pull --repo` (pinned to a commit or digest) stages a whole repo,
+  verified file by file against the hub's hashes, and `airlock promote` carries
+  a directory into `clean/<digest>/<name>/` (see `docs/airlock.md`).
 
 ## Rules
 
