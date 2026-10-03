@@ -123,6 +123,12 @@ func TestPullVerifiesLogsAndRecordsProvenance(t *testing.T) {
 	if m.SigningStatus != "" {
 		t.Errorf("the pull must not assert a signing status, got %q", m.SigningStatus)
 	}
+	if m.ArtifactSHA256 != sha {
+		t.Errorf("the manifest must name the artifact it is for, got %q", m.ArtifactSHA256)
+	}
+	if m.CommitSHA != "" {
+		t.Errorf("a source that names no commit must leave commit_sha empty, got %q", m.CommitSHA)
+	}
 
 	ev, err := s.Events()
 	if err != nil {
@@ -171,5 +177,66 @@ func TestPullRequiresAnExpectedHash(t *testing.T) {
 	s, _ := Init(t.TempDir())
 	if _, err := Pull(context.Background(), s, s.StagingPath("aa"), "org/name", "main", "", DefaultEgressPolicy()); err == nil {
 		t.Fatal("a pull without an expected hash must refuse")
+	}
+}
+
+// TestPullRecordsTheResolvedCommit: the hub names the commit a revision
+// resolved to in X-Repo-Commit on its first response, then redirects to a CDN
+// that does not. The manifest must carry that commit, bound to the hash, so
+// the scan's provenance row can PASS; a malformed header is not a commit.
+// Falsification: drop the redirect capture and the redirect case records no
+// commit.
+func TestPullRecordsTheResolvedCommit(t *testing.T) {
+	t.Setenv("SOCAIR_EGRESS", "")
+	want, sha := fixtureSHA(t)
+	const commit = "71034c5d8bde858ff824298bdedc65515b97d2b9"
+	cases := map[string]struct {
+		header   string
+		redirect bool
+		want     string
+	}{
+		"commit on the hub's redirect": {commit, true, commit},
+		"commit on a direct response":  {commit, false, commit},
+		"malformed header":             {"main; rm -rf /", true, ""},
+	}
+	for name, c := range cases {
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if c.redirect && r.URL.Path != "/cdn/blob" {
+				w.Header().Set("X-Repo-Commit", c.header)
+				http.Redirect(w, r, "/cdn/blob", http.StatusFound)
+				return
+			}
+			if !c.redirect {
+				w.Header().Set("X-Repo-Commit", c.header)
+			}
+			w.Write(want)
+		}))
+		s, _ := Init(t.TempDir())
+		dst := s.StagingPath(sha)
+		pol := EgressPolicy{Allow: []string{"127.0.0.1"}, Endpoint: srv.URL, Timeout: 5 * time.Second}
+		e, err := Pull(context.Background(), s, dst, "org/name", "main", sha, pol)
+		srv.Close()
+		if err != nil {
+			t.Fatalf("%s: Pull: %v", name, err)
+		}
+		manifest := filepath.Join(filepath.Dir(dst), "provenance.json")
+		mb, err := os.ReadFile(manifest)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var m provenance.Manifest
+		if err := json.Unmarshal(mb, &m); err != nil {
+			t.Fatal(err)
+		}
+		if m.CommitSHA != c.want {
+			t.Errorf("%s: commit_sha = %q, want %q", name, m.CommitSHA, c.want)
+		}
+		r := provenance.Inspect(provenance.Options{ArtifactPath: dst, ArtifactSHA256: sha, ManifestPath: manifest})
+		if wantPass := c.want != ""; (r.Status == "PASS") != wantPass {
+			t.Errorf("%s: provenance row %s (%s); a pinned pull PASSes, an unpinned one does not", name, r.Status, r.Notes)
+		}
+		if c.want != "" && !strings.Contains(e.Detail, c.want) {
+			t.Errorf("%s: the pull log must name the commit, got %q", name, e.Detail)
+		}
 	}
 }

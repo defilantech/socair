@@ -2,6 +2,9 @@ package engine
 
 import (
 	"bytes"
+	"crypto/sha256"
+	"encoding/hex"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -17,8 +20,10 @@ import (
 
 // supplyInputs sets the three operational inputs the trust rows need: a repo
 // mirror, a denylist, and a provenance manifest. Without them those rows are
-// NOT_TESTED, which is correct but means the all-PASS path never runs.
-func supplyInputs(t *testing.T) {
+// NOT_TESTED, which is correct but means the all-PASS path never runs. The
+// manifest binds only to the artifact whose bytes are passed, so a test that
+// needs the provenance row to PASS passes its fixture.
+func supplyInputs(t *testing.T, artifact ...[]byte) {
 	t.Helper()
 	dir := t.TempDir()
 
@@ -38,8 +43,14 @@ func supplyInputs(t *testing.T) {
 	}
 	t.Setenv("SOCAIR_DENYLIST", deny)
 
+	sha := ""
+	if len(artifact) > 0 {
+		sum := sha256.Sum256(artifact[0])
+		sha = hex.EncodeToString(sum[:])
+	}
 	prov := filepath.Join(dir, "provenance.json")
-	if err := os.WriteFile(prov, []byte(`{"publisher":"example","signing_status":"signed","repo_url":"https://huggingface.co/example/model","commit_or_tag":"main"}`), 0o600); err != nil {
+	manifest := fmt.Sprintf(`{"artifact_sha256":%q,"publisher":"example","signing_status":"signed","repo_url":"https://huggingface.co/example/model","commit_or_tag":"main","commit_sha":"71034c5d8bde858ff824298bdedc65515b97d2b9"}`, sha)
+	if err := os.WriteFile(prov, []byte(manifest), 0o600); err != nil {
 		t.Fatalf("provenance: %v", err)
 	}
 	t.Setenv("SOCAIR_PROVENANCE", prov)
@@ -48,7 +59,7 @@ func supplyInputs(t *testing.T) {
 // TestHappyPathAllRowsPopulate: with every input supplied, a safetensors
 // artifact PASSes every row and reaches a clean authorization.
 func TestHappyPathAllRowsPopulate(t *testing.T) {
-	supplyInputs(t)
+	supplyInputs(t, safetensorstest.Clean())
 
 	p := writeFixture(t, "fixture.safetensors", safetensorstest.Clean())
 
@@ -102,7 +113,7 @@ func TestHappyPathAllRowsPopulate(t *testing.T) {
 // NOT_TESTED, so with every input supplied the best Tier 1 outcome is an
 // authorization with that one gap named and accepted, never a clean one.
 func TestGGUFHappyPathIsConditional(t *testing.T) {
-	supplyInputs(t)
+	supplyInputs(t, gguftest.BuildGGUF(gguftest.Clean()))
 	t.Setenv("SOCAIR_ACCEPTED_BY", "ciso@example.com")
 
 	p := writeFixture(t, "fixture-Q5_K_M.gguf", gguftest.BuildGGUF(gguftest.Clean()))
@@ -161,8 +172,9 @@ func TestHappyPathDropsOneInput(t *testing.T) {
 // read as a label, a GGUF whose every row PASSes reaches a clean
 // authorization, which no GGUF could before (#82).
 func TestGGUFWithTokenizerAuthorizes(t *testing.T) {
-	supplyInputs(t)
-	p := writeFixture(t, "fixture-Q5_K_M.gguf", gguftest.BuildGGUF(append(gguftest.Clean(), gguftest.Vocab()...)))
+	fixture := gguftest.BuildGGUF(append(gguftest.Clean(), gguftest.Vocab()...))
+	supplyInputs(t, fixture)
+	p := writeFixture(t, "fixture-Q5_K_M.gguf", fixture)
 	d, err := Scan(p)
 	if err != nil {
 		t.Fatal(err)
@@ -174,5 +186,39 @@ func TestGGUFWithTokenizerAuthorizes(t *testing.T) {
 	}
 	if d.PromotionAuthorization.State != report.StateAuthorized {
 		t.Fatalf("state = %s, want authorized", d.PromotionAuthorization.State)
+	}
+}
+
+// TestBoundProvenanceFillsIdentity: a manifest bound to the artifact fills
+// the identity section; one for another artifact fills nothing. Falsification:
+// fill identity from any parsed manifest and the second half fails.
+func TestBoundProvenanceFillsIdentity(t *testing.T) {
+	fixture := safetensorstest.Clean()
+	supplyInputs(t, fixture)
+	p := writeFixture(t, "fixture.safetensors", fixture)
+	d, err := Scan(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	a := d.Artifact
+	if a.RepoURL == "" || a.CommitSHA != "71034c5d8bde858ff824298bdedc65515b97d2b9" || a.Publisher != "example" || a.CommitOrTag != "main" {
+		t.Fatalf("a bound manifest must fill identity, got repo=%q commit=%q publisher=%q rev=%q", a.RepoURL, a.CommitSHA, a.Publisher, a.CommitOrTag)
+	}
+	if !strings.Contains(a.PublisherSigningState, "not verified") {
+		t.Errorf("a manifest's signing claim must read as a claim, got %q", a.PublisherSigningState)
+	}
+
+	supplyInputs(t, []byte("some other artifact"))
+	d, err = Scan(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if d.Artifact.RepoURL != "" || d.Artifact.CommitSHA != "" || d.Artifact.Publisher != "" {
+		t.Fatalf("another artifact's manifest must not fill identity, got %+v", d.Artifact)
+	}
+	for _, c := range d.Checks {
+		if c.Name == "Hash, provenance, lineage" && c.Status != report.StatusNotTested {
+			t.Errorf("provenance row = %s with another artifact's manifest, want NOT_TESTED", c.Status)
+		}
 	}
 }

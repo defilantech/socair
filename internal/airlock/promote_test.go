@@ -3,8 +3,10 @@ package airlock
 import (
 	"bytes"
 	"crypto/ed25519"
+	"crypto/sha256"
 	"crypto/x509"
 	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"encoding/pem"
 	"errors"
@@ -44,7 +46,9 @@ func authorizedArtifact(t *testing.T) (string, *report.Document) {
 	t.Setenv("SOCAIR_DENYLIST", deny)
 
 	prov := filepath.Join(dir, "provenance.json")
-	if err := os.WriteFile(prov, []byte(`{"publisher":"example","signing_status":"signed","repo_url":"https://huggingface.co/example/model","commit_or_tag":"main"}`), 0o600); err != nil {
+	sum := sha256.Sum256(safetensorstest.Clean())
+	bound := fmt.Sprintf(`{"artifact_sha256":%q,"publisher":"example","signing_status":"signed","repo_url":"https://huggingface.co/example/model","commit_or_tag":"main","commit_sha":"71034c5d8bde858ff824298bdedc65515b97d2b9"}`, hex.EncodeToString(sum[:]))
+	if err := os.WriteFile(prov, []byte(bound), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	t.Setenv("SOCAIR_PROVENANCE", prov)

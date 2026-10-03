@@ -43,7 +43,19 @@ socair airlock log
 
 - `pull` fetches one artifact through controlled egress into staging, verifies
   it against the requested hash, records the pull, and writes a provenance
-  manifest beside it.
+  manifest beside it. The manifest names the artifact's sha256 and the
+  immutable commit the hub resolved the revision to (its `X-Repo-Commit`
+  header), so `revision: main` is never the only record of where the bytes
+  came from. Scan with that manifest to fill the provenance row and the
+  identity section:
+
+  ```
+  SOCAIR_PROVENANCE=<store>/incoming/<sha256>/provenance.json socair scan <store>/incoming/<sha256>/<file>
+  ```
+
+  The scan reads only the manifest named this way, never one it finds beside
+  the artifact, and counts it only if it names the scanned hash. A source that
+  names no commit leaves `commit_sha` empty and the row NOT_TESTED.
 - `ingest` resolves a local path or an offline Hugging Face cache entry and
   records it. With `--scan` it also runs the engine and prints the report, so an
   ingested artifact fills Sections 2 and 3 like any other.
@@ -82,8 +94,9 @@ An artifact crosses only when its attestation validates and authorizes it:
 - The hash, repo id, revision, and file name are checked for shape before any
   path is built, and resolved paths must stay under the store or cache root.
 - A denied pull names the host and says how to allow it.
-- The provenance manifest records origin facts (repo, revision). It never
-  asserts a signing status; an unsigned upstream stays unsigned.
+- The provenance manifest records origin facts (artifact hash, repo, revision,
+  resolved commit). It never asserts a signing status; an unsigned upstream
+  stays unsigned.
 
 Environment:
 

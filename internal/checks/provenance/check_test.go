@@ -28,19 +28,24 @@ func TestNoInputNotTested(t *testing.T) {
 	}
 }
 
+// artSHA is the sha256 of "x", the artifact body the tests write.
+const artSHA = "2d711642b726b04401627ca9fbac32f5c8530fb1903cc4db02258717921a4881"
+
+const commit = "71034c5d8bde858ff824298bdedc65515b97d2b9"
+
 func TestSignedAndUnsignedProduceDifferentRows(t *testing.T) {
 	dir := t.TempDir()
 	art := writeFile(t, filepath.Join(dir, "model.gguf"), "x")
 	signed := writeFile(t, filepath.Join(dir, "signed.json"),
-		`{"publisher":"google","signing_status":"signed","repo_url":"https://huggingface.co/google/gemma","commit_or_tag":"main","commit_sha":"abcdef123456"}`)
+		`{"artifact_sha256":"`+artSHA+`","publisher":"google","signing_status":"signed","repo_url":"https://huggingface.co/google/gemma","commit_or_tag":"main","commit_sha":"`+commit+`"}`)
 	unsigned := writeFile(t, filepath.Join(dir, "unsigned.json"),
-		`{"publisher":"somebody","signing_status":"unsigned","repo_url":"https://huggingface.co/somebody/model","commit_or_tag":"v1"}`)
+		`{"artifact_sha256":"`+artSHA+`","publisher":"somebody","signing_status":"unsigned","repo_url":"https://huggingface.co/somebody/model","commit_or_tag":"v1","commit_sha":"`+commit+`"}`)
 
-	rs := Inspect(Options{ArtifactPath: art, ManifestPath: signed})
-	ru := Inspect(Options{ArtifactPath: art, ManifestPath: unsigned})
+	rs := Inspect(Options{ArtifactPath: art, ArtifactSHA256: artSHA, ManifestPath: signed})
+	ru := Inspect(Options{ArtifactPath: art, ArtifactSHA256: artSHA, ManifestPath: unsigned})
 
 	if rs.Status != checks.Pass || ru.Status != checks.Pass {
-		t.Fatalf("both record an origin: signed=%s unsigned=%s", rs.Status, ru.Status)
+		t.Fatalf("both record a bound, pinned origin: signed=%s (%s) unsigned=%s", rs.Status, rs.Notes, ru.Status)
 	}
 	if rs.Notes == ru.Notes {
 		t.Fatal("a signed and an unsigned upstream must not produce the same row")
@@ -53,15 +58,56 @@ func TestSignedAndUnsignedProduceDifferentRows(t *testing.T) {
 	}
 }
 
+// TestManifestMustNameThisArtifact: a manifest for another artifact, or one
+// that names none, says nothing about this one. Falsification: skip the hash
+// comparison in Bind and the first two cases PASS.
+func TestManifestMustNameThisArtifact(t *testing.T) {
+	dir := t.TempDir()
+	art := writeFile(t, filepath.Join(dir, "model.gguf"), "x")
+	other := strings.Repeat("ab", 32)
+	cases := map[string]struct{ manifestSHA, scanSHA string }{
+		"another artifact's manifest": {other, artSHA},
+		"manifest names no artifact":  {"", artSHA},
+		"header-only scan, no hash":   {artSHA, ""},
+	}
+	for name, c := range cases {
+		m := writeFile(t, filepath.Join(dir, "m.json"),
+			`{"artifact_sha256":"`+c.manifestSHA+`","repo_url":"https://huggingface.co/a/b","commit_or_tag":"main","commit_sha":"`+commit+`"}`)
+		r := Inspect(Options{ArtifactPath: art, ArtifactSHA256: c.scanSHA, ManifestPath: m})
+		if r.Status != checks.NotTested {
+			t.Errorf("%s: status %s, want NOT_TESTED", name, r.Status)
+		}
+		if strings.Contains(r.Notes, "huggingface.co/a/b") {
+			t.Errorf("%s: an unbound manifest's origin must not be reported as this artifact's: %s", name, r.Notes)
+		}
+	}
+}
+
+// TestMovableRevisionIsNotTested: "main" can point at other bytes tomorrow.
+// Falsification: drop the commit requirement and this PASSes.
+func TestMovableRevisionIsNotTested(t *testing.T) {
+	dir := t.TempDir()
+	art := writeFile(t, filepath.Join(dir, "model.gguf"), "x")
+	for _, c := range []string{"", "main", "abcdef123456", strings.Repeat("g", 40)} {
+		m := writeFile(t, filepath.Join(dir, "m.json"),
+			`{"artifact_sha256":"`+artSHA+`","repo_url":"https://huggingface.co/a/b","commit_or_tag":"main","commit_sha":"`+c+`"}`)
+		r := Inspect(Options{ArtifactPath: art, ArtifactSHA256: artSHA, ManifestPath: m})
+		if r.Status != checks.NotTested || !strings.Contains(r.Notes, "movable revision") {
+			t.Errorf("commit %q: %s (%s), want NOT_TESTED naming the movable revision", c, r.Status, r.Notes)
+		}
+	}
+}
+
 // TestEmptyManifestIsNotTested: any JSON manifest used to PASS, even {}. A
 // manifest that records no origin is not provenance. Falsification: PASS on
 // any parsed manifest again and this fails.
 func TestEmptyManifestIsNotTested(t *testing.T) {
 	dir := t.TempDir()
 	art := writeFile(t, filepath.Join(dir, "model.gguf"), "x")
-	for _, body := range []string{`{}`, `{"publisher":"someone"}`, `{"repo_url":"https://huggingface.co/a/b"}`} {
+	for _, body := range []string{`{}`, `{"publisher":"someone"}`, `{"repo_url":"https://huggingface.co/a/b"}`,
+		`{"artifact_sha256":"` + artSHA + `","publisher":"someone","commit_sha":"` + commit + `"}`} {
 		m := writeFile(t, filepath.Join(dir, "m.json"), body)
-		r := Inspect(Options{ArtifactPath: art, ManifestPath: m})
+		r := Inspect(Options{ArtifactPath: art, ArtifactSHA256: artSHA, ManifestPath: m})
 		if r.Status != checks.NotTested {
 			t.Errorf("manifest %s: status = %s, want NOT_TESTED without a repo and a revision", body, r.Status)
 		}
