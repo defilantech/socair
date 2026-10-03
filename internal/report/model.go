@@ -179,6 +179,7 @@ func DefaultCeiling() []string {
 		"Differential behavior across serving stacks, unless Tier 2 ran on the production node class.",
 		"Sleeper or polymorphic behavior that needs more inference budget than we run.",
 		"Artifact formats we do not parse.",
+		"Pickle code execution reached only through imports on the reviewed safe list.",
 		"Chat-template instructions written as ordinary guidance (no override or concealment phrase, URL, hidden or obfuscated text, or condition on message content), unless the template matches a reviewed template.",
 		"Malicious behavior that only emerges at runtime under real traffic.",
 	}
