@@ -397,25 +397,15 @@ func TestPromoteRefusesHashMismatch(t *testing.T) {
 
 func TestPromoteConditionsTravelWithArtifact(t *testing.T) {
 	artifact, d := authorizedArtifact(t)
-	// A gap accepted by a named person: authorized with conditions.
-	d.Checks[0].Status = report.StatusNotTested
-	d.Findings.NotTested = []string{d.Checks[0].Name}
-	d.PromotionAuthorization = report.PromotionAuthorization{
-		State:             report.StateAuthorizedWithConditions,
-		Authorized:        true,
-		Level:             "Tier 1 only",
-		AcceptedBy:        "chris",
-		AcceptedSurfaces:  []string{d.Checks[0].Name},
-		AcceptanceExpires: time.Now().Add(24 * time.Hour).UTC().Format(time.RFC3339),
-	}
-
+	// A gap the acceptor signed for: authorized with conditions.
+	withholdForGap(d)
 	s := trustedStore(t)
-	e, err := Promote(s, artifact, writeReport(t, d))
+	e, err := Promote(s, artifact, acceptedTicket(t, s, d, 24*time.Hour))
 	if err != nil {
-		t.Fatalf("a conditional attestation crosses: %v", err)
+		t.Fatalf("a conditional attestation with a signed acceptance crosses: %v", err)
 	}
-	if e.Outcome != OutcomeConditional {
-		t.Fatalf("a conditional crossing must be logged as conditional, got %q", e.Outcome)
+	if e.Outcome != OutcomeConditional || !strings.Contains(e.Detail, "signed acceptance") {
+		t.Fatalf("a conditional crossing must be logged as conditional, naming the signed acceptance, got %q %q", e.Outcome, e.Detail)
 	}
 
 	stored, _ := os.ReadFile(filepath.Join(s.CleanPath(d.Artifact.SHA256), "attestation.json"))
@@ -429,6 +419,9 @@ func TestPromoteConditionsTravelWithArtifact(t *testing.T) {
 	if len(back.PromotionAuthorization.AcceptedSurfaces) != 1 {
 		t.Errorf("the accepted surfaces must travel with the stored attestation, got %v",
 			back.PromotionAuthorization.AcceptedSurfaces)
+	}
+	if !back.PromotionAuthorization.Signed() {
+		t.Error("the signed acceptance must travel with the stored attestation")
 	}
 }
 
@@ -470,26 +463,15 @@ func TestPromoteRejectsAnUnreadableArtifact(t *testing.T) {
 // the lapsed attestation crosses.
 func TestPromoteRefusesExpiredAcceptance(t *testing.T) {
 	artifact, d := authorizedArtifact(t)
-	d.Checks[0].Status = report.StatusNotTested
-	d.Findings.NotTested = []string{d.Checks[0].Name}
-	d.PromotionAuthorization = report.PromotionAuthorization{
-		State:             report.StateAuthorizedWithConditions,
-		Authorized:        true,
-		Level:             "Tier 1 only",
-		AcceptedBy:        "chris",
-		AcceptedSurfaces:  []string{d.Checks[0].Name},
-		AcceptanceExpires: "2027-01-31T00:00:00Z",
-	}
+	withholdForGap(d)
 	s := trustedStore(t)
-	ticket := writeReport(t, d)
+	ticket := acceptedTicket(t, s, d, 48*time.Hour)
 
-	now = func() time.Time { return time.Date(2027, 1, 30, 0, 0, 0, 0, time.UTC) }
-	t.Cleanup(func() { now = time.Now })
 	if _, err := Promote(s, artifact, ticket); err != nil {
 		t.Fatalf("an acceptance still in force crosses: %v", err)
 	}
-
-	now = func() time.Time { return time.Date(2027, 1, 31, 0, 0, 0, 0, time.UTC) }
+	now = func() time.Time { return time.Now().Add(72 * time.Hour) }
+	t.Cleanup(func() { now = time.Now })
 	_, err := Promote(s, artifact, ticket)
 	if !errors.Is(err, ErrRefused) || !strings.Contains(err.Error(), "expired") {
 		t.Fatalf("an expired acceptance must be refused, got %v", err)

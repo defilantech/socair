@@ -152,16 +152,31 @@ func airlockPromote(args []string) error {
 }
 
 func airlockTrust(args []string) error {
+	const usage = "usage: socair airlock trust add [--acceptor] <key.pub> [--store <path>]"
 	if len(args) == 0 || args[0] != "add" {
-		return errors.New("usage: socair airlock trust add <key.pub> [--store <path>]")
+		return errors.New(usage)
 	}
 	fs := parseFlags(args[1:])
+	// "--acceptor key.pub" parses as a flag with a value, "key.pub
+	// --acceptor" as a bare flag; both mean the same.
+	acceptor := fs.has("acceptor")
+	if v := fs.val("acceptor"); v != "" && v != "true" {
+		fs.pos = append(fs.pos, v)
+	}
 	if len(fs.pos) != 1 {
-		return errors.New("usage: socair airlock trust add <key.pub> [--store <path>]")
+		return errors.New(usage)
 	}
 	s, err := airlock.Open(storeRoot(fs))
 	if err != nil {
 		return err
+	}
+	if acceptor {
+		id, err := s.TrustAcceptor(fs.pos[0])
+		if err != nil {
+			return err
+		}
+		fmt.Printf("store %s now honours acceptances signed by key %s\n", s.Root, id)
+		return nil
 	}
 	id, err := s.Trust(fs.pos[0])
 	if err != nil {

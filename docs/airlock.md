@@ -21,6 +21,7 @@ allowed to reach the network.
   clean/<sha256>/attestation.dsse.json  the signed attestation that let it cross
   clean/<sha256>/attestation.json     its report document, for reading
   trusted-keys/<key id>.pub           the trust policy: keys whose signatures admit
+  acceptor-keys/<key id>.pub          keys whose signed acceptances of untested rows are honoured
   log.jsonl                           append-only activity log
   .tmp/                               in-progress copies, renamed into place when verified
 ```
@@ -95,6 +96,12 @@ An artifact crosses only when its attestation validates and authorizes it:
 - `authorized` and `authorized_with_conditions` cross. A conditional crossing
   keeps its accepted surfaces in the stored attestation, so the amber state
   travels with the bytes.
+- **A conditional attestation crosses only with the acceptor's signature.** Its
+  embedded acceptance must verify against `<store>/acceptor-keys/`, be signed by
+  a different key than the attestation, be for this artifact and exactly its
+  untested rows, and be current. An acceptance named at scan time
+  (`SOCAIR_ACCEPTED_BY`) is unsigned and refused. See `docs/provenance-bundle.md`
+  for the review, accept, re-issue flow.
 - `withheld` and `escalated` refuse. A FAIL is never cleared here; the only path
   is escalated review.
 - **The bytes that cross must hash to the attestation that authorizes them.** An

@@ -105,28 +105,53 @@ decide whether the model is fit to serve. Files the signer excluded with
 `ignore_paths` (`.gitattributes` and the like by default) are named as not
 covered.
 
-## 4. The acceptance record, `SOCAIR_ACCEPTED_BY` and `SOCAIR_ACCEPTANCE_EXPIRES`
+## 4. The acceptance record: review, accept, re-issue
 
-These do not fill a check row. They are the human who owns the gaps, and they
-are what turns a report with NOT_TESTED rows from `withheld` into
-`authorized_with_conditions`.
+An acceptance is the person who owns the gaps signing for them. It is what
+lets a report with NOT_TESTED rows (and no FAIL or LEAD) cross the airlock as
+`authorized_with_conditions`. It is signed by the acceptor, with their own key,
+over the exact report they reviewed:
 
-- `SOCAIR_ACCEPTED_BY`: the person or role accepting the untested surfaces.
-- `SOCAIR_ACCEPTANCE_EXPIRES`: when the acceptance lapses, as RFC 3339, e.g.
-  `2027-01-01T00:00:00Z`. Optional: without it the acceptance lapses at the
-  re-scan date. A value that is not RFC 3339, or already past, fails the scan;
-  an acceptance that cannot be enforced is not recorded.
-- `SOCAIR_RESCAN_DAYS`: days until the report's `rescan_due` (default 90).
+```
+socair scan model.gguf > r.json                     # withheld: some rows NOT_TESTED
+socair sign --key operator.key --report r.json      # r.dsse.json, the report to review
 
-Every acceptance expires. `socair airlock promote` refuses an
-`authorized_with_conditions` attestation whose acceptance has expired, and the
-refusal is logged; the gaps need a fresh scan and a fresh acceptance. A report
-whose acceptance carries no parseable expiry does not validate, so it cannot
-be signed or verified.
+# the acceptor reviews r.dsse.json, then:
+socair accept --attestation r.dsse.json --key ciso.key --by "Jane Doe, CISO" \
+  --expires 2027-01-31T00:00:00Z --store <store> [--rationale "change 4411"]
+                                                    # r.acceptance.dsse.json
 
-Without `SOCAIR_ACCEPTED_BY`, an artifact with any NOT_TESTED row is `withheld`
-with the reason "gaps not accepted". A FAIL is never cleared by acceptance; it
-goes to escalated review.
+socair sign --key operator.key --attestation r.dsse.json \
+  --acceptance r.acceptance.dsse.json --store <store>
+                                                    # r.conditional.dsse.json
+```
+
+- The acceptance (`https://socair.ai/acceptance/v1`, DSSE, Ed25519) names the
+  artifact's hash, the reviewed report's document hash, exactly its NOT_TESTED
+  rows, the acceptor, and an expiry no later than the report's `rescan_due`.
+- The re-issued attestation is the same report as `authorized_with_conditions`,
+  with the acceptance embedded (`promotion_authorization.acceptance`) and the
+  reviewed document's hash. The report's acceptor, surfaces, and expiry must
+  match the embedded acceptance, or it cannot be signed or verified.
+- Acceptor keys are their own trust list, `<store>/acceptor-keys/`
+  (`socair airlock trust add --acceptor ciso.pub`), separate from the keys
+  that sign attestations, and a key may not be in both. An acceptance signed by
+  the key that signed the report is refused: the operator does not accept
+  their own gaps.
+- `airlock promote` verifies the acceptance against the acceptor keys and
+  refuses one that is unsigned, untrusted, self-signed, for another report, or
+  expired. `socair verify --acceptors <dir>` shows the same check.
+- A verifier that checks only the operator's signature (socair-verify,
+  LLMKube's gate with `allowConditions`) admits the re-issued attestation as
+  it admits any conditional one.
+
+`SOCAIR_ACCEPTED_BY` and `SOCAIR_ACCEPTANCE_EXPIRES` still name an acceptor at
+scan time, and the report says so, labelled **unsigned**. The airlock does not
+promote an unsigned acceptance. `SOCAIR_RESCAN_DAYS` sets the report's
+`rescan_due` (default 90).
+
+A FAIL or a LEAD is never cleared by an acceptance; it goes to escalated
+review.
 
 ## What each input buys, in one table
 
@@ -135,7 +160,7 @@ goes to escalated review.
 | `SOCAIR_REPO_MIRROR` | File inventory and payloads | NOT_TESTED |
 | `SOCAIR_DENYLIST` | Known-bad hash match | NOT_TESTED |
 | `SOCAIR_PROVENANCE`, or an OMS signature from a trusted publisher | Hash, provenance, lineage | NOT_TESTED |
-| `SOCAIR_ACCEPTED_BY` | the promotion state | withheld on any gap |
+| A signed acceptance (`socair accept`) | the promotion state | withheld on any gap |
 
 ## Falsification
 

@@ -36,7 +36,11 @@ const (
 	stagingDir = "incoming"
 	cleanDir   = "clean"
 	trustDir   = "trusted-keys"
-	logName    = "log.jsonl"
+	// acceptorDir holds the keys that may sign acceptances of untested
+	// surfaces, kept apart from trustDir: the operator who signs a report
+	// does not accept its gaps.
+	acceptorDir = "acceptor-keys"
+	logName     = "log.jsonl"
 )
 
 // Init creates the store layout and returns it. It is idempotent.
@@ -45,7 +49,7 @@ func Init(root string) (*Store, error) {
 		return nil, errors.New("store root is empty")
 	}
 	s := &Store{Root: root}
-	for _, d := range []string{s.stagingRoot(), s.cleanRoot(), s.TrustPath()} {
+	for _, d := range []string{s.stagingRoot(), s.cleanRoot(), s.TrustPath(), s.AcceptorPath()} {
 		if err := os.MkdirAll(d, 0o755); err != nil {
 			return nil, fmt.Errorf("create store dir: %w", err)
 		}
@@ -82,12 +86,49 @@ func (s *Store) TrustedKeys() (attest.Keyring, error) {
 	return ring, nil
 }
 
+// AcceptorPath holds the public keys whose signed acceptances of untested
+// surfaces the airlock honours.
+func (s *Store) AcceptorPath() string { return filepath.Join(s.Root, acceptorDir) }
+
+// AcceptorKeys loads the acceptor keys. None is an error that says how to add
+// one: without them, no conditional attestation crosses.
+func (s *Store) AcceptorKeys() (attest.Keyring, error) {
+	ring, err := attest.LoadKeyring(s.AcceptorPath())
+	if err != nil {
+		return nil, fmt.Errorf("no acceptor key in %s; add one with `socair airlock trust add --acceptor <key.pub>`: %v", s.AcceptorPath(), err)
+	}
+	return ring, nil
+}
+
+// TrustAcceptor adds a public key to the acceptor keys. A key that signs
+// attestations is refused: one key may not both report and accept the gaps.
+func (s *Store) TrustAcceptor(pubPath string) (string, error) {
+	id, _, err := attest.LoadPublicKey(pubPath)
+	if err != nil {
+		return "", err
+	}
+	if _, err := os.Stat(filepath.Join(s.TrustPath(), id+".pub")); err == nil {
+		return "", fmt.Errorf("key %s already signs attestations here; an acceptor key must be a different key", attest.ShortID(id))
+	}
+	b, err := os.ReadFile(pubPath)
+	if err != nil {
+		return "", err
+	}
+	if err := writeBytes(s.AcceptorPath(), filepath.Join(s.AcceptorPath(), id+".pub"), b); err != nil {
+		return "", err
+	}
+	return id, s.Record(Event{Action: ActionTrust, Outcome: OutcomeOK, Detail: "trusted acceptor key " + id})
+}
+
 // Trust adds a public key to the store's trust policy, stored under its key
-// id so the same key is never listed twice.
+// id so the same key is never listed twice. An acceptor key is refused.
 func (s *Store) Trust(pubPath string) (string, error) {
 	id, _, err := attest.LoadPublicKey(pubPath)
 	if err != nil {
 		return "", err
+	}
+	if _, err := os.Stat(filepath.Join(s.AcceptorPath(), id+".pub")); err == nil {
+		return "", fmt.Errorf("key %s is an acceptor key here; a signing key must be a different key", attest.ShortID(id))
 	}
 	b, err := os.ReadFile(pubPath)
 	if err != nil {

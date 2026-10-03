@@ -241,3 +241,18 @@ func TestDirectoryReportListsItsFiles(t *testing.T) {
 		}
 	}
 }
+
+// A reader must see whether an acceptance carries the acceptor's signature.
+func TestAcceptanceIsLabelledSignedOrUnsigned(t *testing.T) {
+	d := loadGolden(t)
+	d.PromotionAuthorization.AcceptedBy = "Jane Doe, CISO"
+	d.PromotionAuthorization.AcceptedAt = "2026-10-03T12:00:00Z"
+	if out := renderString(t, d); !strings.Contains(out, "unsigned: named at scan time") {
+		t.Error("an unsigned acceptance must be labelled unsigned")
+	}
+	d.PromotionAuthorization.Acceptance = "e30="
+	d.PromotionAuthorization.AcceptanceExpires = "2026-12-01T00:00:00Z"
+	if out := renderString(t, d); !strings.Contains(out, "signed acceptance, until 2026-12-01T00:00:00Z") || strings.Contains(out, "unsigned: named") {
+		t.Error("a signed acceptance must be labelled signed, with its expiry")
+	}
+}

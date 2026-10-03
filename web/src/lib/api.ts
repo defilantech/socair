@@ -24,6 +24,9 @@ export interface PromotionAuthorization {
 	conditions?: string;
 	accepted_surfaces?: string[];
 	accepted_by?: string;
+	/** The acceptor's signed acceptance (base64 DSSE envelope); absent means unsigned. */
+	acceptance?: string;
+	reviewed_document_hash?: string;
 }
 
 export interface Artifact {

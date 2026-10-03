@@ -7,7 +7,10 @@
 package report
 
 import (
+	"encoding/base64"
+
 	"fmt"
+	"github.com/defilantech/socair/internal/acceptance"
 	"github.com/defilantech/socair/internal/modeldir"
 	"strings"
 	"time"
@@ -180,7 +183,18 @@ type PromotionAuthorization struct {
 	AcceptedBy        string   `json:"accepted_by,omitempty"`
 	AcceptedAt        string   `json:"accepted_at,omitempty"`
 	AcceptanceExpires string   `json:"acceptance_expires,omitempty"`
+	// Acceptance is the acceptor's signed acceptance (internal/acceptance),
+	// a DSSE envelope, base64-encoded. Empty means the acceptance is unsigned:
+	// a name given at scan time (SOCAIR_ACCEPTED_BY), which the airlock does
+	// not accept.
+	Acceptance string `json:"acceptance,omitempty"`
+	// ReviewedDocumentHash is the document hash of the withheld report the
+	// acceptor reviewed and signed over.
+	ReviewedDocumentHash string `json:"reviewed_document_hash,omitempty"`
 }
+
+// Signed reports whether the acceptance carries the acceptor's signature.
+func (pa PromotionAuthorization) Signed() bool { return pa.Acceptance != "" }
 
 type Verification struct {
 	DocumentHash      string `json:"document_hash,omitempty"`
@@ -394,6 +408,7 @@ func validatePromotion(d *Document) []string {
 			problems = append(problems, fmt.Sprintf("header.rescan_due must be RFC 3339, got %q", d.Header.RescanDue))
 		}
 	}
+	problems = append(problems, validateAcceptance(d)...)
 	if pa.State == StateAuthorized && len(pa.AcceptedSurfaces) > 0 {
 		problems = append(problems, "promotion_authorization: an authorized report must not carry accepted_surfaces")
 	}
@@ -458,4 +473,50 @@ func validateFiles(d *Document) []string {
 		return []string{fmt.Sprintf("artifact.sha256 %s is not the manifest digest %s of artifact.files", d.Artifact.SHA256, got)}
 	}
 	return nil
+}
+
+// validateAcceptance holds an embedded signed acceptance to the report that
+// carries it: the same artifact and reviewed document, exactly the report's
+// NOT_TESTED rows, and the same acceptor and times. Its signature is checked
+// where keys are held (the airlock, socair verify); a report whose fields
+// disagree with its own acceptance cannot be signed or verified at all.
+func validateAcceptance(d *Document) []string {
+	pa := d.PromotionAuthorization
+	if pa.Acceptance == "" {
+		if pa.ReviewedDocumentHash != "" {
+			return []string{"promotion_authorization: reviewed_document_hash without a signed acceptance"}
+		}
+		return nil
+	}
+	if pa.State != StateAuthorizedWithConditions {
+		return []string{fmt.Sprintf("promotion_authorization: a signed acceptance on a report whose state is %q", pa.State)}
+	}
+	raw, err := base64.StdEncoding.DecodeString(pa.Acceptance)
+	if err != nil {
+		return []string{"promotion_authorization.acceptance is not base64"}
+	}
+	a, err := acceptance.Parse(raw)
+	if err != nil {
+		return []string{"promotion_authorization.acceptance: " + err.Error()}
+	}
+	var gaps []string
+	for _, c := range d.Checks {
+		if c.Status == StatusNotTested {
+			gaps = append(gaps, c.Name)
+		}
+	}
+	var problems []string
+	add := func(ok bool, what string) {
+		if !ok {
+			problems = append(problems, "promotion_authorization: the signed acceptance "+what)
+		}
+	}
+	add(a.ArtifactSHA256 == strings.ToLower(d.Artifact.SHA256), "is for another artifact")
+	add(a.ReviewedDocumentHash == pa.ReviewedDocumentHash, "names another reviewed document")
+	add(acceptance.SameSurfaces(a.AcceptedSurfaces, gaps), "does not accept exactly this report's NOT_TESTED rows")
+	add(acceptance.SameSurfaces(a.AcceptedSurfaces, pa.AcceptedSurfaces), "disagrees with accepted_surfaces")
+	add(a.AcceptedBy == pa.AcceptedBy, "names another acceptor than accepted_by")
+	add(a.AcceptedAt == pa.AcceptedAt, "disagrees with accepted_at")
+	add(a.Expires == pa.AcceptanceExpires, "disagrees with acceptance_expires")
+	return problems
 }

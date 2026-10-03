@@ -246,7 +246,12 @@ func cover(pdf *fpdf.Fpdf, d *report.Document) {
 		pdf.SetTextColor(122, 90, 0)
 		line := "Accepted, not tested: " + strings.Join(d.PromotionAuthorization.AcceptedSurfaces, ", ")
 		if d.PromotionAuthorization.AcceptedBy != "" {
-			line += ". Accepted by " + d.PromotionAuthorization.AcceptedBy + " on " + d.PromotionAuthorization.AcceptedAt + "."
+			line += ". Accepted by " + d.PromotionAuthorization.AcceptedBy + " on " + d.PromotionAuthorization.AcceptedAt
+			if d.PromotionAuthorization.Signed() {
+				line += " (signed acceptance, until " + d.PromotionAuthorization.AcceptanceExpires + ")."
+			} else {
+				line += " (unsigned: named at scan time, not signed by the acceptor)."
+			}
 		}
 		pdf.MultiCell(contentW, 4, line, "", "L", false)
 	}

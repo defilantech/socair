@@ -363,7 +363,8 @@ func promotion(d *report.Document, acceptedBy, expires string) report.PromotionA
 		pa.AcceptedBy = acceptedBy
 		pa.AcceptedAt = time.Now().UTC().Format(time.RFC3339)
 		pa.Conditions = "Authorized with conditions: " + strings.Join(gaps, ", ") +
-			" are NOT_TESTED and were accepted by " + acceptedBy + " until " + expires + "."
+			" are NOT_TESTED and were accepted by " + acceptedBy + " until " + expires +
+			". The acceptance is unsigned (named at scan time): the airlock promotes only an acceptance the acceptor signs (socair accept)."
 	}
 	return pa
 }

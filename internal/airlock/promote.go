@@ -110,9 +110,20 @@ func Promote(s *Store, artifactPath, envelopePath string) (Event, error) {
 			return refuse(fmt.Sprintf("the acceptance by %s of %d untested surface(s) expired at %s; re-scan and re-accept",
 				pa.AcceptedBy, len(pa.AcceptedSurfaces), exp.UTC().Format(time.RFC3339)))
 		}
+		// The acceptance must be the acceptor's own signature, from a key in
+		// acceptor-keys, never the operator's: a name typed at scan time
+		// (SOCAIR_ACCEPTED_BY) is not an acceptance the airlock honours.
+		acceptors, err := s.AcceptorKeys()
+		if err != nil {
+			return refuse(err.Error())
+		}
+		acc, err := attest.VerifyAcceptance(v, acceptors, now())
+		if err != nil {
+			return refuse("the conditional attestation's acceptance does not hold: " + err.Error())
+		}
 		outcome = OutcomeConditional
-		detail = fmt.Sprintf("authorized with conditions accepted by %s on %d surface(s) until %s, signed by %s",
-			pa.AcceptedBy, len(pa.AcceptedSurfaces), exp.UTC().Format(time.RFC3339), attest.ShortID(v.KeyID))
+		detail = fmt.Sprintf("authorized with conditions accepted by %s (signed acceptance, acceptor key %s) on %d surface(s) until %s, attestation signed by %s",
+			acc.AcceptedBy, attest.ShortID(acc.KeyID), len(pa.AcceptedSurfaces), exp.UTC().Format(time.RFC3339), attest.ShortID(v.KeyID))
 	}
 	if already, _ := sameBytes(filepath.Join(clean, attestationEnvelope), envelope); already {
 		detail += "; already promoted"
