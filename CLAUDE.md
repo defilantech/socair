@@ -40,7 +40,7 @@ npm run build     # static output in web/build
 
 ## Architecture
 
-**One engine, many thin clients.** `internal/engine.ScanMode` is the only scan path. It reads the artifact (`internal/gguf` or `internal/safetensors`), runs the per-format check set, fills a `report.Document`, then computes promotion state. The CLI (`cmd/socair`), the HTTP API (`internal/api`), and the wizard (`web/`) all call that path. None of them add scan logic of their own.
+**One engine, many thin clients.** `internal/engine.ScanMode` is the only scan path. In full mode it first copies the artifact into a private read-only snapshot, hashing while copying (`engine/snapshot.go`), and every check reads the snapshot, so the attested hash and the checked bytes are the same bytes; `SOCAIR_SCAN_TMP` sets where snapshots go (they need the artifact's size free). Readers never hash again. It then reads the header (`internal/gguf` or `internal/safetensors`), runs the per-format check set, fills a `report.Document`, and computes promotion state. A GGUF that does not parse still gets a report (structure NOT_TESTED with the reason). The CLI (`cmd/socair`), the HTTP API (`internal/api`), and the wizard (`web/`) all call that path. None of them add scan logic of their own.
 
 **The report model is the cross-stack contract.** `internal/report` (Go) and `docs/report-schema/v1.json` define `socair.report/v1`. The engine produces it, the CLI prints it, the renderers consume it, and the TS `Document` type in `web/src/lib/api.ts` mirrors it. Do not invent a divergent shape. A shape change touches the Go model, the JSON schema, the TS types, and the golden `testdata/report.json`. `BoundedStatement` and `DoesNotCertify` in `report/model.go` are fixed wording and must not be edited per artifact.
 

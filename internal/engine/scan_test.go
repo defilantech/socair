@@ -1,6 +1,8 @@
 package engine
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"os"
 	"path/filepath"
 	"strings"
@@ -296,24 +298,29 @@ func TestNonStringTemplateIsNotTested(t *testing.T) {
 
 // TestSafetensorsIsHashedOnce: the structure and inventory checks each hashed
 // the whole file again, so a 10 GB model cost 30 GB of reads, and header-only
-// mode still hashed it twice. Falsification: have either check call
-// ReadArtifact again and the counts rise.
+// mode still hashed it twice. A full scan now reads the artifact once, into
+// its snapshot, and no reader hashes it again; a header-only scan reads no
+// body at all. Falsification: have a check call ReadArtifact again and the
+// body-hash count rises.
 func TestSafetensorsIsHashedOnce(t *testing.T) {
 	p := writeFixture(t, "model.safetensors", safetensorstest.Clean())
 
-	before := safetensors.BodyHashes()
+	bodies, snaps := safetensors.BodyHashes(), snapshots.Load()
 	if _, err := ScanMode(p, ModeFull); err != nil {
 		t.Fatal(err)
 	}
-	if got := safetensors.BodyHashes() - before; got != 1 {
-		t.Fatalf("a full scan hashed the file %d times, want 1", got)
+	if got := snapshots.Load() - snaps; got != 1 {
+		t.Fatalf("a full scan read the artifact %d times, want 1", got)
 	}
-	before = safetensors.BodyHashes()
+	if got := safetensors.BodyHashes() - bodies; got != 0 {
+		t.Fatalf("a full scan hashed the file again %d times, want 0", got)
+	}
+	bodies, snaps = safetensors.BodyHashes(), snapshots.Load()
 	if _, err := ScanMode(p, ModeHeaders); err != nil {
 		t.Fatal(err)
 	}
-	if got := safetensors.BodyHashes() - before; got != 0 {
-		t.Fatalf("a header-only scan hashed the file %d times, want 0", got)
+	if safetensors.BodyHashes() != bodies || snapshots.Load() != snaps {
+		t.Fatal("a header-only scan must not read the body")
 	}
 }
 
@@ -385,5 +392,38 @@ func TestSupportedGGUFVersionsParse(t *testing.T) {
 		if got := rowStatus(d, "Format and structure"); got != report.StatusPass {
 			t.Errorf("v%d: structure %s, want PASS", v, got)
 		}
+	}
+}
+
+// TestChecksSeeTheHashedBytes: the engine hashed the artifact and then every
+// check re-opened it by path, so a file altered in between got an attestation
+// for the hash of one set of bytes and check results for another. The hook
+// replaces the original with a template-injection payload right after the
+// scan has read it. The report must describe one artifact: the bytes it
+// hashed are the bytes it checked. Falsification: run the checks on the
+// original path and the hero row FAILs under the clean file's hash.
+func TestChecksSeeTheHashedBytes(t *testing.T) {
+	clean := gguftest.BuildGGUF(gguftest.Clean())
+	evil := gguftest.BuildGGUF(gguftest.WithMeta("tokenizer.chat_template",
+		gguftest.Str("tokenizer.chat_template", "{{ ''.__class__.__mro__[1].__subclasses__() }}")))
+	p := writeFixture(t, "model-Q5_K_M.gguf", clean)
+
+	afterSnapshot = func(original string) {
+		if err := os.WriteFile(original, evil, 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	t.Cleanup(func() { afterSnapshot = nil })
+
+	d, err := Scan(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sum := sha256.Sum256(clean)
+	if d.Artifact.SHA256 != hex.EncodeToString(sum[:]) {
+		t.Fatalf("hash %s is not the clean bytes the scan read", d.Artifact.SHA256)
+	}
+	if got := rowStatus(d, "Chat template (hero)"); got != report.StatusPass {
+		t.Fatalf("hero = %s: the checks read different bytes than were hashed", got)
 	}
 }

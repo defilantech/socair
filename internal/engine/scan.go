@@ -4,8 +4,6 @@
 package engine
 
 import (
-	"crypto/sha256"
-	"encoding/hex"
 	"fmt"
 	"io"
 	"os"
@@ -53,6 +51,23 @@ func Scan(path string) (*report.Document, error) { return ScanMode(path, ModeFul
 func ScanMode(path string, mode Mode) (*report.Document, error) {
 	start := time.Now().UTC()
 
+	// A full scan is an attestation, so it checks a private snapshot whose
+	// bytes it hashed while copying (see snapshot). A header-only sweep
+	// attests nothing and reads in place.
+	original := path
+	sha := ""
+	if mode == ModeFull {
+		snap, digest, cleanup, err := snapshot(path)
+		if err != nil {
+			return nil, err
+		}
+		defer cleanup()
+		path, sha = snap, digest
+		if afterSnapshot != nil {
+			afterSnapshot(original)
+		}
+	}
+
 	var id report.Identity
 	var ggufErr error
 	var chatTemplates map[string]string
@@ -62,7 +77,7 @@ func ScanMode(path string, mode Mode) (*report.Document, error) {
 	var fileType *uint32
 
 	if safetensors.IsSafetensors(path) {
-		m, err := readSafetensors(path, mode)
+		m, err := safetensors.ReadHeader(path)
 		if err != nil {
 			return nil, err
 		}
@@ -80,18 +95,18 @@ func ScanMode(path string, mode Mode) (*report.Document, error) {
 		// unrecognized. The scan still reports, so the pickle check runs on the
 		// format it exists for and every unparsed surface is NOT_TESTED rather
 		// than an aborted scan.
-		o, err := readOpaque(path, mode)
+		o, err := readOpaque(path)
 		if err != nil {
 			return nil, err
 		}
 		id = o
-	} else if m, err := readGGUF(path, mode); err != nil {
+	} else if m, err := gguf.ReadHeader(path); err != nil {
 		// A GGUF that does not parse (truncated, an unsupported version, a
 		// malformed header) still gets a report: the artifact is identified
 		// and hashed, the structure row names the parse error, and the rows
 		// that read metadata say the metadata was not read. An aborted scan
 		// would leave the operator with nothing to file.
-		o, oerr := readOpaque(path, mode)
+		o, oerr := readOpaque(path)
 		if oerr != nil {
 			return nil, oerr
 		}
@@ -125,6 +140,7 @@ func ScanMode(path string, mode Mode) (*report.Document, error) {
 	if id.Name == "" {
 		id.Name = id.FileName
 	}
+	id.SHA256 = sha
 
 	d := report.NewFromIdentity(id)
 	d.Header.DocumentID = fmt.Sprintf("SOCAIR-%s-%s", start.Format("20060102"), shortHashOr(id.SHA256, "headers"))
@@ -141,7 +157,9 @@ func ScanMode(path string, mode Mode) (*report.Document, error) {
 	results := []checks.Result{
 		structure.Validate(path),
 		inventory.Inspect(path, inventory.Options{RepoMirror: os.Getenv("SOCAIR_REPO_MIRROR")}),
-		provenance.Inspect(provenance.Options{ArtifactPath: path, ManifestPath: os.Getenv("SOCAIR_PROVENANCE")}),
+		// Provenance reads signature sidecars beside the artifact, so it looks
+		// next to the original, not the snapshot.
+		provenance.Inspect(provenance.Options{ArtifactPath: original, ManifestPath: os.Getenv("SOCAIR_PROVENANCE")}),
 		denylist.Check(id.SHA256, os.Getenv("SOCAIR_DENYLIST")),
 	}
 	if id.Format == "GGUF" {
@@ -169,17 +187,10 @@ func ScanMode(path string, mode Mode) (*report.Document, error) {
 	return d, nil
 }
 
-func readGGUF(path string, mode Mode) (*gguf.Manifest, error) {
-	if mode == ModeHeaders {
-		return gguf.ReadHeader(path)
-	}
-	return gguf.ReadArtifact(path)
-}
-
 // readOpaque identifies an artifact in no container this engine parses. The
-// format is named from the leading bytes, never from the extension, and the
-// file is hashed in full mode so the attestation still binds to its bytes.
-func readOpaque(path string, mode Mode) (report.Identity, error) {
+// format is named from the leading bytes, never from the extension. The hash
+// comes from the snapshot, not from here.
+func readOpaque(path string) (report.Identity, error) {
 	f, err := os.Open(path)
 	if err != nil {
 		return report.Identity{}, err
@@ -204,25 +215,7 @@ func readOpaque(path string, mode Mode) (report.Identity, error) {
 	case n == 4 && string(head[:]) == "PK\x03\x04":
 		id.Format = "zip"
 	}
-
-	if mode == ModeFull {
-		if _, err := f.Seek(0, io.SeekStart); err != nil {
-			return report.Identity{}, err
-		}
-		h := sha256.New()
-		if _, err := io.Copy(h, f); err != nil {
-			return report.Identity{}, err
-		}
-		id.SHA256 = hex.EncodeToString(h.Sum(nil))
-	}
 	return id, nil
-}
-
-func readSafetensors(path string, mode Mode) (*safetensors.Manifest, error) {
-	if mode == ModeHeaders {
-		return safetensors.ReadHeader(path)
-	}
-	return safetensors.ReadArtifact(path)
 }
 
 // promotion computes the promotion state. A FAIL or a LEAD withholds and is

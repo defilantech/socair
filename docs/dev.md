@@ -19,6 +19,15 @@ CI runs gofmt, build, and test on every push (`.github/workflows/ci.yml`).
 - `docs/`: the product artifacts (attestation template, brand, stack) and design docs.
 - `testdata/`: golden files. GGUF fixtures are generated in tests, not committed, so they cannot rot silently.
 
+## Scanning large models
+
+A full scan copies the artifact into a private, read-only snapshot and hashes
+it while copying; every check reads the snapshot, so the hash in the
+attestation is the hash of the bytes that were checked, even if the original
+changes mid-scan. The snapshot needs free space equal to the artifact's size in
+the temp directory; set `SOCAIR_SCAN_TMP` to a volume with room. It is removed
+when the scan ends.
+
 ## Rules
 
 - Tests are hermetic. No network, no secrets, no model files required. A check is proven with generated fixtures. The airlock tests stand an `httptest` server in for the hub and a temp directory in for the store.
