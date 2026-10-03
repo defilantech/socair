@@ -174,3 +174,23 @@ func TestStatusClassMapping(t *testing.T) {
 		}
 	}
 }
+
+// TestUnsignedIsMarked: /api/render renders any document, so an unsigned one
+// must not read as an issued attestation. Falsification: drop the mark and an
+// unsigned golden renders clean.
+func TestUnsignedIsMarked(t *testing.T) {
+	d := loadGolden(t)
+	d.Verification.SignerKeyID = ""
+	if out := renderString(t, d); !strings.Contains(out, `class="unsigned-chip"`) {
+		t.Fatal("an unsigned document must carry the UNSIGNED mark")
+	}
+	d.Verification.SignerKeyID = strings.Repeat("ab", 32)
+	d.Verification.DocumentHash = strings.Repeat("cd", 32)
+	out := renderString(t, d)
+	if strings.Contains(out, `class="unsigned-chip"`) {
+		t.Fatal("a document with a signer must not carry the UNSIGNED mark")
+	}
+	if !strings.Contains(out, "socair verify") {
+		t.Fatal("a signed document must say how to verify it")
+	}
+}

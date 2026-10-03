@@ -27,6 +27,7 @@ const (
 	ActionIngest  = "ingest"
 	ActionPromote = "promote"
 	ActionRefuse  = "refuse"
+	ActionTrust   = "trust"
 )
 
 // Activity outcomes.

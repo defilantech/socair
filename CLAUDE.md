@@ -19,6 +19,9 @@ go mod verify                                          # CI checks vendor/ is in
 go run ./cmd/socair scan <path>                        # report JSON to stdout
 go run ./cmd/socair render <path> > report.html
 go run ./cmd/socair serve --web web/build              # API + wizard on 127.0.0.1:8080
+go run ./cmd/socair key gen --out op                   # op.key (0600) + op.pub
+go run ./cmd/socair sign --key op.key --report r.json  # r.dsse.json
+go run ./cmd/socair verify r.dsse.json --trusted op.pub --artifact <file>
 ```
 
 Opt-in tests that need real resources, skipped by default:
@@ -47,7 +50,9 @@ npm run build     # static output in web/build
 
 **Renderers** (`internal/render`): HTML via `html/template` (`template.html` is embedded), PDF in pure Go via vendored `go-pdf/fpdf` so it works air-gapped, and SARIF. All are deterministic and byte-stable for a fixed input, with timestamps taken from the document and not the clock. Golden tests compare against `testdata/`. `internal/demo` holds a fabricated sample report rendered with a SAMPLE mark, and it must never be presented as real.
 
-**Airlock** (`internal/airlock`, `docs/airlock.md`): a content-addressed store with `incoming/<sha256>/` staging, `clean/<sha256>/` (artifact plus the attestation that let it cross), and an append-only `log.jsonl`. Only `promote` moves bytes into clean, and only with an attestation authorizing that exact hash. "In clean" does not mean clean, because conditional promotions also cross, so listings must carry attestation state. `pull` is the only networked operation (`SOCAIR_EGRESS=deny` blocks it; `SOCAIR_HF_ENDPOINT` overrides the hub). Store root resolves from `--store`, then `SOCAIR_STORE`, then `~/.socair/store`.
+**Signing** (`internal/attest`): an attestation is an in-toto Statement v1 (predicate type `https://socair.ai/attestation/v1`, predicate the report) in a DSSE envelope signed with Ed25519, verifiable offline. `attest.Verify` checks the signature against a keyring, statement and predicate types, subject digest = artifact hash, the recorded document hash, and `report.Validate`. Renderers mark an unsigned document UNSIGNED; a rendered report is a claim, the envelope is the proof.
+
+**Airlock** (`internal/airlock`, `docs/airlock.md`): a content-addressed store with `incoming/<sha256>/` staging, `clean/<sha256>/` (artifact, `attestation.dsse.json`, and `attestation.json`), a trust policy in `trusted-keys/`, and an append-only `log.jsonl`. Only `promote` moves bytes into clean, and only with an envelope signed by a trusted key whose subject is that exact hash; the bytes are hashed while copied. A bare report is never a ticket. "In clean" does not mean clean, because conditional promotions also cross, so listings must carry attestation state. `pull` is the only networked operation (`SOCAIR_EGRESS=deny` blocks it; `SOCAIR_HF_ENDPOINT` overrides the hub). Store root resolves from `--store`, then `SOCAIR_STORE`, then `~/.socair/store`.
 
 **API** (`internal/api`, `docs/api.md`): stateless and has no auth. `POST /api/scan` returns the document, and `POST /api/render` takes it back and returns HTML/PDF bytes. It binds to loopback by default, and a non-loopback bind is refused unless `SOCAIR_API_ALLOW_PUBLIC=1`. With `--web`, it serves the static wizard at `/` with an SPA fallback that never shadows `/api`.
 

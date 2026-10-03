@@ -358,15 +358,20 @@ func (o Options) airlockPull(w http.ResponseWriter, r *http.Request) {
 
 func (o Options) airlockPromote(w http.ResponseWriter, r *http.Request) {
 	var req struct {
-		Artifact string           `json:"artifact"`
-		Report   *report.Document `json:"report"`
+		Artifact    string          `json:"artifact"`
+		Attestation json.RawMessage `json:"attestation"`
+		Report      json.RawMessage `json:"report"`
 	}
 	if err := readJSON(r, &req); err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	if strings.TrimSpace(req.Artifact) == "" || req.Report == nil {
-		writeError(w, http.StatusBadRequest, "artifact and report are required")
+	if len(req.Report) > 0 && len(req.Attestation) == 0 {
+		writeError(w, http.StatusBadRequest, "promote takes a signed attestation (a DSSE envelope), not a bare report; sign it with `socair sign`")
+		return
+	}
+	if strings.TrimSpace(req.Artifact) == "" || len(req.Attestation) == 0 {
+		writeError(w, http.StatusBadRequest, "artifact and attestation are required")
 		return
 	}
 	s, err := o.store()
@@ -375,21 +380,17 @@ func (o Options) airlockPromote(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// The gate reads an attestation from disk. The wizard holds a document, so
-	// stage it to a temp file and hand the path to the one gate implementation.
-	b, err := json.MarshalIndent(req.Report, "", "  ")
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
-		return
-	}
-	tmp, err := os.CreateTemp("", "socair-attest-*.json")
+	// The gate reads the envelope from disk, so stage it to a temp file and
+	// hand the path to the one gate implementation. The bytes are passed
+	// through untouched: the signature covers them.
+	tmp, err := os.CreateTemp("", "socair-attest-*.dsse.json")
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 	tmpName := tmp.Name()
 	defer os.Remove(tmpName)
-	if _, err := tmp.Write(b); err != nil {
+	if _, err := tmp.Write(req.Attestation); err != nil {
 		tmp.Close()
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
