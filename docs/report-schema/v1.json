@@ -58,7 +58,21 @@
         "quant_declared": { "type": "string" },
         "quant_observed": { "type": "string" },
         "tokenizer_hash": { "type": "string" },
-        "chat_template_hash": { "type": "string" }
+        "chat_template_hash": { "type": "string" },
+        "files": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["path", "sha256", "size_bytes", "role"],
+            "properties": {
+              "path": { "type": "string" },
+              "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+              "size_bytes": { "type": "integer", "minimum": 0 },
+              "role": { "type": "string", "enum": ["weights", "config", "tokenizer", "chat_template", "code", "adapter", "other"] }
+            }
+          }
+        }
       }
     },
     "scope": {

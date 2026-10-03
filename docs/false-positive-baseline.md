@@ -292,6 +292,34 @@ vocabulary, was dropped to an informational note: gpt-oss's template uses
 `<|final|>`, which its vocabulary does not have. Engine sweep over 59 GGUFs:
 56 PASS, 0 FAIL, 0 LEAD, 3 NOT_TESTED (imatrix files with no vocabulary).
 
+## Model directory scans (2026-10-04)
+
+`socair scan <dir>` over every Hugging Face cache snapshot on the development
+machine: 10 repos, 1 to 32 files, up to 55 GB (Qwen3.8-27B, 18 safetensors
+shards). Zero FAIL and zero LEAD.
+
+| Repo | Files | Structure | Inventory | Chat template | Remote code |
+|---|---|---|---|---|---|
+| Qwen/Qwen3.8-27B | 32 | PASS (18 shards + index agree) | PASS | PASS | PASS |
+| Vontra/Qwen3.8-27B-MLX-4bit | 17 | PASS (3 shards + index) | PASS | PASS | PASS |
+| Vontra/NVIDIA-Nemotron-3.5-Lightning-30B-A3B-MLX-4bit | 14 | PASS (4 shards + index, plus an unindexed MTP file) | PASS | PASS | PASS |
+| z-lab/Qwen3.8-27B-DFlash2 | 5 | PASS | PASS | NOT_TESTED (none) | PASS |
+| z-lab/Qwen3.8-27B-DFlash2-GGUF | 1 | PASS | PASS | NOT_TESTED (none) | PASS |
+| BAAI/bge-reranker-v2-m3 | 6 | PASS | PASS | NOT_TESTED (none) | PASS |
+| sentence-transformers/all-MiniLM-L6-v2 | 11 | PASS | PASS | NOT_TESTED (none) | PASS |
+| Qwen/Qwen3-0.6B | 6 | NOT_TESTED (partial download, no weights) | PASS | PASS | PASS |
+| answerdotai/ModernBERT-base | 4 | NOT_TESTED (partial download, no weights) | PASS | NOT_TESTED (none) | PASS |
+| chopratejas/kompress-base | 1 | NOT_TESTED (ONNX, unparsed) | PASS | NOT_TESTED (none) | PASS |
+
+The shard-index rule (index and shards agree exactly) was measured on the three
+real indexes before it was chosen: every indexed tensor is in its shard and
+every shard tensor is indexed to it. A safetensors file the index does not name
+(Nemotron's `mtp-4bit.safetensors`) is validated on its own, not judged.
+
+None of these repos ships `auto_map` or a `.py` file, so the Remote code LEAD
+has not yet been seen on a real repo here; repos that do ship remote code
+(many research architectures) will LEAD by design, naming the files.
+
 ## Follow-ups
 
 1. Verify the GGML file-type mapping against the current llama.cpp enum so the

@@ -222,3 +222,22 @@ func TestOutOfScopeNamesWhatWasNotDone(t *testing.T) {
 		}
 	}
 }
+
+// A directory report lists every file it attests; a single-file report has
+// no Files section.
+func TestDirectoryReportListsItsFiles(t *testing.T) {
+	d := loadGolden(t)
+	if strings.Contains(renderString(t, d), "<h2>Files</h2>") {
+		t.Error("a single-file report must not render a Files section")
+	}
+	d.Artifact.Files = []report.ArtifactFile{
+		{Path: "config.json", SHA256: strings.Repeat("a", 64), SizeBytes: 2, Role: "config"},
+		{Path: "modeling_x.py", SHA256: strings.Repeat("c", 64), SizeBytes: 3, Role: "code"},
+	}
+	out := renderString(t, d)
+	for _, want := range []string{"<h2>Files</h2>", "modeling_x.py", strings.Repeat("c", 64), "socair.modeldir/v1"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("rendered directory report lacks %q", want)
+		}
+	}
+}

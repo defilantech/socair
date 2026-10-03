@@ -319,3 +319,31 @@ func UnparsedFormats(root, artifactName string) ([]string, error) {
 	sort.Strings(out)
 	return out, nil
 }
+
+// InspectRepo is the repo side alone: the file listing of a model directory,
+// for a directory scan whose weights have no metadata to inventory (pickle
+// checkpoints, for example). A native executable FAILs; an archive is named
+// as unscanned.
+func InspectRepo(root string) checks.Result {
+	r := checks.Result{
+		Name:     "File inventory and payloads",
+		LooksFor: "Hidden files, embedded payloads, unexpected executables",
+	}
+	findings, archives, note, err := scanRepo(root)
+	switch {
+	case err != nil:
+		r.Status = checks.NotTested
+		r.Notes = "could not list the directory: " + err.Error()
+	case len(findings) > 0:
+		r.Status = checks.Fail
+		r.Findings = findings
+		r.Notes = note
+	case len(archives) > 0:
+		r.Status = checks.NotTested
+		r.Notes = note + ". Archive contents were not scanned: " + strings.Join(archives, ", ")
+	default:
+		r.Status = checks.Pass
+		r.Notes = note
+	}
+	return r
+}

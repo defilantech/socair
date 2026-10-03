@@ -35,6 +35,15 @@ export interface Artifact {
 	architecture?: string;
 	split?: string;
 	quant_declared?: string;
+	files?: ArtifactFile[];
+}
+
+/** One file of a model directory; artifact.sha256 is the digest of their manifest. */
+export interface ArtifactFile {
+	path: string;
+	sha256: string;
+	size_bytes: number;
+	role: 'weights' | 'config' | 'tokenizer' | 'chat_template' | 'code' | 'adapter' | 'other';
 }
 
 export interface Document {

@@ -10,6 +10,7 @@ import (
 
 	"github.com/santhosh-tekuri/jsonschema/v6"
 
+	"github.com/defilantech/socair/internal/modeldir"
 	"github.com/defilantech/socair/internal/report"
 )
 
@@ -95,7 +96,22 @@ func TestBOMValidatesAgainstCycloneDX16(t *testing.T) {
 	bare.Artifact = report.ArtifactIdentity{Name: "", FileName: "m.bin", SHA256: plain.Artifact.SHA256, Format: "unknown"}
 	bare.Scope.ToolVersions = ""
 
-	for name, d := range map[string]*report.Document{"golden": plain, "signed conditional": rich, "bare": bare} {
+	dir := golden(t)
+	files := []modeldir.File{
+		{Path: "config.json", SHA256: strings.Repeat("a", 64), Size: 2, Role: modeldir.RoleConfig},
+		{Path: "model-00001-of-00002.safetensors", SHA256: strings.Repeat("b", 64), Size: 9, Role: modeldir.RoleWeights},
+		{Path: "modeling_x.py", SHA256: strings.Repeat("c", 64), Size: 3, Role: modeldir.RoleCode},
+	}
+	for _, f := range files {
+		dir.Artifact.Files = append(dir.Artifact.Files, report.ArtifactFile{Path: f.Path, SHA256: f.SHA256, SizeBytes: f.Size, Role: f.Role})
+	}
+	dir.Artifact.SHA256 = modeldir.Digest(files)
+	dir.Artifact.Format = "model directory"
+	if got := asMap(t, dir)["components"].([]any); len(got) != 3 {
+		t.Errorf("a directory BOM lists every file, got %d components", len(got))
+	}
+
+	for name, d := range map[string]*report.Document{"golden": plain, "signed conditional": rich, "bare": bare, "model directory": dir} {
 		if err := validate(t, s, render(t, d)); err != nil {
 			t.Errorf("%s: BOM does not validate against CycloneDX 1.6: %v", name, err)
 		}

@@ -79,6 +79,10 @@ type Manifest struct {
 	// with a repeated key means different readers see different tensors.
 	Duplicates []string `json:"duplicates,omitempty"`
 
+	// Tensors names every tensor in the header, sorted, for checking a
+	// sharded set against its index. Not serialized.
+	Tensors []string `json:"-"`
+
 	// Metadata holds the decoded __metadata__ values for the inventory check.
 	// Not serialized: the report carries keys, not values.
 	Metadata map[string]string `json:"-"`
@@ -231,6 +235,7 @@ func parseHeader(raw []byte, fileSize int64) (*Manifest, error) {
 			continue
 		}
 		m.TensorCount++
+		m.Tensors = append(m.Tensors, name)
 		if e.Dtype == "" {
 			m.Malformed = append(m.Malformed, name+": missing dtype")
 		}

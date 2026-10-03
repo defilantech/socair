@@ -1,9 +1,10 @@
 // Package cyclonedx emits a CycloneDX 1.6 ML-BOM from a report document.
 //
 // The BOM is derived from socair.report/v1 and adds nothing the report does
-// not say. Its subject (metadata.component) is the model, and its one
-// component is the file the report attested, by name, format, size, and
-// SHA-256. The model carries its upstream origin when the report recorded one
+// not say. Its subject (metadata.component) is the model, and its components
+// are the files the report attested, by name, size, and SHA-256: one for a
+// single-file report, every file of a model directory, whose subject digest
+// is then the manifest digest over them. The model carries its upstream origin when the report recorded one
 // bound to that hash. Each check row travels as a property carrying its
 // status, so a NOT_TESTED row reads NOT_TESTED in the BOM too and never as an
 // absence of findings. The report itself is referenced by its document hash as
@@ -217,16 +218,7 @@ func Build(d *report.Document) (any, error) {
 			}}},
 			Component: &model,
 		},
-		Components: []component{{
-			Type:   "file",
-			BOMRef: "file:" + sha,
-			Name:   a.FileName,
-			Hashes: []hash{{Alg: "SHA-256", Content: sha}},
-			Properties: []property{
-				{"socair:format", a.Format},
-				{"socair:size_bytes", fmt.Sprint(a.SizeBytes)},
-			},
-		}},
+		Components: fileComponents(a, sha),
 	}, nil
 }
 
@@ -254,4 +246,35 @@ func firstNonEmpty(vs ...string) string {
 		}
 	}
 	return ""
+}
+
+// fileComponents lists the attested files: the one file of a single-file
+// report, or every file of a model directory, each with its own hash and role.
+func fileComponents(a report.ArtifactIdentity, sha string) []component {
+	if len(a.Files) == 0 {
+		return []component{{
+			Type:   "file",
+			BOMRef: "file:" + sha,
+			Name:   a.FileName,
+			Hashes: []hash{{Alg: "SHA-256", Content: sha}},
+			Properties: []property{
+				{"socair:format", a.Format},
+				{"socair:size_bytes", fmt.Sprint(a.SizeBytes)},
+			},
+		}}
+	}
+	out := make([]component, 0, len(a.Files))
+	for _, f := range a.Files {
+		out = append(out, component{
+			Type:   "file",
+			BOMRef: "file:" + f.Path,
+			Name:   f.Path,
+			Hashes: []hash{{Alg: "SHA-256", Content: f.SHA256}},
+			Properties: []property{
+				{"socair:role", f.Role},
+				{"socair:size_bytes", fmt.Sprint(f.SizeBytes)},
+			},
+		})
+	}
+	return out
 }
