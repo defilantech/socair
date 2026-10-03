@@ -190,6 +190,34 @@ miss: a default system prompt whose instruction reads as ordinary guidance,
 with no lead phrase, URL, obfuscation, or content condition. That class is on
 the published detection ceiling until reviewed-template diffing lands.
 
+## Pickle opcode walker (2026-10-02)
+
+The pickle check matched one byte pattern, the text GLOBAL of protocols 0 to 3,
+so protocol 4 and 5 pickles (the default since Python 3.8), INST, memoized
+STACK_GLOBAL, `builtins.getattr`, and `importlib.import_module` all passed, and
+zip checkpoints (PyTorch's format since 1.6) were never opened. It now models
+the opcode stream with a stack and memo, and judges each import: a dangerous
+module or callable is a FAIL, the reviewed safe list (tensor and storage
+rebuilders, containers, numpy reconstruction) is fine, and anything else, or an
+import that cannot be resolved statically, is a LEAD.
+
+Real checkpoints, all PASS with every import on the safe list:
+
+| Checkpoint | Format | Pickles | Imports |
+|---|---|---|---|
+| hf-internal-testing/tiny-random-bert | zip | 1 | 4 |
+| hf-internal-testing/tiny-random-gpt2 | zip | 1 | 4 |
+| hf-internal-testing/tiny-random-t5 | zip | 1 | 3 |
+| prajjwal1/bert-tiny | zip | 1 | 4 |
+| sshleifer/tiny-gpt2 | legacy stream | 5 | 4 |
+| openai-community/gpt2 (548 MB) | legacy stream | 5 | 3 |
+
+Two false-positive paths were closed while measuring. Legacy `torch.save`
+files end in raw storage bytes, so a pickle after the first counts only if it
+reaches STOP. And bert-tiny has a tensor entry whose first byte is `.` (STOP),
+which parsed as an empty pickle: a zip entry not named `.pkl` is walked only if
+it starts with PROTO, and its imports must be well-formed Python names.
+
 ## Follow-ups
 
 1. Verify the GGML file-type mapping against the current llama.cpp enum so the
