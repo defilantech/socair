@@ -105,6 +105,13 @@ func (m *Manifest) MultiPart() bool {
 	return m.Split != nil && m.Split.Count > 1
 }
 
+// UnsupportedVersionError is a GGUF whose version this reader cannot parse.
+type UnsupportedVersionError struct{ Version uint32 }
+
+func (e *UnsupportedVersionError) Error() string {
+	return fmt.Sprintf("gguf: version %d is not supported (llama.cpp reads versions 2 and 3)", e.Version)
+}
+
 // ErrNotGGUF is returned when the file does not start with the GGUF magic.
 var ErrNotGGUF = errors.New("gguf: not a GGUF file")
 
@@ -204,6 +211,12 @@ func readHeader(f io.Reader, m *Manifest) error {
 		return fmt.Errorf("gguf: reading version: %w", err)
 	}
 	m.Version = version
+	// Version 1 stores 32-bit lengths, so reading it as version 3 misreads
+	// every field after the header; an unknown version has no layout at all.
+	// llama.cpp reads versions 2 and 3, and so does this reader.
+	if version != 2 && version != 3 {
+		return &UnsupportedVersionError{Version: version}
+	}
 
 	if m.TensorCount, err = readU64(f); err != nil {
 		return fmt.Errorf("gguf: reading tensor count: %w", err)

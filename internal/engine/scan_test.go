@@ -316,3 +316,74 @@ func TestSafetensorsIsHashedOnce(t *testing.T) {
 		t.Fatalf("a header-only scan hashed the file %d times, want 0", got)
 	}
 }
+
+// ggufVersion returns a clean fixture with its version field rewritten.
+func ggufVersion(v uint32) []byte {
+	b := gguftest.BuildGGUF(gguftest.Clean())
+	b[4], b[5], b[6], b[7] = byte(v), byte(v>>8), byte(v>>16), byte(v>>24)
+	return b
+}
+
+// TestUnparseableGGUFStillReports: an unsupported GGUF version reached PASS
+// (v1 stores 32-bit lengths and was misread as v3), and a truncated file made
+// the whole scan error, so its structure NOT_TESTED branch never ran. Each
+// now gets a report: structure NOT_TESTED naming the reason, and the metadata
+// rows NOT_TESTED because the metadata was not read. Falsification: return the
+// parse error from Scan again and these fail with an error.
+func TestUnparseableGGUFStillReports(t *testing.T) {
+	full := gguftest.BuildGGUF(gguftest.Clean())
+	cases := []struct {
+		name string
+		data []byte
+		want string
+	}{
+		{"v1", ggufVersion(1), "version 1"},
+		{"v99", ggufVersion(99), "version 99"},
+		{"v0", ggufVersion(0), "version 0"},
+		{"truncated", full[:len(full)-10], "could not parse"},
+	}
+	for _, c := range cases {
+		d, err := Scan(writeFixture(t, c.name+"-Q5_K_M.gguf", c.data))
+		if err != nil {
+			t.Errorf("%s: Scan errored instead of reporting: %v", c.name, err)
+			continue
+		}
+		if d.Artifact.Format != "GGUF" || len(d.Artifact.SHA256) != 64 {
+			t.Errorf("%s: identity %q %q, want GGUF and a hash", c.name, d.Artifact.Format, d.Artifact.SHA256)
+		}
+		for _, row := range []string{"Format and structure", "Chat template (hero)", "Tokenizer config", "Quant match"} {
+			var got report.CheckResult
+			for _, ch := range d.Checks {
+				if ch.Name == row {
+					got = ch
+				}
+			}
+			if got.Status != report.StatusNotTested {
+				t.Errorf("%s: %s = %s (%s), want NOT_TESTED", c.name, row, got.Status, got.Notes)
+			}
+		}
+		for _, ch := range d.Checks {
+			if ch.Name == "Format and structure" && !strings.Contains(ch.Notes, c.want) {
+				t.Errorf("%s: structure notes %q, want them to name %q", c.name, ch.Notes, c.want)
+			}
+			if ch.Name == "Chat template (hero)" && strings.Contains(ch.Notes, "no chat template present") {
+				t.Errorf("%s: hero row claims no template, but the metadata was never read", c.name)
+			}
+		}
+		if problems := report.Validate(d); len(problems) != 0 {
+			t.Errorf("%s: invalid report: %v", c.name, problems)
+		}
+	}
+}
+
+func TestSupportedGGUFVersionsParse(t *testing.T) {
+	for _, v := range []uint32{2, 3} {
+		d, err := Scan(writeFixture(t, "ok-Q5_K_M.gguf", ggufVersion(v)))
+		if err != nil {
+			t.Fatalf("v%d: %v", v, err)
+		}
+		if got := rowStatus(d, "Format and structure"); got != report.StatusPass {
+			t.Errorf("v%d: structure %s, want PASS", v, got)
+		}
+	}
+}
