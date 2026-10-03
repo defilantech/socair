@@ -29,8 +29,11 @@ func Inventory(path string) (*MetadataInventory, error) {
 		return nil, err
 	}
 	defer f.Close()
-	r := bufio.NewReaderSize(f, readBufSize)
+	return inventoryFrom(bufio.NewReaderSize(f, readBufSize))
+}
 
+// inventoryFrom walks the metadata section read from r.
+func inventoryFrom(r io.Reader) (*MetadataInventory, error) {
 	var magicBuf [4]byte
 	if _, err := io.ReadFull(r, magicBuf[:]); err != nil {
 		return nil, fmt.Errorf("gguf: reading magic: %w", err)

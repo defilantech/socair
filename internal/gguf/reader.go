@@ -461,11 +461,17 @@ func readString(f io.Reader) (string, error) {
 	if n > maxStringBytes {
 		return "", fmt.Errorf("string length %d exceeds cap %d", n, maxStringBytes)
 	}
-	buf := make([]byte, n)
-	if _, err := io.ReadFull(f, buf); err != nil {
+	// Read what is actually there rather than allocating the declared length
+	// up front: a truncated header declaring a 64 MiB string must not cost
+	// 64 MiB.
+	var b strings.Builder
+	if _, err := io.CopyN(&b, f, int64(n)); err != nil {
+		if errors.Is(err, io.EOF) {
+			return "", io.ErrUnexpectedEOF
+		}
 		return "", err
 	}
-	return string(buf), nil
+	return b.String(), nil
 }
 
 // quantField matches a GGML quantization tag: a plain type (Q4_0, Q5_K_M), an

@@ -718,7 +718,7 @@ func (a *analyser) foldFilter(e jinja.Filter, f func(jinja.Expr) (string, bool))
 	case "string", "safe", "e", "escape":
 		return v, true
 	case "title":
-		return strings.Title(v), true //nolint:staticcheck // Jinja's title, ASCII is enough here
+		return title(v), true
 	case "capitalize":
 		if v == "" {
 			return v, true
@@ -945,3 +945,19 @@ func mixedScriptWord(s string) string {
 }
 
 func excerptS(s string) string { return excerpt(s, 0, len(s)) }
+
+// title upper-cases the first letter of each word and lower-cases the rest,
+// as Jinja's title filter does.
+func title(s string) string {
+	var b strings.Builder
+	prev := ' '
+	for _, r := range s {
+		if unicode.IsLetter(r) && !unicode.IsLetter(prev) && !unicode.IsDigit(prev) {
+			b.WriteRune(unicode.ToUpper(r))
+		} else {
+			b.WriteRune(unicode.ToLower(r))
+		}
+		prev = r
+	}
+	return b.String()
+}
