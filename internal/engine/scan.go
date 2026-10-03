@@ -156,7 +156,14 @@ func ScanMode(path string, mode Mode) (*report.Document, error) {
 	}
 	id.SHA256 = sha
 
-	d, provOpts, expires, err := begin(start, id, original)
+	var sig *provenance.Signature
+	if mode == ModeFull {
+		var err error
+		if sig, err = fileSignature(original, id.SHA256); err != nil {
+			return nil, err
+		}
+	}
+	d, provOpts, expires, err := begin(start, id, original, sig)
 	if err != nil {
 		return nil, err
 	}
@@ -193,7 +200,7 @@ func ScanMode(path string, mode Mode) (*report.Document, error) {
 
 // begin seeds the document every scan path fills: header, re-scan policy,
 // scope, and identity fields from a provenance manifest bound to id's hash.
-func begin(start time.Time, id report.Identity, original string) (*report.Document, provenance.Options, string, error) {
+func begin(start time.Time, id report.Identity, original string, sig *provenance.Signature) (*report.Document, provenance.Options, string, error) {
 	d := report.NewFromIdentity(id)
 	d.Header.DocumentID = fmt.Sprintf("SOCAIR-%s-%s", start.Format("20060102"), shortHashOr(id.SHA256, "headers"))
 	d.Header.IssuedUTC = start.Format(time.RFC3339)
@@ -212,7 +219,7 @@ func begin(start time.Time, id report.Identity, original string) (*report.Docume
 	// Provenance comes only from the manifest the operator names. A
 	// provenance.json found beside the artifact is not read: whoever controls
 	// that directory could write one claiming any origin for these bytes.
-	provOpts := provenance.Options{ArtifactPath: original, ArtifactSHA256: id.SHA256, ManifestPath: os.Getenv("SOCAIR_PROVENANCE")}
+	provOpts := provenance.Options{ArtifactPath: original, ArtifactSHA256: id.SHA256, ManifestPath: os.Getenv("SOCAIR_PROVENANCE"), Signature: sig}
 	if m, unbound := provenance.Bind(provOpts); m != nil && unbound == "" {
 		d.Artifact.RepoURL = m.RepoURL
 		d.Artifact.CommitOrTag = m.CommitOrTag
@@ -221,6 +228,13 @@ func begin(start time.Time, id report.Identity, original string) (*report.Docume
 		d.Artifact.PublisherSigningState = publisherSigning(m.SigningStatus)
 		if m.Source != "" {
 			d.Scope.InputPath = m.Source
+		}
+	}
+	// A checked publisher signature outranks a manifest's claim about one.
+	if sig != nil {
+		d.Artifact.PublisherSigningState = signingState(sig)
+		if sig.State == provenance.SignatureVerified && d.Artifact.Publisher == "" {
+			d.Artifact.Publisher = sig.Signer
 		}
 	}
 

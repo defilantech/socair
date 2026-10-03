@@ -38,7 +38,7 @@ Section references in the bounded statement point at this template's numbering.
 | Commit or tag | `[commit_or_tag]` |
 | Commit hash | `[commit_sha]` |
 | Publisher / author | `[publisher]` |
-| Publisher signing status | `[signed_openssf / unsigned]` |
+| Publisher signing status | `[verified (OMS, signer) / invalid (OMS) / present, not verified / not established]` |
 | Artifact file name | `[artifact_filename]` |
 | Artifact SHA256 (exact file scanned, or a model directory's manifest digest) | `[artifact_sha256]` |
 | Format | `[GGUF / safetensors / model directory]` |

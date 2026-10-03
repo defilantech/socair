@@ -66,6 +66,34 @@ Independently of the manifest, a signature sidecar next to the artifact
 and records provenance on its own, with the signing status taken as signed
 (local sidecar).
 
+## 3a. Publisher signatures, `SOCAIR_PUBLISHER_KEYS` and `SOCAIR_PUBLISHER_ROOTS`
+
+When the artifact carries an OpenSSF Model Signing (OMS) signature, the scan
+verifies it offline. For a directory the signature is `model.sig` at its root
+(the `model_signing` default); for a single file it is `<file>.sig` beside it.
+`SOCAIR_OMS_SIGNATURE` names another path.
+
+- `SOCAIR_PUBLISHER_KEYS`: the publisher's EC public keys (P-256, P-384,
+  P-521), a PEM file or a directory of them, for key-signed models.
+- `SOCAIR_PUBLISHER_ROOTS`: CA certificates, a PEM file or a directory, for
+  models signed with a certificate. The chain is checked at the leaf's issue
+  time, and the leaf must be issued for signing.
+
+There is no default trust (no system roots, no built-in keys): a signature
+from a key you did not configure proves nothing about who made the model.
+
+| Signature | Provenance row | `publisher_signing_status` |
+|---|---|---|
+| From a trusted key or root; every signed file matches | PASS | verified (OMS, signer) |
+| From a trusted signer; the signature, or a file, does not match | FAIL | invalid (OMS): what differs |
+| From an untrusted signer, keyless Sigstore (#115), or pre-1.0 | the manifest rules decide; the signature is named | present, not verified |
+
+A verified signature proves the files are the ones the key holder signed. It
+is a statement of origin and integrity, never of safety: the other rows still
+decide whether the model is fit to serve. Files the signer excluded with
+`ignore_paths` (`.gitattributes` and the like by default) are named as not
+covered.
+
 ## 4. The acceptance record, `SOCAIR_ACCEPTED_BY` and `SOCAIR_ACCEPTANCE_EXPIRES`
 
 These do not fill a check row. They are the human who owns the gaps, and they
@@ -95,7 +123,7 @@ goes to escalated review.
 |---|---|---|
 | `SOCAIR_REPO_MIRROR` | File inventory and payloads | NOT_TESTED |
 | `SOCAIR_DENYLIST` | Known-bad hash match | NOT_TESTED |
-| `SOCAIR_PROVENANCE` or a sidecar | Hash, provenance, lineage | NOT_TESTED |
+| `SOCAIR_PROVENANCE`, or an OMS signature from a trusted publisher | Hash, provenance, lineage | NOT_TESTED |
 | `SOCAIR_ACCEPTED_BY` | the promotion state | withheld on any gap |
 
 ## Falsification
