@@ -218,6 +218,29 @@ reaches STOP. And bert-tiny has a tensor entry whose first byte is `.` (STOP),
 which parsed as an empty pickle: a zip entry not named `.pkl` is walked only if
 it starts with PROTO, and its imports must be well-formed Python names.
 
+## Safetensors layout validation (2026-10-03)
+
+Structure used to PASS any safetensors header that parsed. The audit's
+`overlap.safetensors` passed with two tensors at the same offsets, a bogus
+dtype, a negative shape, and a pickle in an unaccounted gap. A PASS now means
+the tensor ranges tile the data section exactly (start at 0, meet end to start,
+end at the last byte), each sized to its shape times its dtype width. A
+violation is a FAIL: the reference loader rejects it, and a gap is where a
+payload hides. A dtype outside the known table is NOT_TESTED, not FAIL, since
+the format keeps adding types. The header limit is now the reference
+implementation's 100,000,000 bytes.
+
+Measured on real files, headers only (0.02 s for about 137 GB): 45 PASS, 0 FAIL,
+0 NOT_TESTED. They cover Qwen3.8-27B in BF16 (18 shards); MLX 4-bit and 8-bit
+quantizations of Gemma 4 31B, Qwen3.6 35B-A3B, Qwen3-4B, and Nemotron 3.5 30B
+(packed U32 weights with per-group scales); bge-reranker-v2-m3; and
+all-MiniLM-L6-v2. The check also found the project's own "clean" test fixture
+was invalid (an F16 8x8 tensor in a 64-byte range), now fixed.
+
+```
+SOCAIR_SAFETENSORS_CORPUS=<dir>[:<dir>...] go test ./internal/checks/structure -run RealSafetensors -v
+```
+
 ## Follow-ups
 
 1. Verify the GGML file-type mapping against the current llama.cpp enum so the

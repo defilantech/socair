@@ -70,12 +70,13 @@ func BuildWithDataLen(meta map[string]string, tensors []TensorSpec, dataLen int6
 	return out
 }
 
-// Clean is a small valid artifact.
+// Clean is a small valid artifact: each tensor's range is exactly its shape
+// times its dtype width, and the ranges tile the data section.
 func Clean() []byte {
 	return Build(
 		map[string]string{"format": "pt", "author": "fixture"},
 		[]TensorSpec{
-			{Name: "model.embed_tokens.weight", Start: 0, End: 64, Dtype: "F16", Shape: []int64{8, 8}},
+			{Name: "model.embed_tokens.weight", Start: 0, End: 64, Dtype: "F16", Shape: []int64{4, 8}},
 			{Name: "model.norm.weight", Start: 64, End: 128, Dtype: "F32", Shape: []int64{16}},
 		},
 	)
