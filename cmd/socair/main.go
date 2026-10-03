@@ -118,7 +118,7 @@ Usage:
   socair airlock ingest    resolve a local path or an offline HF cache entry
   socair airlock trust add <key.pub>   trust a signing key for promotion
   socair airlock promote   promote an artifact with a signed attestation
-  socair airlock log       print the append-only airlock activity log
+  socair airlock log       print the airlock activity log (--verify checks its hash chain)
   socair serve             run the engine HTTP/JSON API for the click-ops wizard
   socair demo              write the SAMPLE attestation for sales
 `)

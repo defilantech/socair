@@ -48,7 +48,7 @@ socair airlock log
   records it. With `--scan` it also runs the engine and prints the report, so an
   ingested artifact fills Sections 2 and 3 like any other.
 - `promote` gates an artifact into the clean store on its attestation.
-- `log` prints the append-only activity log.
+- `log` prints the activity log; `log --verify` checks its hash chain.
 
 ## The promotion gate
 
@@ -137,6 +137,30 @@ reads it to decide a promotion.
 
 Actions are `pull`, `ingest`, `trust`, `promote`, `refuse`. Outcomes are `ok`,
 `conditional`, `refused`.
+
+### Hash chain
+
+Each entry's `prev` is the sha256 of the previous line's exact bytes; the
+first entry's is 64 zeros. Appends take an exclusive file lock, so concurrent
+writers never fork the chain.
+
+```
+socair airlock log --verify
+socair airlock log --verify --expect-head <head>
+```
+
+`--verify` walks the chain and exits non-zero at the first line that does not
+follow: an edited, deleted, inserted, or reordered entry, or a line that is not
+an entry. On success it prints the head, the hash of the last line.
+
+A chain cannot see lines cut off its end: what remains is still a valid chain.
+Record the head somewhere the airlock box cannot rewrite (a ticket, a change
+record, a second machine), and pass it as `--expect-head` later; verification
+then fails if that head is no longer in the log. Signed periodic checkpoints
+would make this automatic and are not built yet.
+
+Entries written before chaining have no `prev`. They are counted and reported
+as not covered; the chain starts from the last of them.
 
 ## Offline and air-gapped customers
 
