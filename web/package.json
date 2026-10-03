@@ -20,7 +20,7 @@
 		"@types/node": "^22.20.5",
 		"svelte": "^5.56.1",
 		"svelte-check": "^4.6.0",
-		"typescript": "^6.0.3",
+		"typescript": "^7.0.2",
 		"vite": "^8.0.16",
 		"vitest": "^4.1.8"
 	}
