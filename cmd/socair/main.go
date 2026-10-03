@@ -70,6 +70,21 @@ func main() {
 			fmt.Fprintln(os.Stderr, "error:", err)
 			os.Exit(1)
 		}
+	case "key":
+		if err := keyCmd(os.Args[2:]); err != nil {
+			fmt.Fprintln(os.Stderr, "error:", err)
+			os.Exit(1)
+		}
+	case "sign":
+		if err := signCmd(os.Args[2:]); err != nil {
+			fmt.Fprintln(os.Stderr, "error:", err)
+			os.Exit(1)
+		}
+	case "verify":
+		if err := verifyCmd(os.Args[2:]); err != nil {
+			fmt.Fprintln(os.Stderr, "error:", err)
+			os.Exit(1)
+		}
 	case "demo":
 		if err := demoCmd(); err != nil {
 			fmt.Fprintln(os.Stderr, "error:", err)
@@ -94,10 +109,15 @@ Usage:
   socair corpus <dir>      sweep every GGUF under a directory, headers only
   socair template <path>   print the chat template and hero-check findings
   socair render <path>     scan and write the HTML attestation to stdout
+  socair key gen --out <prefix>   create an Ed25519 signing key pair
+  socair sign --key <key> --report <report.json>   sign a report as a DSSE attestation
+  socair verify <attestation> --trusted <key.pub|dir> [--artifact <path>]
+                           verify an attestation, and that a file is its artifact
   socair airlock init <store>   create the store, staging, and activity log
   socair airlock pull      pull an artifact through controlled egress into staging
   socair airlock ingest    resolve a local path or an offline HF cache entry
-  socair airlock promote   promote an attested artifact into the clean store
+  socair airlock trust add <key.pub>   trust a signing key for promotion
+  socair airlock promote   promote an artifact with a signed attestation
   socair airlock log       print the append-only airlock activity log
   socair serve             run the engine HTTP/JSON API for the click-ops wizard
   socair demo              write the SAMPLE attestation for sales

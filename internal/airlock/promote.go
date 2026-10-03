@@ -10,96 +10,107 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"strings"
 
+	"github.com/defilantech/socair/internal/attest"
 	"github.com/defilantech/socair/internal/report"
 )
 
 // ErrRefused marks a promotion the gate declined. The reason is in the error.
 var ErrRefused = errors.New("promotion refused")
 
-// Promote moves an artifact into the clean store, gated on its attestation.
+// Store metadata names in a clean entry. An artifact may not take one, or the
+// metadata would overwrite it.
+const (
+	attestationDoc      = "attestation.json"
+	attestationEnvelope = "attestation.dsse.json"
+)
+
+// Promote moves an artifact into the clean store, gated on a signed
+// attestation.
 //
-// The bytes that cross must hash to the attestation that authorizes them, so no
-// artifact crosses on another artifact's ticket. A withheld or escalated
-// attestation never crosses; an authorized or authorized_with_conditions one
-// does, and a conditional crossing keeps its accepted surfaces in the stored
-// attestation. A refusal is recorded and returned, never softened to a warning.
-func Promote(s *Store, artifactPath, reportPath string) (Event, error) {
-	reportBytes, err := os.ReadFile(reportPath)
+// The ticket is a DSSE envelope: an in-toto statement signed by a key in the
+// store's trust policy (<store>/trusted-keys), whose subject digest is the
+// artifact's hash and whose document validates. The bytes that cross are
+// hashed as they are copied and must equal that digest, so no artifact
+// crosses on another artifact's ticket and nothing is trusted because it
+// parses. A withheld or escalated attestation never crosses; an authorized or
+// authorized_with_conditions one does, and the conditions travel with it. A
+// refusal is recorded and returned, never softened to a warning.
+func Promote(s *Store, artifactPath, envelopePath string) (Event, error) {
+	envelope, err := os.ReadFile(envelopePath)
 	if err != nil {
-		return Event{}, fmt.Errorf("read attestation %q: %w", reportPath, err)
-	}
-	var d report.Document
-	if err := json.Unmarshal(reportBytes, &d); err != nil {
-		return Event{}, fmt.Errorf("parse attestation %q: %w", reportPath, err)
+		return Event{}, fmt.Errorf("read attestation %q: %w", envelopePath, err)
 	}
 
+	sha := ""
 	refuse := func(reason string) (Event, error) {
-		e := Event{
-			Action:  ActionRefuse,
-			Outcome: OutcomeRefused,
-			SHA256:  normalizeSHA(d.Artifact.SHA256),
-			Detail:  reason,
-		}
+		e := Event{Action: ActionRefuse, Outcome: OutcomeRefused, SHA256: sha, Detail: reason}
 		if err := s.Record(e); err != nil {
 			return e, fmt.Errorf("%w: %s (also failed to log: %v)", ErrRefused, reason, err)
 		}
 		return e, fmt.Errorf("%w: %s", ErrRefused, reason)
 	}
 
-	if problems := report.Validate(&d); len(problems) != 0 {
-		return refuse("attestation does not validate: " + strings.Join(problems, "; "))
+	ring, err := s.TrustedKeys()
+	if err != nil {
+		return refuse(err.Error())
 	}
+	v, err := attest.Verify(envelope, ring)
+	if err != nil {
+		return refuse(err.Error())
+	}
+	d := v.Document
+	sha = normalizeSHA(v.SHA256)
 
 	switch d.PromotionAuthorization.State {
 	case report.StateAuthorized, report.StateAuthorizedWithConditions:
 		// crosses
 	default:
-		return refuse(fmt.Sprintf("attestation state %q withholds promotion; a FAIL is clearable only by escalated review",
+		return refuse(fmt.Sprintf("attestation state %q withholds promotion; a FAIL or LEAD is clearable only by escalated review",
 			d.PromotionAuthorization.State))
 	}
 
-	onDisk, err := hashFile(artifactPath)
+	name := filepath.Base(artifactPath)
+	if name == attestationDoc || name == attestationEnvelope {
+		return refuse(fmt.Sprintf("artifact name %q collides with the store's attestation file; rename it", name))
+	}
+
+	clean := s.CleanPath(sha)
+	conditional := d.PromotionAuthorization.State == report.StateAuthorizedWithConditions
+	outcome := OutcomeOK
+	detail := "clean attestation signed by " + attest.ShortID(v.KeyID)
+	if conditional {
+		outcome = OutcomeConditional
+		detail = fmt.Sprintf("authorized with conditions accepted by %s on %d surface(s), signed by %s",
+			d.PromotionAuthorization.AcceptedBy, len(d.PromotionAuthorization.AcceptedSurfaces), attest.ShortID(v.KeyID))
+	}
+	if already, _ := sameBytes(filepath.Join(clean, attestationEnvelope), envelope); already {
+		detail += "; already promoted"
+	}
+
+	// The artifact is always re-placed, even on a repeat promotion: one read
+	// hashes the bytes as they are copied and renames the copy into place only
+	// on a match, so a clean copy that was deleted or altered is restored, and
+	// a file swapped mid-copy never lands.
+	if _, err := s.placeVerified(artifactPath, clean, sha); err != nil {
+		var mm *hashMismatchError
+		if errors.As(err, &mm) {
+			return refuse(fmt.Sprintf("artifact on disk hashes to %s but the attestation is for %s", mm.got, sha))
+		}
+		return Event{}, fmt.Errorf("place artifact: %w", err)
+	}
+	docJSON, err := json.MarshalIndent(d, "", "  ")
 	if err != nil {
 		return Event{}, err
 	}
-	want := normalizeSHA(d.Artifact.SHA256)
-	if onDisk != want {
-		return refuse(fmt.Sprintf("artifact on disk hashes to %s but the attestation authorizes %s", onDisk, want))
+	if err := s.WriteFile(filepath.Join(clean, attestationDoc), docJSON); err != nil {
+		return Event{}, fmt.Errorf("write attestation: %w", err)
+	}
+	if err := s.WriteFile(filepath.Join(clean, attestationEnvelope), envelope); err != nil {
+		return Event{}, fmt.Errorf("write attestation envelope: %w", err)
 	}
 
-	clean := s.CleanPath(want)
-	attestPath := filepath.Join(clean, "attestation.json")
-
-	conditional := d.PromotionAuthorization.State == report.StateAuthorizedWithConditions
-	outcome := OutcomeOK
-	detail := "clean attestation"
-	if conditional {
-		outcome = OutcomeConditional
-		detail = fmt.Sprintf("authorized with conditions accepted by %s on %d surface(s)",
-			d.PromotionAuthorization.AcceptedBy, len(d.PromotionAuthorization.AcceptedSurfaces))
-	}
-
-	// Re-promotion of an identical identity is a no-op on the store contents,
-	// but still evidence in the log.
-	if already, _ := sameBytes(attestPath, reportBytes); already {
-		detail += "; already promoted"
-	} else {
-		if _, err := s.Place(artifactPath, clean); err != nil {
-			return Event{}, fmt.Errorf("place artifact: %w", err)
-		}
-		if err := s.WriteFile(attestPath, reportBytes); err != nil {
-			return Event{}, fmt.Errorf("write attestation: %w", err)
-		}
-	}
-
-	e := Event{
-		Action:  ActionPromote,
-		Outcome: outcome,
-		SHA256:  want,
-		Detail:  detail,
-	}
+	e := Event{Action: ActionPromote, Outcome: outcome, SHA256: sha, Detail: detail}
 	if err := s.Record(e); err != nil {
 		return e, err
 	}

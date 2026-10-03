@@ -62,7 +62,7 @@ Section references in the bounded statement point at this template's numbering.
 
 ## 4. Checks performed
 
-Each row returns PASS, FAIL, or NOT_TESTED. An ambiguous or unverifiable result is recorded as NOT_TESTED with a named reason, never as a silent pass.
+Each row returns PASS, FAIL, LEAD, or NOT_TESTED. FAIL is positive evidence. LEAD is a suspicious signal that is not conclusive, such as instruction-override language in a chat template; it is not a gap, so a named acceptance never clears it, only escalated review. An ambiguous or unverifiable result is recorded as NOT_TESTED with a named reason, never as a silent pass.
 
 | Check | Looks for | Result | Evidence | Notes |
 |---|---|---|---|
@@ -81,6 +81,10 @@ Each row returns PASS, FAIL, or NOT_TESTED. An ambiguous or unverifiable result 
 - FAIL entries: what, where, evidence, and why it matters, in plain language.
 
   `[fail_entries]`
+
+- LEAD entries: the suspicious signal, where it was found, and the escalation it needs.
+
+  `[lead_entries]`
 
 - NOT_TESTED entries: what was not tested and why (unavailable, unparseable, budget, out of class).
 
@@ -174,5 +178,6 @@ Raw results: `[sarif_reference]`
 - **GGUF**: `[gguf_definition]`
 - **Quantization**: `[quant_definition]`
 - **Chat template**: `[chat_template_definition]`
+- **LEAD**: `[lead_definition]`
 - **NOT_TESTED**: `[not_tested_definition]`
 - **Tier 1 vs Tier 2**: `[tier_definition]`

@@ -4,7 +4,10 @@
 // or badge of its own, and it treats every non-2xx as a failure rather than a
 // partial success.
 
-export type CheckStatus = 'PASS' | 'FAIL' | 'NOT_TESTED';
+// CHECK_STATUSES is the status enum of the report contract. A test holds it
+// to docs/report-schema/v1.json, so the wizard cannot drift from the engine.
+export const CHECK_STATUSES = ['PASS', 'FAIL', 'LEAD', 'NOT_TESTED'] as const;
+export type CheckStatus = (typeof CHECK_STATUSES)[number];
 
 export interface CheckResult {
 	name: string;
@@ -29,6 +32,8 @@ export interface Artifact {
 	sha256: string;
 	format: string;
 	size_bytes: number;
+	architecture?: string;
+	split?: string;
 	quant_declared?: string;
 }
 
@@ -36,7 +41,7 @@ export interface Document {
 	schema_version: string;
 	artifact: Artifact;
 	checks: CheckResult[];
-	findings: { fails: string[]; not_tested: string[] };
+	findings: { fails: string[]; leads?: string[]; not_tested: string[] };
 	promotion_authorization: PromotionAuthorization;
 	bounded_statement: string;
 	out_of_scope: { does_not_certify: string; ceiling: string[] };

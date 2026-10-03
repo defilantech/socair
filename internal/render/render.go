@@ -19,6 +19,7 @@ var templateHTML string
 var tmpl = template.Must(template.New("report").Funcs(template.FuncMap{
 	"statusClass":    statusClass,
 	"isNotTested":    isNotTested,
+	"isLead":         isLead,
 	"promotionClass": promotionClass,
 	"promotionLabel": promotionLabel,
 }).Parse(templateHTML))
@@ -27,6 +28,7 @@ var tmpl = template.Must(template.New("report").Funcs(template.FuncMap{
 type Counts struct {
 	Pass      int
 	Fail      int
+	Lead      int
 	NotTested int
 }
 
@@ -72,6 +74,8 @@ func countChecks(d *report.Document) Counts {
 			c.Pass++
 		case report.StatusFail:
 			c.Fail++
+		case report.StatusLead:
+			c.Lead++
 		default:
 			c.NotTested++
 		}
@@ -87,6 +91,8 @@ func statusClass(s report.Status) string {
 		return "pass"
 	case report.StatusFail:
 		return "fail"
+	case report.StatusLead:
+		return "lead"
 	default:
 		return "not-tested"
 	}
@@ -94,6 +100,10 @@ func statusClass(s report.Status) string {
 
 func isNotTested(s report.Status) bool {
 	return s == report.StatusNotTested
+}
+
+func isLead(s report.Status) bool {
+	return s == report.StatusLead
 }
 
 // promotionClass maps a promotion state to its badge class. The condition

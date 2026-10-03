@@ -24,6 +24,20 @@ There is none. The API is for the airlock box and binds loopback by default. It
 **refuses to bind a non-loopback address** unless `SOCAIR_API_ALLOW_PUBLIC=1` is
 set. Do not set that without putting authentication in front of it.
 
+Loopback is not a boundary against the operator's own browser, so every request
+is also checked against the pages they might visit:
+
+- **Host.** Only a loopback `Host` (`127.0.0.1`, `localhost`, `[::1]`) is
+  served, which defeats DNS rebinding. A deliberate public bind turns this
+  check off.
+- **Origin.** A request whose `Origin` is not this server, or whose
+  `Sec-Fetch-Site` is `cross-site`, gets `403`.
+- **Content type.** A `POST` must be `application/json`, else `415`. A
+  cross-origin page cannot send that without a CORS preflight, which this API
+  never answers.
+- **Load.** At most two scans, pulls, ingests, or promotions run at once;
+  past that the API answers `503` rather than queueing without bound.
+
 ## Endpoints
 
 ### `GET /api/version`
@@ -75,12 +89,14 @@ the source is unreachable, or the bytes do not hash to the requested hash.
 
 ### `POST /api/airlock/promote`
 
-Request `{"artifact":"/path","report": { ...document... }}`. The document is
-staged to a temp file and handed to the one gate implementation, so the wizard
-can promote straight from what it scanned.
+Request `{"artifact":"/path","attestation": { ...DSSE envelope... }}`. The
+envelope is a signed attestation (`socair sign`), passed through byte for byte
+and handed to the one gate implementation. A bare report document is refused
+with `400`: a document is not a ticket until a trusted key signs it.
 
-`200` `{"event":{...}}`, or `422` when the gate refuses (a withheld or escalated
-state, or an artifact that does not hash to its ticket).
+`200` `{"event":{...}}`, or `422` when the gate refuses: no trusted key in the
+store, a signature that does not verify against it, a withheld or escalated
+state, or an artifact that does not hash to the attested digest.
 
 ## Error shape
 

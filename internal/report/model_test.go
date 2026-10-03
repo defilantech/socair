@@ -143,6 +143,94 @@ func TestPromotionStateRules(t *testing.T) {
 	})
 }
 
+// TestPromotionStateBoundToChecks holds the promotion state to the check rows.
+// The airlock trusts a validating document as its ticket, so a document whose
+// state was edited to "authorized" over a FAIL or an unaccepted gap must not
+// validate. Falsification: drop the binding in validatePromotion and a forged
+// report crosses into the clean store.
+func TestPromotionStateBoundToChecks(t *testing.T) {
+	setStatus := func(d *Document, name string, s Status) {
+		for i := range d.Checks {
+			if d.Checks[i].Name == name {
+				d.Checks[i].Status = s
+				return
+			}
+		}
+		t.Fatalf("golden has no check %q", name)
+	}
+	authorize := func(d *Document) {
+		d.PromotionAuthorization.State = StateAuthorized
+		d.PromotionAuthorization.Authorized = true
+		d.PromotionAuthorization.AcceptedSurfaces = nil
+	}
+
+	t.Run("authorized over a FAIL", func(t *testing.T) {
+		d, _ := loadGolden(t)
+		setStatus(d, "File inventory and payloads", StatusPass)
+		setStatus(d, "Hash, provenance, lineage", StatusPass)
+		setStatus(d, "Format and structure", StatusFail)
+		authorize(d)
+		if len(Validate(d)) == 0 {
+			t.Fatal("an authorized state over a FAIL row must fail validation")
+		}
+	})
+	t.Run("authorized over a NOT_TESTED", func(t *testing.T) {
+		d, _ := loadGolden(t)
+		authorize(d)
+		if len(Validate(d)) == 0 {
+			t.Fatal("an authorized state over NOT_TESTED rows must fail validation")
+		}
+	})
+	t.Run("authorized with no checks", func(t *testing.T) {
+		d, _ := loadGolden(t)
+		d.Checks = nil
+		authorize(d)
+		if len(Validate(d)) == 0 {
+			t.Fatal("an authorized state with no check rows must fail validation")
+		}
+	})
+	t.Run("conditions over a FAIL", func(t *testing.T) {
+		d, _ := loadGolden(t)
+		setStatus(d, "Format and structure", StatusFail)
+		d.PromotionAuthorization.State = StateAuthorizedWithConditions
+		d.PromotionAuthorization.Authorized = true
+		d.PromotionAuthorization.AcceptedBy = "ciso@example.com"
+		if len(Validate(d)) == 0 {
+			t.Fatal("authorized_with_conditions over a FAIL must fail validation; a FAIL clears only by escalation")
+		}
+	})
+	t.Run("conditions must accept every gap", func(t *testing.T) {
+		d, _ := loadGolden(t)
+		d.PromotionAuthorization.State = StateAuthorizedWithConditions
+		d.PromotionAuthorization.Authorized = true
+		d.PromotionAuthorization.AcceptedBy = "ciso@example.com"
+		d.PromotionAuthorization.AcceptedSurfaces = []string{"File inventory and payloads"}
+		if len(Validate(d)) == 0 {
+			t.Fatal("an acceptance that omits a NOT_TESTED row must fail validation")
+		}
+	})
+	t.Run("conditions over a LEAD", func(t *testing.T) {
+		d, _ := loadGolden(t)
+		setStatus(d, "Format and structure", StatusLead)
+		d.PromotionAuthorization.State = StateAuthorizedWithConditions
+		d.PromotionAuthorization.Authorized = true
+		d.PromotionAuthorization.AcceptedBy = "ciso@example.com"
+		d.PromotionAuthorization.AcceptedSurfaces = append(d.PromotionAuthorization.AcceptedSurfaces, "Format and structure")
+		if len(Validate(d)) == 0 {
+			t.Fatal("an acceptance over a LEAD must fail validation; a LEAD clears only by escalation")
+		}
+	})
+	t.Run("all PASS authorizes", func(t *testing.T) {
+		d, _ := loadGolden(t)
+		setStatus(d, "File inventory and payloads", StatusPass)
+		setStatus(d, "Hash, provenance, lineage", StatusPass)
+		authorize(d)
+		if problems := Validate(d); len(problems) != 0 {
+			t.Fatalf("an all-PASS authorized report should validate, got %v", problems)
+		}
+	})
+}
+
 func TestNewFromManifest(t *testing.T) {
 	ft := uint32(17)
 	m := &gguf.Manifest{

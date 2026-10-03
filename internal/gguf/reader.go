@@ -6,6 +6,7 @@
 package gguf
 
 import (
+	"bufio"
 	"crypto/sha256"
 	"encoding/binary"
 	"encoding/hex"
@@ -71,6 +72,21 @@ type Manifest struct {
 	// directly; the report carries only its hash.
 	ChatTemplate string `json:"-"`
 
+	// ChatTemplates holds every chat template by name: "default" for
+	// tokenizer.chat_template and the suffix for a named template such as
+	// tokenizer.chat_template.tool_use. A serving stack can select any of
+	// them, so the hero check reads them all.
+	ChatTemplates map[string]string `json:"-"`
+	// ChatTemplateNonString names chat-template keys stored as something other
+	// than a string, which cannot be inspected.
+	ChatTemplateNonString []string `json:"chat_template_non_string,omitempty"`
+
+	// DuplicateKeys lists metadata keys that appear more than once. llama.cpp
+	// rejects such a file and readers disagree on which value wins, so the
+	// first occurrence is kept and the repeat is evidence for the structure
+	// check.
+	DuplicateKeys []string `json:"duplicate_keys,omitempty"`
+
 	Quant Quant  `json:"quant"`
 	Split *Split `json:"split,omitempty"`
 }
@@ -89,8 +105,31 @@ func (m *Manifest) MultiPart() bool {
 	return m.Split != nil && m.Split.Count > 1
 }
 
+// UnsupportedVersionError is a GGUF whose version this reader cannot parse.
+type UnsupportedVersionError struct{ Version uint32 }
+
+func (e *UnsupportedVersionError) Error() string {
+	return fmt.Sprintf("gguf: version %d is not supported (llama.cpp reads versions 2 and 3)", e.Version)
+}
+
 // ErrNotGGUF is returned when the file does not start with the GGUF magic.
 var ErrNotGGUF = errors.New("gguf: not a GGUF file")
+
+// IsGGUF reports whether the file starts with the GGUF magic. It reads four
+// bytes and parses nothing, so a malformed GGUF is still GGUF here and its
+// parse error surfaces from the reader.
+func IsGGUF(path string) (bool, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return false, err
+	}
+	defer f.Close()
+	var b [4]byte
+	if _, err := io.ReadFull(f, b[:]); err != nil {
+		return false, nil
+	}
+	return string(b[:]) == magic, nil
+}
 
 // wanted is the set of metadata keys we capture. The value type determines how
 // each is decoded.
@@ -129,7 +168,7 @@ func ReadHeader(path string) (*Manifest, error) {
 		Quant:     Quant{Declared: QuantFromFileName(filepath.Base(path))},
 	}
 
-	if err := readHeader(f, m); err != nil {
+	if err := readHeader(bufio.NewReaderSize(f, readBufSize), m); err != nil {
 		return nil, err
 	}
 	return m, nil
@@ -172,6 +211,12 @@ func readHeader(f io.Reader, m *Manifest) error {
 		return fmt.Errorf("gguf: reading version: %w", err)
 	}
 	m.Version = version
+	// Version 1 stores 32-bit lengths, so reading it as version 3 misreads
+	// every field after the header; an unknown version has no layout at all.
+	// llama.cpp reads versions 2 and 3, and so does this reader.
+	if version != 2 && version != 3 {
+		return &UnsupportedVersionError{Version: version}
+	}
 
 	if m.TensorCount, err = readU64(f); err != nil {
 		return fmt.Errorf("gguf: reading tensor count: %w", err)
@@ -180,6 +225,7 @@ func readHeader(f io.Reader, m *Manifest) error {
 		return fmt.Errorf("gguf: reading kv count: %w", err)
 	}
 
+	seen := make(map[string]bool)
 	for i := uint64(0); i < m.KVCount; i++ {
 		key, err := readString(f)
 		if err != nil {
@@ -191,9 +237,28 @@ func readHeader(f io.Reader, m *Manifest) error {
 		}
 
 		_, isWanted := wanted[key]
+		tmplName, isTmpl := templateName(key)
+		if isTmpl {
+			isWanted = vtype == typeString
+		}
 		val, err := scanValue(f, vtype, isWanted)
 		if err != nil {
 			return fmt.Errorf("gguf: reading value for %q: %w", key, err)
+		}
+		if seen[key] {
+			m.DuplicateKeys = append(m.DuplicateKeys, key)
+			continue
+		}
+		seen[key] = true
+		if isTmpl {
+			if vtype != typeString {
+				m.ChatTemplateNonString = append(m.ChatTemplateNonString, tmplName)
+				continue
+			}
+			if m.ChatTemplates == nil {
+				m.ChatTemplates = map[string]string{}
+			}
+			m.ChatTemplates[tmplName] = asString(val)
 		}
 		if !isWanted {
 			continue
@@ -241,6 +306,18 @@ func applyWanted(m *Manifest, key string, val any) {
 			m.ensureSplit().TensorCount = v
 		}
 	}
+}
+
+// templateName maps a chat-template metadata key to its template name.
+func templateName(key string) (string, bool) {
+	const base = "tokenizer.chat_template"
+	if key == base {
+		return "default", true
+	}
+	if n, ok := strings.CutPrefix(key, base+"."); ok && n != "" {
+		return n, true
+	}
+	return "", false
 }
 
 func (m *Manifest) ensureSplit() *Split {
@@ -321,9 +398,24 @@ func skipArray(f io.Reader) error {
 	if err != nil {
 		return err
 	}
+	// llama.cpp forbids nested arrays. Rejecting them here also bounds the
+	// recursion: without this, nested headers recurse once per level and a
+	// hostile file overflows the stack, a fatal error recover cannot catch.
+	if elemType == typeArray {
+		return errors.New("gguf: nested array in metadata is not valid GGUF")
+	}
 	count, err := readU64(f)
 	if err != nil {
 		return err
+	}
+	// Fixed-width elements are skipped in one bounded copy, not one read per
+	// element: a hostile header can declare billions of them. A count past the
+	// end of the file runs out of bytes and errors.
+	if w := fixedWidth(elemType); w > 0 {
+		if count > uint64(math.MaxInt64)/uint64(w) {
+			return fmt.Errorf("array of %d elements of width %d overflows", count, w)
+		}
+		return skipN(f, int64(count)*int64(w))
 	}
 	for i := uint64(0); i < count; i++ {
 		if _, err := scanValue(f, elemType, false); err != nil {
@@ -331,6 +423,26 @@ func skipArray(f io.Reader) error {
 		}
 	}
 	return nil
+}
+
+// readBufSize is the read buffer for header parsing. Metadata is many small
+// fields, so unbuffered reads cost a syscall each.
+const readBufSize = 1 << 20
+
+// fixedWidth is the byte width of a fixed-size metadata type, or 0 for strings,
+// arrays, and unknown types.
+func fixedWidth(t uint32) int {
+	switch t {
+	case typeUint8, typeInt8, typeBool:
+		return 1
+	case typeUint16, typeInt16:
+		return 2
+	case typeUint32, typeInt32, typeFloat32:
+		return 4
+	case typeUint64, typeInt64, typeFloat64:
+		return 8
+	}
+	return 0
 }
 
 func skipN(f io.Reader, n int64) error {
@@ -362,11 +474,17 @@ func readString(f io.Reader) (string, error) {
 	if n > maxStringBytes {
 		return "", fmt.Errorf("string length %d exceeds cap %d", n, maxStringBytes)
 	}
-	buf := make([]byte, n)
-	if _, err := io.ReadFull(f, buf); err != nil {
+	// Read what is actually there rather than allocating the declared length
+	// up front: a truncated header declaring a 64 MiB string must not cost
+	// 64 MiB.
+	var b strings.Builder
+	if _, err := io.CopyN(&b, f, int64(n)); err != nil {
+		if errors.Is(err, io.EOF) {
+			return "", io.ErrUnexpectedEOF
+		}
 		return "", err
 	}
-	return string(buf), nil
+	return b.String(), nil
 }
 
 // quantField matches a GGML quantization tag: a plain type (Q4_0, Q5_K_M), an
@@ -390,4 +508,10 @@ func QuantFromFileName(name string) string {
 		}
 	}
 	return ""
+}
+
+// SHA256Hex is the hex SHA-256 of b.
+func SHA256Hex(b []byte) string {
+	sum := sha256.Sum256(b)
+	return hex.EncodeToString(sum[:])
 }

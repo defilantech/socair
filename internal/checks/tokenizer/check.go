@@ -1,9 +1,10 @@
-// Package tokenizer inspects the tokenizer family declared in artifact
+// Package tokenizer reports the tokenizer family declared in artifact
 // metadata.
 //
-// It yields PASS for a recognized family and NOT_TESTED otherwise. It never
-// returns FAIL: an unrecognized family is outside our library, not evidence of
-// malice.
+// Today it reads only the tokenizer.ggml.model label, so it never returns PASS:
+// a label is not an inspection of the tokens, special tokens, merges, or
+// BOS/EOS ids, and a PASS would claim one. It never returns FAIL either: an
+// unrecognized family is outside our library, not evidence of malice.
 package tokenizer
 
 import (
@@ -37,7 +38,7 @@ func Inspect(model string) checks.Result {
 		r.Notes = "tokenizer family '" + model + "' is not in our library"
 		return r
 	}
-	r.Status = checks.Pass
-	r.Notes = "tokenizer family '" + model + "' is recognized; no anomaly in the declared family"
+	r.Status = checks.NotTested
+	r.Notes = "tokenizer family '" + model + "' is declared and recognized; the token list, special and control tokens, merges, and BOS/EOS ids were not inspected"
 	return r
 }

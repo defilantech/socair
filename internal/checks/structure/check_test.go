@@ -1,6 +1,8 @@
 package structure
 
 import (
+	"bytes"
+	"encoding/binary"
 	"os"
 	"path/filepath"
 	"strings"
@@ -89,5 +91,67 @@ func TestBadMagicDoesNotPass(t *testing.T) {
 	r := Validate(p)
 	if r.Status == checks.Pass {
 		t.Fatalf("non-GGUF artifact must not PASS, got %s", r.Status)
+	}
+}
+
+// TestDuplicateGGUFKeyFails: a repeated metadata key is a parser differential,
+// since llama.cpp rejects the file, gguf-py keeps the first value, and other
+// readers keep the last. That is positive evidence of a malformed container,
+// so it FAILs and no acceptance clears it.
+func TestDuplicateGGUFKeyFails(t *testing.T) {
+	kvs := append(gguftest.Clean(), gguftest.Str("tokenizer.chat_template", "second"))
+	p := writeFixture(t, "dup.gguf", gguftest.BuildGGUF(kvs))
+	r := Validate(p)
+	if r.Status != checks.Fail {
+		t.Fatalf("status = %s, want FAIL on a duplicate key (notes: %s)", r.Status, r.Notes)
+	}
+	if len(r.Findings) == 0 || r.Findings[0].Pattern != "duplicate-key" {
+		t.Fatalf("findings = %+v, want a duplicate-key finding", r.Findings)
+	}
+}
+
+// safetensorsWithHeader wraps a raw JSON header in the safetensors framing,
+// with dataLen zero bytes of tensor data.
+func safetensorsWithHeader(header string, dataLen int) []byte {
+	var b bytes.Buffer
+	_ = binary.Write(&b, binary.LittleEndian, uint64(len(header)))
+	b.WriteString(header)
+	b.Write(make([]byte, dataLen))
+	return b.Bytes()
+}
+
+// TestDuplicateSafetensorsKeyFails: the header decoded into a Go map, so a
+// repeated tensor name collapsed to its last entry and the first was never
+// checked. Falsification: decode straight into a map again and this PASSes.
+func TestDuplicateSafetensorsKeyFails(t *testing.T) {
+	h := `{"w":{"dtype":"F32","shape":[1],"data_offsets":[0,4]},` +
+		`"w":{"dtype":"F32","shape":[1],"data_offsets":[4,8]}}`
+	p := writeFixture(t, "dup.safetensors", safetensorsWithHeader(h, 8))
+	r := Validate(p)
+	if r.Status != checks.Fail {
+		t.Fatalf("status = %s, want FAIL on a duplicate tensor name (notes: %s)", r.Status, r.Notes)
+	}
+}
+
+// TestSafetensorsLayoutVerdicts: a layout violation is a FAIL (the reference
+// loader rejects it, and a gap can hide a payload); an unknown dtype is
+// NOT_TESTED (the layout cannot be checked, which is not malice).
+func TestSafetensorsLayoutVerdicts(t *testing.T) {
+	cases := []struct {
+		name   string
+		header string
+		data   int
+		want   checks.Status
+	}{
+		{"overlap", `{"a":{"dtype":"F32","shape":[2],"data_offsets":[0,8]},"b":{"dtype":"F32","shape":[2],"data_offsets":[0,8]}}`, 8, checks.Fail},
+		{"hidden gap", `{"a":{"dtype":"F32","shape":[2],"data_offsets":[0,8]},"b":{"dtype":"F32","shape":[2],"data_offsets":[64,72]}}`, 72, checks.Fail},
+		{"unknown dtype", `{"a":{"dtype":"EVIL","shape":[2],"data_offsets":[0,8]}}`, 8, checks.NotTested},
+		{"valid", `{"a":{"dtype":"F32","shape":[2],"data_offsets":[0,8]}}`, 8, checks.Pass},
+	}
+	for _, c := range cases {
+		r := Validate(writeFixture(t, c.name+".safetensors", safetensorsWithHeader(c.header, c.data)))
+		if r.Status != c.want {
+			t.Errorf("%s: status %s (%s), want %s", c.name, r.Status, r.Notes, c.want)
+		}
 	}
 }

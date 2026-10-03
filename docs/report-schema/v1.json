@@ -2,8 +2,9 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://socair.ai/schema/report/v1.json",
   "title": "Socair Model Assurance Attestation",
-  "description": "The cross-stack report contract. The engine produces it, the CLI prints it, the SvelteKit wizard renders it, and the MCP wrapper serves it. Versioned; breaking changes publish a new $id.",
+  "description": "The cross-stack report contract. The engine produces it, the CLI prints it, the SvelteKit wizard renders it, and the MCP wrapper serves it. Versioned; breaking changes publish a new $id. v1 is frozen at the public release; before it, v1 changed in place with no external consumers (2026-10-02: the LEAD check status and findings.leads were added).",
   "type": "object",
+  "additionalProperties": false,
   "required": [
     "schema_version",
     "header",
@@ -22,6 +23,7 @@
     "schema_version": { "const": "socair.report/v1" },
     "header": {
       "type": "object",
+      "additionalProperties": false,
       "required": ["document_id", "template_version", "issued_utc", "artifact_short", "assurance_level_awarded"],
       "properties": {
         "document_id": { "type": "string", "minLength": 1 },
@@ -38,9 +40,12 @@
     },
     "artifact": {
       "type": "object",
+      "additionalProperties": false,
       "required": ["name", "file_name", "sha256", "format", "size_bytes"],
       "properties": {
         "name": { "type": "string" },
+        "architecture": { "type": "string" },
+        "split": { "type": "string" },
         "repo_url": { "type": "string" },
         "commit_or_tag": { "type": "string" },
         "commit_sha": { "type": "string" },
@@ -58,6 +63,7 @@
     },
     "scope": {
       "type": "object",
+      "additionalProperties": false,
       "required": ["check_set_version", "execution_context", "input_path"],
       "properties": {
         "check_set_version": { "type": "string" },
@@ -74,11 +80,12 @@
       "minItems": 1,
       "items": {
         "type": "object",
+        "additionalProperties": false,
         "required": ["name", "looks_for", "status"],
         "properties": {
           "name": { "type": "string", "minLength": 1 },
           "looks_for": { "type": "string" },
-          "status": { "enum": ["PASS", "FAIL", "NOT_TESTED"] },
+          "status": { "enum": ["PASS", "FAIL", "LEAD", "NOT_TESTED"] },
           "evidence": { "type": "string" },
           "notes": { "type": "string" }
         }
@@ -86,13 +93,16 @@
     },
     "findings": {
       "type": "object",
+      "additionalProperties": false,
       "properties": {
         "fails": { "type": "array", "items": { "type": "string" } },
+        "leads": { "type": "array", "items": { "type": "string" } },
         "not_tested": { "type": "array", "items": { "type": "string" } }
       }
     },
     "assurance_level": {
       "type": "object",
+      "additionalProperties": false,
       "required": ["awarded"],
       "properties": {
         "awarded": { "type": "string", "minLength": 1 },
@@ -107,6 +117,7 @@
     },
     "out_of_scope": {
       "type": "object",
+      "additionalProperties": false,
       "required": ["does_not_certify", "ceiling"],
       "properties": {
         "does_not_certify": { "type": "string", "minLength": 1 },
@@ -117,6 +128,7 @@
     },
     "promotion_authorization": {
       "type": "object",
+      "additionalProperties": false,
       "required": ["authorized"],
       "properties": {
         "authorized": { "type": "boolean" },
@@ -131,6 +143,7 @@
     },
     "verification": {
       "type": "object",
+      "additionalProperties": false,
       "required": ["signing_method", "artifact_sha256"],
       "properties": {
         "document_hash": { "type": "string" },
@@ -142,6 +155,7 @@
     },
     "issuer": {
       "type": "object",
+      "additionalProperties": false,
       "required": ["authority"],
       "properties": {
         "signed_by": { "type": "string" },
@@ -152,6 +166,7 @@
     },
     "appendices": {
       "type": "object",
+      "additionalProperties": false,
       "properties": {
         "check_definitions": { "type": "string" },
         "sarif_reference": { "type": "string" },

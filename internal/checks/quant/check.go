@@ -53,12 +53,22 @@ var fileTypeToQuant = map[uint32]string{
 	38: "MXFP4_MOE",
 }
 
+// canonical is the set of llama.cpp file type names, the only declared labels
+// a file type can be compared against.
+var canonical = func() map[string]bool {
+	m := make(map[string]bool, len(fileTypeToQuant))
+	for _, v := range fileTypeToQuant {
+		m[v] = true
+	}
+	return m
+}()
+
 // Compare reports whether the declared quantization matches the observed file
 // type.
 func Compare(declared string, fileType *uint32) checks.Result {
 	r := checks.Result{
 		Name:     "Quant match",
-		LooksFor: "Declared quantization against observed weight layout",
+		LooksFor: "Declared quantization (file name) against the file type declared in metadata",
 	}
 
 	if fileType == nil {
@@ -77,6 +87,15 @@ func Compare(declared string, fileType *uint32) checks.Result {
 		return r
 	}
 
+	// A community name such as Unsloth's UD-Q4_K_XL or bartowski's Q4_K_L has
+	// no llama.cpp file type of its own (those files report Q4_K_M), so there
+	// is nothing to compare it against. That is a gap, not a mismatch.
+	if !canonical[declared] {
+		r.Status = checks.NotTested
+		r.Notes = fmt.Sprintf("declared %s is not a llama.cpp file type name (community naming), so it cannot be compared with file type %d", declared, *fileType)
+		return r
+	}
+
 	observed, ok := fileTypeToQuant[*fileType]
 	if !ok {
 		r.Status = checks.NotTested
@@ -86,7 +105,7 @@ func Compare(declared string, fileType *uint32) checks.Result {
 
 	if observed == declared {
 		r.Status = checks.Pass
-		r.Notes = "declared " + declared + " matches observed file type " + fmt.Sprint(*fileType)
+		r.Notes = "declared " + declared + " matches the metadata file type " + fmt.Sprint(*fileType) + ". Both are labels; the tensor types were not inspected"
 		return r
 	}
 
@@ -95,6 +114,6 @@ func Compare(declared string, fileType *uint32) checks.Result {
 		Pattern: "quant-mismatch",
 		Detail:  fmt.Sprintf("declared %s but observed file type %d (%s)", declared, *fileType, observed),
 	})
-	r.Notes = "declared quantization does not match the observed weight layout"
+	r.Notes = "the file name and the metadata file type disagree. Both are labels; the tensor types were not inspected"
 	return r
 }

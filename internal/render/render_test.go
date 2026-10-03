@@ -81,6 +81,23 @@ func TestFailRendersAsFail(t *testing.T) {
 	}
 }
 
+// A LEAD reads as a call to escalate: its own pill and an "escalate" tag,
+// never the pass or the not-tested look.
+func TestLeadRendersForEscalation(t *testing.T) {
+	d := loadGolden(t)
+	d.Checks[0].Status = report.StatusLead
+	out := renderString(t, d)
+	if !strings.Contains(out, `class="pill lead">LEAD`) {
+		t.Error("a LEAD row must render with the lead pill class")
+	}
+	if !strings.Contains(out, `<span class="tag">escalate</span>`) {
+		t.Error("a LEAD row must carry the escalate tag")
+	}
+	if strings.Contains(out, `class="pill pass">LEAD`) || strings.Contains(out, `class="pill not-tested">LEAD`) {
+		t.Error("a LEAD must never look like a pass or a gap")
+	}
+}
+
 // The demo build must be unmistakable as sample data.
 func TestSampleMarkIsPresent(t *testing.T) {
 	d := loadGolden(t)
@@ -148,6 +165,7 @@ func TestStatusClassMapping(t *testing.T) {
 		report.StatusPass:      "pass",
 		report.StatusFail:      "fail",
 		report.StatusNotTested: "not-tested",
+		report.StatusLead:      "lead",
 		"":                     "not-tested", // anything unknown is neutral, never a pass
 	}
 	for in, want := range cases {
@@ -167,5 +185,25 @@ func TestReportLinksTheCeiling(t *testing.T) {
 	}
 	if !strings.Contains(html, `href="`+CeilingURL+`"`) {
 		t.Errorf("the ceiling must be an anchor to %q", CeilingURL)
+	}
+}
+
+// TestUnsignedIsMarked: /api/render renders any document, so an unsigned one
+// must not read as an issued attestation. Falsification: drop the mark and an
+// unsigned golden renders clean.
+func TestUnsignedIsMarked(t *testing.T) {
+	d := loadGolden(t)
+	d.Verification.SignerKeyID = ""
+	if out := renderString(t, d); !strings.Contains(out, `class="unsigned-chip"`) {
+		t.Fatal("an unsigned document must carry the UNSIGNED mark")
+	}
+	d.Verification.SignerKeyID = strings.Repeat("ab", 32)
+	d.Verification.DocumentHash = strings.Repeat("cd", 32)
+	out := renderString(t, d)
+	if strings.Contains(out, `class="unsigned-chip"`) {
+		t.Fatal("a document with a signer must not carry the UNSIGNED mark")
+	}
+	if !strings.Contains(out, "socair verify") {
+		t.Fatal("a signed document must say how to verify it")
 	}
 }

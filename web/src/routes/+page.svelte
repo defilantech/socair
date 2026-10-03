@@ -127,6 +127,7 @@
 					<div class="counts">
 						<span class="count"><b>{c.pass}</b><span>pass</span></span>
 						<span class="count"><b>{c.fail}</b><span>fail</span></span>
+						<span class="count"><b>{c.lead}</b><span>lead</span></span>
 						<span class="count"><b>{c.notTested}</b><span>not tested</span></span>
 					</div>
 				{/if}

@@ -6,6 +6,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/defilantech/socair/internal/safetensors/safetensorstest"
@@ -79,5 +80,31 @@ func TestHeaderLengthBeyondFile(t *testing.T) {
 	p := writeFixture(t, "huge.safetensors", buf)
 	if _, err := ReadArtifact(p); err == nil {
 		t.Fatal("expected an error on a header length beyond the file size")
+	}
+}
+
+// TestMalformedIsDeterministic: the header is walked as a Go map, whose order
+// is randomized, so Malformed came out in a different order on each run and the
+// "byte-stable" report was not. Falsification: drop the sort and the forty
+// reads below disagree.
+func TestMalformedIsDeterministic(t *testing.T) {
+	var specs []safetensorstest.TensorSpec
+	for _, n := range []string{"a", "b", "c", "d", "e", "f", "g", "h"} {
+		specs = append(specs, safetensorstest.TensorSpec{Name: n, Dtype: "F32", Shape: []int64{1}, Start: 0, End: 1 << 30})
+	}
+	p := writeFixture(t, "bad.safetensors", safetensorstest.BuildWithDataLen(nil, specs, 4))
+
+	first, err := ReadHeader(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; i < 40; i++ {
+		m, err := ReadHeader(p)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if strings.Join(m.Malformed, "|") != strings.Join(first.Malformed, "|") {
+			t.Fatalf("Malformed order changed between reads:\n%q\n%q", first.Malformed, m.Malformed)
+		}
 	}
 }

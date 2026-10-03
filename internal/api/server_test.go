@@ -12,6 +12,7 @@ import (
 	"testing"
 
 	"github.com/defilantech/socair/internal/airlock"
+	"github.com/defilantech/socair/internal/attest"
 	"github.com/defilantech/socair/internal/demo"
 	"github.com/defilantech/socair/internal/gguf/gguftest"
 	"github.com/defilantech/socair/internal/report"
@@ -262,6 +263,47 @@ func TestAirlockEndpointsNeedAStore(t *testing.T) {
 
 func TestAirlockPromoteRefusesAWithheldDocument(t *testing.T) {
 	root := t.TempDir()
+	s, err := airlock.Init(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	prefix := filepath.Join(t.TempDir(), "operator")
+	if _, err := attest.GenerateKey(prefix); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.Trust(prefix + ".pub"); err != nil {
+		t.Fatal(err)
+	}
+	k, err := attest.LoadPrivateKey(prefix + ".key")
+	if err != nil {
+		t.Fatal(err)
+	}
+	d, err := demo.Document()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if d.PromotionAuthorization.State != report.StateWithheld {
+		t.Fatalf("demo fixture is %s, want withheld", d.PromotionAuthorization.State)
+	}
+	env, err := attest.Sign(*d, k)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	ts := server(t, Options{StoreRoot: root})
+	code, body := post(t, ts, "/api/airlock/promote", map[string]any{"artifact": "x.gguf", "attestation": json.RawMessage(env)})
+	if code != http.StatusUnprocessableEntity {
+		t.Fatalf("a withheld document must be refused with 422, got %d %s", code, body)
+	}
+	if !bytes.Contains(body, []byte("withholds promotion")) {
+		t.Errorf("the refusal should name the state, got %s", body)
+	}
+}
+
+// TestAirlockPromoteRefusesABareReport: the API used to take a report document
+// as the ticket. A document is not a ticket until a trusted key signs it.
+func TestAirlockPromoteRefusesABareReport(t *testing.T) {
+	root := t.TempDir()
 	if _, err := airlock.Init(root); err != nil {
 		t.Fatal(err)
 	}
@@ -269,14 +311,9 @@ func TestAirlockPromoteRefusesAWithheldDocument(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	d.PromotionAuthorization = report.PromotionAuthorization{State: report.StateWithheld, Level: "Tier 1 only"}
-
 	ts := server(t, Options{StoreRoot: root})
 	code, body := post(t, ts, "/api/airlock/promote", map[string]any{"artifact": "x.gguf", "report": d})
-	if code != http.StatusUnprocessableEntity {
-		t.Fatalf("a withheld document must be refused with 422, got %d %s", code, body)
-	}
-	if !bytes.Contains(body, []byte("withholds promotion")) {
-		t.Errorf("the refusal should name the state, got %s", body)
+	if code != http.StatusBadRequest || !bytes.Contains(body, []byte("signed attestation")) {
+		t.Fatalf("a bare report must be refused with 400 naming the signed attestation, got %d %s", code, body)
 	}
 }

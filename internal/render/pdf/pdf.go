@@ -38,7 +38,12 @@ var (
 	failInk     = rgb{163, 35, 27}
 	untested    = rgb{241, 241, 243}
 	untestedInk = rgb{85, 85, 92}
+	leadBG      = rgb{253, 243, 225}
+	leadInk     = rgb{138, 75, 0}
 )
+
+// UnsignedMark is printed on a report that no key has signed.
+const UnsignedMark = "UNSIGNED - not an attestation until signed"
 
 // RenderPDF writes the PDF attestation for d to w.
 func RenderPDF(w io.Writer, d *report.Document) error {
@@ -62,6 +67,12 @@ func RenderPDF(w io.Writer, d *report.Document) error {
 
 	title(pdf, "Model Assurance Attestation")
 	sub(pdf, "Issued "+d.Header.IssuedUTC+"  ·  Template "+d.Header.TemplateVersion)
+	if d.Verification.SignerKeyID == "" {
+		// A report no key has signed is a draft, and says so on its face.
+		pdf.SetFont("Helvetica", "B", 9)
+		pdf.SetTextColor(failInk.r, failInk.g, failInk.b)
+		pdf.CellFormat(contentW, 6, UnsignedMark, "", 1, "L", false, 0, "")
+	}
 	pdf.Ln(2)
 
 	cover(pdf, d)
@@ -106,6 +117,11 @@ func RenderPDF(w io.Writer, d *report.Document) error {
 	pdf.SetFont("Helvetica", "", 9)
 	pdf.SetTextColor(muted.r, muted.g, muted.b)
 	pdf.MultiCell(contentW, lineH, "Signing: "+d.Verification.SigningMethod, "", "L", false)
+	if d.Verification.SignerKeyID != "" {
+		pdf.MultiCell(contentW, lineH, "Signer key: "+d.Verification.SignerKeyID, "", "L", false)
+		pdf.MultiCell(contentW, lineH, "Document hash: "+d.Verification.DocumentHash, "", "L", false)
+		pdf.MultiCell(contentW, lineH, "A printed report is a claim, not the proof. Check the attestation: socair verify <attestation.dsse.json> --trusted <key.pub> --artifact <file>", "", "L", false)
+	}
 	pdf.MultiCell(contentW, lineH, "Artifact SHA256: "+d.Verification.ArtifactSHA256, "", "L", false)
 	pdf.Ln(2)
 
@@ -202,27 +218,29 @@ func cover(pdf *fpdf.Fpdf, d *report.Document) {
 		pdf.MultiCell(contentW, 4, line, "", "L", false)
 	}
 
-	var p, f, n int
+	var p, f, l, n int
 	for _, c := range d.Checks {
 		switch c.Status {
 		case report.StatusPass:
 			p++
 		case report.StatusFail:
 			f++
+		case report.StatusLead:
+			l++
 		default:
 			n++
 		}
 	}
 	pdf.SetFont("Helvetica", "", 10)
 	pdf.SetTextColor(muted.r, muted.g, muted.b)
-	pdf.CellFormat(contentW, 6, countsLine(p, f, n), "", 1, "L", false, 0, "")
+	pdf.CellFormat(contentW, 6, countsLine(p, f, l, n), "", 1, "L", false, 0, "")
 }
 
-func countsLine(pass, fail, notTested int) string {
+func countsLine(pass, fail, lead, notTested int) string {
 	part := func(n int, label string) string {
 		return itoa(n) + " " + label
 	}
-	return part(pass, "pass") + "   " + part(fail, "fail") + "   " + part(notTested, "not tested")
+	return part(pass, "pass") + "   " + part(fail, "fail") + "   " + part(lead, "lead") + "   " + part(notTested, "not tested")
 }
 
 func itoa(n int) string {
@@ -278,6 +296,8 @@ func statusColors(s report.Status) (rgb, rgb) {
 		return passBG, passInk
 	case report.StatusFail:
 		return failBG, failInk
+	case report.StatusLead:
+		return leadBG, leadInk
 	default:
 		return untested, untestedInk
 	}

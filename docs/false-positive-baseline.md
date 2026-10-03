@@ -104,6 +104,143 @@ guards that. A template on the list is still FAILed if it carries structural
 code-execution evidence: the allowlist clears language, never code, and
 `TestAllowlistClearsLeadsButNotStructural` proves it.
 
+## Audit false positives (2026-10-02)
+
+The pre-reveal audit found two FAILs that broke the rule that a FAIL needs
+positive evidence. Both are now regression tests.
+
+- **Two-byte magics in metadata text.** `general.license = "Licensed by AMZ
+  Corp"` FAILed as an embedded PE, because the inventory matched `MZ` (and
+  gzip's `1f 8b`) anywhere in a value. Four-byte magics (ELF, zip, Mach-O)
+  still match anywhere. Two-byte magics now count only at the start of a value
+  and only with confirming structure: a `PE\0\0` signature at `e_lfanew`, or a
+  gzip header with deflate and no reserved flags.
+  `TestShortMagicInTextDoesNotFail`, `TestRealPEInMetadataFails`.
+- **Zip-format PyTorch checkpoints in the repo.** Every `pytorch_model.bin`
+  since PyTorch 1.6 is a zip, and the repo side FAILed any zip. Only a native
+  executable (ELF, verified PE, Mach-O) is now a repo FAIL. An archive is named
+  as unscanned and leaves the row NOT_TESTED, because its contents, a pickle
+  for a checkpoint, were not inspected. `TestRepoTorchCheckpointIsNotAFail`.
+- **Community quant names.** `Model-UD-Q4_K_XL.gguf` (Unsloth) FAILed as a
+  quant mismatch. `Q4_K_XL` and bartowski's `Q4_K_L` are not llama.cpp file
+  types, and those files report `Q4_K_M`, so there is nothing to compare. A
+  declared name outside the llama.cpp set is now NOT_TESTED with the name.
+  `TestCommunityQuantNameIsNotTested`.
+
+## Syntax-tree analysis of chat templates (2026-10-02)
+
+The hero check used to match phrases with regexes over the raw template. The
+audit's poisoned templates all passed it: a Pillar-style conditional
+system-turn injection, `'Ign' ~ 'ore previous instructions'`, a `|reverse`d
+phrase, and a zero-width space inside "ignore". The check now parses the
+template (`internal/checks/chattemplate/jinja`) and analyses the tree:
+
+- Constant expressions are evaluated (`~`, `+`, `join`, `reverse`, `[::-1]`,
+  `replace`, `format` including `%c`, string escapes such as `\x5f`, and `set`
+  indirection), and text emitted back to back is read as one string.
+- Text is normalized (zero-width and bidi controls stripped, fullwidth and
+  common Cyrillic and Greek lookalikes mapped to Latin) before the phrase leads
+  run, and hidden characters or a word mixing scripts are leads in themselves.
+- A dunder name reached by any route (`.x`, `[k]`, `attr`, `map(attribute=)`,
+  built by concatenation or escapes) is a FAIL.
+- A branch that tests **what message content says** (membership of a
+  constant, equality with a non-empty constant, `startswith`-style probes)
+  and emits a system turn or its own prose is a LEAD.
+- Every named template (`tokenizer.chat_template.<name>`) is checked.
+- A template the analyser cannot read (parse error, over the size or work
+  budget, invalid UTF-8) is a LEAD, not NOT_TESTED, so a blanket acceptance
+  cannot clear an evasion by unreadability.
+
+### False positives
+
+Measured against 49 distinct real templates: the 14 in the local GGUF corpus
+(including Command-R's named `rag` and `tool_use` templates) and 35 fetched
+from the public Hugging Face repos of Qwen 2.5/3, QwQ, Llama 3.1/3.2/3.3/4,
+Gemma 2/3, Mistral 7B/Nemo/Small 3.1, Phi-3.5/4, DeepSeek R1/V3/Coder V2,
+gpt-oss, GLM 4/4.5, Granite 3.3, OLMo 2, SmolLM3, Hermes 3, Kimi K2,
+MiniMax M1, Falcon 3, Nemotron, InternLM 3, Yi 1.5, and LFM2.
+
+| Rule version | PASS | LEAD | FAIL |
+|---|---|---|---|
+| First draft: any branch that reads content | 41 | 8 | 0 |
+| Shipped: only branches that test what content says | 49 | 0 | 0 |
+
+The first draft flagged every template that handles a system message
+(`if messages[0].content is string`, `if system_message`), and gpt-oss's
+`raise_exception` error text. Narrowing the trigger to value tests, and
+skipping `raise_exception` arguments, cleared all eight with no loss on the
+evasion corpus. The end-to-end sweep over the local GGUFs is unchanged from
+the regex check: 27 PASS, 17 NOT_TESTED (calibration vocab files with no
+template), 0 LEAD, 0 FAIL.
+
+Reproduce, with the templates as `*.jinja` files in a directory (they are not
+committed, since they are third-party):
+
+```
+SOCAIR_TEMPLATE_CORPUS=/path/to/templates go test ./internal/checks/chattemplate -run RealTemplates -v
+```
+
+### Evasion corpus
+
+`internal/checks/chattemplate/testdata/evasions` holds 22 self-written
+fixtures with expected results, run by `TestEvasionCorpus`. With the analyser
+removed, 18 of the 21 attack fixtures PASS (the parse step and the old raw
+regex catch the other three). One fixture is a recorded known
+miss: a default system prompt whose instruction reads as ordinary guidance,
+with no lead phrase, URL, obfuscation, or content condition. That class is on
+the published detection ceiling until reviewed-template diffing lands.
+
+## Pickle opcode walker (2026-10-02)
+
+The pickle check matched one byte pattern, the text GLOBAL of protocols 0 to 3,
+so protocol 4 and 5 pickles (the default since Python 3.8), INST, memoized
+STACK_GLOBAL, `builtins.getattr`, and `importlib.import_module` all passed, and
+zip checkpoints (PyTorch's format since 1.6) were never opened. It now models
+the opcode stream with a stack and memo, and judges each import: a dangerous
+module or callable is a FAIL, the reviewed safe list (tensor and storage
+rebuilders, containers, numpy reconstruction) is fine, and anything else, or an
+import that cannot be resolved statically, is a LEAD.
+
+Real checkpoints, all PASS with every import on the safe list:
+
+| Checkpoint | Format | Pickles | Imports |
+|---|---|---|---|
+| hf-internal-testing/tiny-random-bert | zip | 1 | 4 |
+| hf-internal-testing/tiny-random-gpt2 | zip | 1 | 4 |
+| hf-internal-testing/tiny-random-t5 | zip | 1 | 3 |
+| prajjwal1/bert-tiny | zip | 1 | 4 |
+| sshleifer/tiny-gpt2 | legacy stream | 5 | 4 |
+| openai-community/gpt2 (548 MB) | legacy stream | 5 | 3 |
+
+Two false-positive paths were closed while measuring. Legacy `torch.save`
+files end in raw storage bytes, so a pickle after the first counts only if it
+reaches STOP. And bert-tiny has a tensor entry whose first byte is `.` (STOP),
+which parsed as an empty pickle: a zip entry not named `.pkl` is walked only if
+it starts with PROTO, and its imports must be well-formed Python names.
+
+## Safetensors layout validation (2026-10-03)
+
+Structure used to PASS any safetensors header that parsed. The audit's
+`overlap.safetensors` passed with two tensors at the same offsets, a bogus
+dtype, a negative shape, and a pickle in an unaccounted gap. A PASS now means
+the tensor ranges tile the data section exactly (start at 0, meet end to start,
+end at the last byte), each sized to its shape times its dtype width. A
+violation is a FAIL: the reference loader rejects it, and a gap is where a
+payload hides. A dtype outside the known table is NOT_TESTED, not FAIL, since
+the format keeps adding types. The header limit is now the reference
+implementation's 100,000,000 bytes.
+
+Measured on real files, headers only (0.02 s for about 137 GB): 45 PASS, 0 FAIL,
+0 NOT_TESTED. They cover Qwen3.8-27B in BF16 (18 shards); MLX 4-bit and 8-bit
+quantizations of Gemma 4 31B, Qwen3.6 35B-A3B, Qwen3-4B, and Nemotron 3.5 30B
+(packed U32 weights with per-group scales); bge-reranker-v2-m3; and
+all-MiniLM-L6-v2. The check also found the project's own "clean" test fixture
+was invalid (an F16 8x8 tensor in a 64-byte range), now fixed.
+
+```
+SOCAIR_SAFETENSORS_CORPUS=<dir>[:<dir>...] go test ./internal/checks/structure -run RealSafetensors -v
+```
+
 ## Follow-ups
 
 1. Verify the GGML file-type mapping against the current llama.cpp enum so the

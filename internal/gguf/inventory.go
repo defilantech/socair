@@ -1,6 +1,7 @@
 package gguf
 
 import (
+	"bufio"
 	"fmt"
 	"io"
 	"os"
@@ -28,36 +29,40 @@ func Inventory(path string) (*MetadataInventory, error) {
 		return nil, err
 	}
 	defer f.Close()
+	return inventoryFrom(bufio.NewReaderSize(f, readBufSize))
+}
 
+// inventoryFrom walks the metadata section read from r.
+func inventoryFrom(r io.Reader) (*MetadataInventory, error) {
 	var magicBuf [4]byte
-	if _, err := io.ReadFull(f, magicBuf[:]); err != nil {
+	if _, err := io.ReadFull(r, magicBuf[:]); err != nil {
 		return nil, fmt.Errorf("gguf: reading magic: %w", err)
 	}
 	if string(magicBuf[:]) != magic {
 		return nil, ErrNotGGUF
 	}
-	if _, err := readU32(f); err != nil { // version
+	if _, err := readU32(r); err != nil { // version
 		return nil, err
 	}
-	if _, err := readU64(f); err != nil { // tensor count
+	if _, err := readU64(r); err != nil { // tensor count
 		return nil, err
 	}
-	kv, err := readU64(f)
+	kv, err := readU64(r)
 	if err != nil {
 		return nil, err
 	}
 
 	inv := &MetadataInventory{}
 	for i := uint64(0); i < kv; i++ {
-		key, err := readString(f)
+		key, err := readString(r)
 		if err != nil {
 			return nil, fmt.Errorf("gguf: reading key %d: %w", i, err)
 		}
-		vtype, err := readU32(f)
+		vtype, err := readU32(r)
 		if err != nil {
 			return nil, fmt.Errorf("gguf: reading type for %q: %w", key, err)
 		}
-		val, err := scanValue(f, vtype, vtype == typeString)
+		val, err := scanValue(r, vtype, vtype == typeString)
 		if err != nil {
 			return nil, fmt.Errorf("gguf: reading value for %q: %w", key, err)
 		}

@@ -18,10 +18,10 @@ The implemented layout of the HTML attestation. Rendering lives in
 
 ## Structure
 
-- Cover block: artifact line, the word badge, the three counts.
+- Cover block: artifact line, the word badge, the four counts.
 - Checks performed: the graded table. Columns Check, Looks for, Result, Evidence.
-  Result is a pill: PASS (green), FAIL (red), NOT_TESTED (neutral grey) plus the
-  "not tested" tag. The hero row first.
+  Result is a pill: PASS (green), FAIL (red), LEAD (amber) plus the "escalate"
+  tag, NOT_TESTED (neutral grey) plus the "not tested" tag. The hero row first.
 - Bounded statement: the fixed Option A wording.
 - Out of scope: the ceiling, in full, with the "does not certify the absence of
   unknown backdoors" sentence in bold.

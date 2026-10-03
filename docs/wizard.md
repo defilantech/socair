@@ -12,11 +12,17 @@ engine returned and derives nothing of its own: no status, no count, no badge.
 ```
 cd web
 npm ci
-npm run dev          # dev against a local socair serve on :8080
+npm run dev          # wizard on :5173, /api proxied to socair serve on :8080
 npm run build        # static output in web/build
 ```
 
-Then one process serves both the API and the wizard:
+In dev mode, run `socair serve` alongside it; Vite proxies `/api` to
+`http://127.0.0.1:8080`, or to `SOCAIR_API` if set. The engine refuses a request
+whose Origin is not its own, so the proxy rewrites the Origin only when it is
+the dev server's own; a request from any other site keeps its Origin and the
+engine still refuses it.
+
+For the shipped build, one process serves both the API and the wizard:
 
 ```
 socair serve --web web/build
@@ -37,6 +43,8 @@ for a download. The engine keeps no session.
 
 - Render a `NOT_TESTED` check as a pass. `statusPill` maps it to the neutral
   treatment, and a test holds the line.
+- Render a `LEAD` as a pass or as a gap. It has its own amber treatment, because
+  it needs escalation and no acceptance clears it.
 - Show a promotion state the document does not carry. `promotionLabel` and
   `promotionPill` read `promotion_authorization.state`.
 - Offer a level the engine cannot run. Only Tier 1 is selectable; Tier 2 is the

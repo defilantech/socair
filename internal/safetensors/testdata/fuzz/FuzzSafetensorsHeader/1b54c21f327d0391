@@ -1,0 +1,3 @@
+go test fuzz v1
+[]byte("{\"\":{\"a\":\"\"},\"0\":{\"dtype\":\"0\",\"shape\":[],\"data_offsets\":[0]}}")
+int64(64)

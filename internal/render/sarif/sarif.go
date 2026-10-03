@@ -1,8 +1,9 @@
 // Package sarif emits a SARIF 2.1.0 log from a report document.
 //
 // One run, one result per check. The level mapping is deliberate: a FAIL is an
-// error, a NOT_TESTED is a note (we did not look; it is not a finding), and a
-// PASS is none.
+// error, a LEAD is a warning (a suspicious signal for escalation), a
+// NOT_TESTED is a note (we did not look; it is not a finding), and a PASS is
+// none.
 package sarif
 
 import (
@@ -78,6 +79,8 @@ func level(s report.Status) string {
 	switch s {
 	case report.StatusFail:
 		return "error"
+	case report.StatusLead:
+		return "warning"
 	case report.StatusNotTested:
 		return "note"
 	default:

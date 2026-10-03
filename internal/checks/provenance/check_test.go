@@ -34,41 +34,61 @@ func TestSignedAndUnsignedProduceDifferentRows(t *testing.T) {
 	signed := writeFile(t, filepath.Join(dir, "signed.json"),
 		`{"publisher":"google","signing_status":"signed","repo_url":"https://huggingface.co/google/gemma","commit_or_tag":"main","commit_sha":"abcdef123456"}`)
 	unsigned := writeFile(t, filepath.Join(dir, "unsigned.json"),
-		`{"publisher":"somebody","signing_status":"unsigned"}`)
+		`{"publisher":"somebody","signing_status":"unsigned","repo_url":"https://huggingface.co/somebody/model","commit_or_tag":"v1"}`)
 
 	rs := Inspect(Options{ArtifactPath: art, ManifestPath: signed})
 	ru := Inspect(Options{ArtifactPath: art, ManifestPath: unsigned})
 
 	if rs.Status != checks.Pass || ru.Status != checks.Pass {
-		t.Fatalf("both should record provenance: signed=%s unsigned=%s", rs.Status, ru.Status)
+		t.Fatalf("both record an origin: signed=%s unsigned=%s", rs.Status, ru.Status)
 	}
 	if rs.Notes == ru.Notes {
 		t.Fatal("a signed and an unsigned upstream must not produce the same row")
 	}
-	if !strings.Contains(rs.Notes, "signing signed") {
-		t.Errorf("signed row missing signing: %s", rs.Notes)
+	if !strings.Contains(rs.Notes, "claimed signed") || !strings.Contains(rs.Notes, "not verified") {
+		t.Errorf("a manifest's signing claim must read as a claim, not a verification: %s", rs.Notes)
 	}
 	if !strings.Contains(ru.Notes, "not established") {
 		t.Errorf("unsigned row must say the signature is not established: %s", ru.Notes)
 	}
 }
 
-// Falsification anchor: a sidecar alone is enough, and removing it must flip
-// the row back to NOT_TESTED.
-func TestSidecarAloneRecordsProvenance(t *testing.T) {
+// TestEmptyManifestIsNotTested: any JSON manifest used to PASS, even {}. A
+// manifest that records no origin is not provenance. Falsification: PASS on
+// any parsed manifest again and this fails.
+func TestEmptyManifestIsNotTested(t *testing.T) {
+	dir := t.TempDir()
+	art := writeFile(t, filepath.Join(dir, "model.gguf"), "x")
+	for _, body := range []string{`{}`, `{"publisher":"someone"}`, `{"repo_url":"https://huggingface.co/a/b"}`} {
+		m := writeFile(t, filepath.Join(dir, "m.json"), body)
+		r := Inspect(Options{ArtifactPath: art, ManifestPath: m})
+		if r.Status != checks.NotTested {
+			t.Errorf("manifest %s: status = %s, want NOT_TESTED without a repo and a revision", body, r.Status)
+		}
+	}
+}
+
+// TestSidecarAloneIsNotVerification: a file named <artifact>.sig used to PASS
+// as "signed (local sidecar)" with nothing verified. A sidecar is surfaced,
+// never reported as a signature. Falsification: treat the sidecar as signed
+// and this fails.
+func TestSidecarAloneIsNotVerification(t *testing.T) {
 	dir := t.TempDir()
 	art := writeFile(t, filepath.Join(dir, "model.gguf"), "x")
 	if got := Inspect(Options{ArtifactPath: art}).Status; got != checks.NotTested {
 		t.Fatalf("no sidecar and no manifest must be NOT_TESTED, got %s", got)
 	}
 
-	writeFile(t, art+".sigstore.json", `{"note":"signature"}`)
+	writeFile(t, art+".sig", `anything at all`)
 	r := Inspect(Options{ArtifactPath: art})
-	if r.Status != checks.Pass {
-		t.Fatalf("a signature sidecar must record provenance, got %s", r.Status)
+	if r.Status != checks.NotTested {
+		t.Fatalf("an unverified sidecar must be NOT_TESTED, got %s", r.Status)
 	}
-	if !strings.Contains(r.Notes, "sidecar") {
-		t.Errorf("sidecar not surfaced: %s", r.Notes)
+	if !strings.Contains(r.Notes, "model.gguf.sig") || !strings.Contains(r.Notes, "not verified") {
+		t.Errorf("the sidecar must be named as unverified: %s", r.Notes)
+	}
+	if strings.Contains(r.Notes, "signing signed") || strings.Contains(r.Notes, "signed (") {
+		t.Errorf("an unverified sidecar must never read as signed: %s", r.Notes)
 	}
 }
 

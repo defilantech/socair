@@ -8,7 +8,9 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/defilantech/socair/internal/gguf/gguftest"
 )
@@ -180,5 +182,153 @@ func TestWholeModelIsNotMultiPart(t *testing.T) {
 	}
 	if m.MultiPart() {
 		t.Error("a model with no split metadata must not report as multi-part")
+	}
+}
+
+// TestNestedArrayRejected: an ARRAY whose element type is ARRAY recursed with
+// no bound, and a few megabytes of nested headers overflowed the goroutine
+// stack, a fatal error that recover cannot catch. llama.cpp forbids nested
+// arrays, so the reader rejects them at the first nested header, before any
+// recursion. Falsification: allow element type ARRAY in skipArray and the
+// reader recurses two million frames deep and fails with EOF, not the named
+// rejection (at ~8M levels it is a fatal stack overflow instead).
+func TestNestedArrayRejected(t *testing.T) {
+	const depth = 2_000_000
+	var b bytes.Buffer
+	b.WriteString("GGUF")
+	_ = binary.Write(&b, binary.LittleEndian, uint32(3))
+	_ = binary.Write(&b, binary.LittleEndian, uint64(0))
+	_ = binary.Write(&b, binary.LittleEndian, uint64(1))
+	_ = binary.Write(&b, binary.LittleEndian, uint64(1))
+	b.WriteString("x")
+	_ = binary.Write(&b, binary.LittleEndian, uint32(9)) // value type ARRAY
+	for i := 0; i < depth; i++ {
+		_ = binary.Write(&b, binary.LittleEndian, uint32(9)) // element type ARRAY
+		_ = binary.Write(&b, binary.LittleEndian, uint64(1)) // one element
+	}
+	p := writeFixture(t, "nested.gguf", b.Bytes())
+
+	_, err := ReadHeader(p)
+	if err == nil {
+		t.Fatal("expected an error on a nested array, got nil")
+	}
+	if !strings.Contains(err.Error(), "nested array") {
+		t.Fatalf("expected a nested-array error, got %v", err)
+	}
+}
+
+// bigArrayGGUF is a header with one uint8 array of n elements and a string key
+// after it, so a reader that mis-skips the array misreads the next key.
+func bigArrayGGUF(n uint64) []byte {
+	var b bytes.Buffer
+	b.WriteString("GGUF")
+	_ = binary.Write(&b, binary.LittleEndian, uint32(3))
+	_ = binary.Write(&b, binary.LittleEndian, uint64(0))
+	_ = binary.Write(&b, binary.LittleEndian, uint64(2))
+	_ = binary.Write(&b, binary.LittleEndian, uint64(len("big")))
+	b.WriteString("big")
+	_ = binary.Write(&b, binary.LittleEndian, uint32(9)) // ARRAY
+	_ = binary.Write(&b, binary.LittleEndian, uint32(0)) // of UINT8
+	_ = binary.Write(&b, binary.LittleEndian, n)
+	b.Write(make([]byte, n))
+	_ = binary.Write(&b, binary.LittleEndian, uint64(len("general.name")))
+	b.WriteString("general.name")
+	_ = binary.Write(&b, binary.LittleEndian, uint32(8)) // STRING
+	_ = binary.Write(&b, binary.LittleEndian, uint64(len("after")))
+	b.WriteString("after")
+	return b.Bytes()
+}
+
+// TestLargeArrayParsesQuickly: the reader issued one unbuffered read syscall
+// per array element, so a 64 MB uint8 array took about a minute and a
+// multi-GB hostile header pinned the API for hours. Fixed-width arrays are now
+// skipped in one bounded copy through a buffered reader. Falsification: go back
+// to per-element unbuffered reads and this blows the budget by an order of
+// magnitude.
+func TestLargeArrayParsesQuickly(t *testing.T) {
+	p := writeFixture(t, "bigarray.gguf", bigArrayGGUF(64<<20))
+
+	start := time.Now()
+	m, err := ReadHeader(p)
+	if err != nil {
+		t.Fatalf("ReadHeader: %v", err)
+	}
+	if elapsed := time.Since(start); elapsed > 5*time.Second {
+		t.Fatalf("a 64 MB array took %s to parse, want well under 5s", elapsed)
+	}
+	if m.Name != "after" {
+		t.Fatalf("the key after the array read as %q; the array was mis-skipped", m.Name)
+	}
+	inv, err := Inventory(p)
+	if err != nil {
+		t.Fatalf("Inventory: %v", err)
+	}
+	if len(inv.Strings) != 1 || inv.Strings[0] != "after" {
+		t.Fatalf("inventory strings = %q, want [after]", inv.Strings)
+	}
+}
+
+// TestArrayCountPastEOF: an array that declares more elements than the file
+// holds must error, not allocate or spin.
+func TestArrayCountPastEOF(t *testing.T) {
+	full := bigArrayGGUF(16)
+	// Rewrite the element count to an absurd value.
+	idx := bytes.Index(full, []byte("big")) + len("big") + 4 + 4
+	binary.LittleEndian.PutUint64(full[idx:], 1<<62)
+	p := writeFixture(t, "pasteof.gguf", full)
+	if _, err := ReadHeader(p); err == nil {
+		t.Fatal("expected an error for an array count past EOF")
+	}
+}
+
+// TestDuplicateKeysKeepFirstAndAreRecorded: llama.cpp rejects a GGUF with a
+// repeated key, and gguf-py keeps the first. The reader used to keep the last,
+// so a malicious first chat template behind a clean second one was scanned as
+// clean while Python loaders served the malicious one. The reader now keeps
+// the first value and records the duplicate. Falsification: overwrite on
+// repeat and ChatTemplate reads the clean second value.
+func TestDuplicateKeysKeepFirstAndAreRecorded(t *testing.T) {
+	kvs := append(gguftest.Clean(), gguftest.Str("tokenizer.chat_template", "clean second"))
+	for i := range kvs {
+		if kvs[i].Key() == "tokenizer.chat_template" {
+			kvs[i] = gguftest.Str("tokenizer.chat_template", "{{ ''.__class__.__mro__ }} malicious first")
+			break
+		}
+	}
+	p := writeFixture(t, "dup.gguf", gguftest.BuildGGUF(kvs))
+
+	m, err := ReadHeader(p)
+	if err != nil {
+		t.Fatalf("ReadHeader: %v", err)
+	}
+	if !strings.Contains(m.ChatTemplate, "malicious first") {
+		t.Fatalf("chat template = %q, want the first occurrence", m.ChatTemplate)
+	}
+	if len(m.DuplicateKeys) != 1 || m.DuplicateKeys[0] != "tokenizer.chat_template" {
+		t.Fatalf("duplicate keys = %q, want [tokenizer.chat_template]", m.DuplicateKeys)
+	}
+}
+
+// TestNamedTemplatesAreRead: only tokenizer.chat_template was read, so a
+// payload in a named template such as tokenizer.chat_template.tool_use, which
+// llama.cpp selects for tool calls, was never scanned. Falsification: read
+// only the default key and ChatTemplates misses tool_use.
+func TestNamedTemplatesAreRead(t *testing.T) {
+	kvs := append(gguftest.Clean(),
+		gguftest.Str("tokenizer.chat_template.tool_use", "{{ 'tool payload' }}"),
+		gguftest.StrArray("tokenizer.chat_template.rag", "a", "b"))
+	p := writeFixture(t, "named.gguf", gguftest.BuildGGUF(kvs))
+	m, err := ReadHeader(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if m.ChatTemplates["tool_use"] != "{{ 'tool payload' }}" {
+		t.Fatalf("tool_use template = %q", m.ChatTemplates["tool_use"])
+	}
+	if m.ChatTemplates["default"] != m.ChatTemplate || m.ChatTemplate == "" {
+		t.Fatalf("default template not recorded: %q", m.ChatTemplates["default"])
+	}
+	if len(m.ChatTemplateNonString) != 1 || m.ChatTemplateNonString[0] != "rag" {
+		t.Fatalf("non-string templates = %v, want [rag]", m.ChatTemplateNonString)
 	}
 }

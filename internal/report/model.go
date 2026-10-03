@@ -30,6 +30,10 @@ const (
 	StatusPass      Status = "PASS"
 	StatusFail      Status = "FAIL"
 	StatusNotTested Status = "NOT_TESTED"
+	// StatusLead is a suspicious signal that is not conclusive, such as
+	// instruction-override language in a chat template. It is not a gap: an
+	// acceptance clears NOT_TESTED rows, never a LEAD. Only escalation does.
+	StatusLead Status = "LEAD"
 )
 
 // Document is one rendered attestation.
@@ -101,6 +105,7 @@ type CheckResult struct {
 
 type Findings struct {
 	Fails     []string `json:"fails"`
+	Leads     []string `json:"leads,omitempty"`
 	NotTested []string `json:"not_tested"`
 }
 
@@ -174,6 +179,8 @@ func DefaultCeiling() []string {
 		"Differential behavior across serving stacks, unless Tier 2 ran on the production node class.",
 		"Sleeper or polymorphic behavior that needs more inference budget than we run.",
 		"Artifact formats we do not parse.",
+		"Pickle code execution reached only through imports on the reviewed safe list.",
+		"Chat-template instructions written as ordinary guidance (no override or concealment phrase, URL, hidden or obfuscated text, or condition on message content), unless the template matches a reviewed template.",
 		"Malicious behavior that only emerges at runtime under real traffic.",
 	}
 }
@@ -291,7 +298,7 @@ func Validate(d *Document) []string {
 	req(d.Verification.ArtifactSHA256 == d.Artifact.SHA256, "verification.artifact_sha256 (must match artifact.sha256)")
 	for i, c := range d.Checks {
 		switch c.Status {
-		case StatusPass, StatusFail, StatusNotTested:
+		case StatusPass, StatusFail, StatusLead, StatusNotTested:
 		default:
 			problems = append(problems, fmt.Sprintf("checks[%d].status invalid: %q", i, c.Status))
 		}
@@ -331,6 +338,46 @@ func validatePromotion(d *Document) []string {
 	}
 	if pa.State == StateAuthorized && len(pa.AcceptedSurfaces) > 0 {
 		problems = append(problems, "promotion_authorization: an authorized report must not carry accepted_surfaces")
+	}
+	return append(problems, validateStateAgainstChecks(d)...)
+}
+
+// validateStateAgainstChecks binds the promotion state to the check rows. The
+// airlock admits a validating document, so the state must follow from the
+// checks, not merely agree with its own fields: an edited state over a FAIL or
+// an unaccepted gap is a forged ticket.
+func validateStateAgainstChecks(d *Document) []string {
+	pa := d.PromotionAuthorization
+	if pa.State != StateAuthorized && pa.State != StateAuthorizedWithConditions {
+		return nil
+	}
+	if len(d.Checks) == 0 {
+		return []string{"promotion_authorization: an authorized report must carry check rows"}
+	}
+
+	var problems []string
+	accepted := make(map[string]bool, len(pa.AcceptedSurfaces))
+	for _, s := range pa.AcceptedSurfaces {
+		accepted[s] = true
+	}
+	for _, c := range d.Checks {
+		switch c.Status {
+		case StatusFail, StatusLead:
+			problems = append(problems, fmt.Sprintf(
+				"promotion_authorization: state %q over %s row %q; it clears only by escalation", pa.State, c.Status, c.Name))
+		case StatusNotTested:
+			if pa.State == StateAuthorized {
+				problems = append(problems, fmt.Sprintf(
+					"promotion_authorization: state %q over NOT_TESTED row %q; a gap needs a named acceptance", pa.State, c.Name))
+			} else if !accepted[c.Name] {
+				problems = append(problems, fmt.Sprintf(
+					"promotion_authorization: NOT_TESTED row %q is not in accepted_surfaces", c.Name))
+			}
+		case StatusPass:
+		default:
+			problems = append(problems, fmt.Sprintf(
+				"promotion_authorization: state %q over row %q with unknown status %q", pa.State, c.Name, c.Status))
+		}
 	}
 	return problems
 }

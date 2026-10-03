@@ -5,7 +5,9 @@ package engine
 
 import (
 	"fmt"
+	"io"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -49,14 +51,33 @@ func Scan(path string) (*report.Document, error) { return ScanMode(path, ModeFul
 func ScanMode(path string, mode Mode) (*report.Document, error) {
 	start := time.Now().UTC()
 
+	// A full scan is an attestation, so it checks a private snapshot whose
+	// bytes it hashed while copying (see snapshot). A header-only sweep
+	// attests nothing and reads in place.
+	original := path
+	sha := ""
+	if mode == ModeFull {
+		snap, digest, cleanup, err := snapshot(path)
+		if err != nil {
+			return nil, err
+		}
+		defer cleanup()
+		path, sha = snap, digest
+		if afterSnapshot != nil {
+			afterSnapshot(original)
+		}
+	}
+
 	var id report.Identity
-	var chatTemplate string
+	var ggufErr error
+	var chatTemplates map[string]string
+	var chatTemplateNonString []string
 	var tokenizerModel string
 	var quantDeclared string
 	var fileType *uint32
 
 	if safetensors.IsSafetensors(path) {
-		m, err := readSafetensors(path, mode)
+		m, err := safetensors.ReadHeader(path)
 		if err != nil {
 			return nil, err
 		}
@@ -67,11 +88,32 @@ func ScanMode(path string, mode Mode) (*report.Document, error) {
 			Format:    m.Format,
 			SizeBytes: m.SizeBytes,
 		}
-	} else {
-		m, err := readGGUF(path, mode)
+	} else if isGGUF, err := gguf.IsGGUF(path); err != nil {
+		return nil, err
+	} else if !isGGUF {
+		// Not a container this engine parses: pickle checkpoints and anything
+		// unrecognized. The scan still reports, so the pickle check runs on the
+		// format it exists for and every unparsed surface is NOT_TESTED rather
+		// than an aborted scan.
+		o, err := readOpaque(path)
 		if err != nil {
 			return nil, err
 		}
+		id = o
+	} else if m, err := gguf.ReadHeader(path); err != nil {
+		// A GGUF that does not parse (truncated, an unsupported version, a
+		// malformed header) still gets a report: the artifact is identified
+		// and hashed, the structure row names the parse error, and the rows
+		// that read metadata say the metadata was not read. An aborted scan
+		// would leave the operator with nothing to file.
+		o, oerr := readOpaque(path)
+		if oerr != nil {
+			return nil, oerr
+		}
+		o.Format = "GGUF"
+		id = o
+		ggufErr = err
+	} else {
 		id = report.Identity{
 			Name:               m.Name,
 			Architecture:       m.Architecture,
@@ -88,7 +130,8 @@ func ScanMode(path string, mode Mode) (*report.Document, error) {
 		if m.MultiPart() {
 			id.Split = fmt.Sprintf("part %d of %d", m.Split.No+1, m.Split.Count)
 		}
-		chatTemplate = m.ChatTemplate
+		chatTemplates = m.ChatTemplates
+		chatTemplateNonString = m.ChatTemplateNonString
 		tokenizerModel = m.TokenizerModel
 		quantDeclared = m.Quant.Declared
 		fileType = m.Quant.FileType
@@ -97,6 +140,7 @@ func ScanMode(path string, mode Mode) (*report.Document, error) {
 	if id.Name == "" {
 		id.Name = id.FileName
 	}
+	id.SHA256 = sha
 
 	d := report.NewFromIdentity(id)
 	d.Header.DocumentID = fmt.Sprintf("SOCAIR-%s-%s", start.Format("20060102"), shortHashOr(id.SHA256, "headers"))
@@ -113,15 +157,24 @@ func ScanMode(path string, mode Mode) (*report.Document, error) {
 	results := []checks.Result{
 		structure.Validate(path),
 		inventory.Inspect(path, inventory.Options{RepoMirror: os.Getenv("SOCAIR_REPO_MIRROR")}),
-		provenance.Inspect(provenance.Options{ArtifactPath: path, ManifestPath: os.Getenv("SOCAIR_PROVENANCE")}),
+		// Provenance reads signature sidecars beside the artifact, so it looks
+		// next to the original, not the snapshot.
+		provenance.Inspect(provenance.Options{ArtifactPath: original, ManifestPath: os.Getenv("SOCAIR_PROVENANCE")}),
 		denylist.Check(id.SHA256, os.Getenv("SOCAIR_DENYLIST")),
 	}
 	if id.Format == "GGUF" {
-		results = append(results,
-			chattemplate.Inspect(chatTemplate),
+		meta := []checks.Result{
+			chattemplate.InspectAll(chatTemplates, chatTemplateNonString),
 			tokenizer.Inspect(tokenizerModel),
 			quant.Compare(quantDeclared, fileType),
-		)
+		}
+		if ggufErr != nil {
+			for i := range meta {
+				meta[i] = checks.Result{Name: meta[i].Name, LooksFor: meta[i].LooksFor, Status: checks.NotTested,
+					Notes: "GGUF metadata could not be read, so this was not inspected: " + ggufErr.Error()}
+			}
+		}
+		results = append(results, meta...)
 	}
 	if id.Format != "GGUF" && id.Format != "safetensors" {
 		results = append(results, pickle.Inspect(path))
@@ -134,29 +187,48 @@ func ScanMode(path string, mode Mode) (*report.Document, error) {
 	return d, nil
 }
 
-func readGGUF(path string, mode Mode) (*gguf.Manifest, error) {
-	if mode == ModeHeaders {
-		return gguf.ReadHeader(path)
+// readOpaque identifies an artifact in no container this engine parses. The
+// format is named from the leading bytes, never from the extension. The hash
+// comes from the snapshot, not from here.
+func readOpaque(path string) (report.Identity, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return report.Identity{}, err
 	}
-	return gguf.ReadArtifact(path)
+	defer f.Close()
+
+	st, err := f.Stat()
+	if err != nil {
+		return report.Identity{}, err
+	}
+	id := report.Identity{
+		FileName:  filepath.Base(path),
+		SizeBytes: st.Size(),
+		Format:    "unknown",
+	}
+
+	var head [4]byte
+	n, _ := io.ReadFull(f, head[:])
+	switch {
+	case n >= 1 && head[0] == 0x80:
+		id.Format = "pickle"
+	case n == 4 && string(head[:]) == "PK\x03\x04":
+		id.Format = "zip"
+	}
+	return id, nil
 }
 
-func readSafetensors(path string, mode Mode) (*safetensors.Manifest, error) {
-	if mode == ModeHeaders {
-		return safetensors.ReadHeader(path)
-	}
-	return safetensors.ReadArtifact(path)
-}
-
-// promotion computes the promotion state. A FAIL withholds and is clearable
-// only by escalation. A gap (NOT_TESTED) withholds until a named acceptance is
-// supplied, and the accepted surfaces travel with the artifact.
+// promotion computes the promotion state. A FAIL or a LEAD withholds and is
+// clearable only by escalation. A gap (NOT_TESTED) withholds until a named
+// acceptance is supplied, and the accepted surfaces travel with the artifact.
 func promotion(d *report.Document, acceptedBy, expires string) report.PromotionAuthorization {
-	var fails, gaps []string
+	var fails, leads, gaps []string
 	for _, c := range d.Checks {
 		switch c.Status {
 		case report.StatusFail:
 			fails = append(fails, c.Name)
+		case report.StatusLead:
+			leads = append(leads, c.Name)
 		case report.StatusNotTested:
 			gaps = append(gaps, c.Name)
 		}
@@ -165,11 +237,18 @@ func promotion(d *report.Document, acceptedBy, expires string) report.PromotionA
 	pa := report.PromotionAuthorization{Level: "Tier 1 only", AcceptedSurfaces: gaps, AcceptanceExpires: expires}
 
 	switch {
-	case len(fails) > 0:
+	case len(fails) > 0 || len(leads) > 0:
+		var why []string
+		if len(fails) > 0 {
+			why = append(why, "positive evidence on "+strings.Join(fails, ", "))
+		}
+		if len(leads) > 0 {
+			why = append(why, "a suspicious lead on "+strings.Join(leads, ", "))
+		}
 		pa.State = report.StateWithheld
 		pa.Authorized = false
-		pa.Conditions = "Withheld: positive evidence on " + strings.Join(fails, ", ") +
-			". A FAIL is clearable only by escalated review."
+		pa.Conditions = "Withheld: " + strings.Join(why, "; ") +
+			". A FAIL or a LEAD is clearable only by escalated review, never by an acceptance."
 	case len(gaps) == 0:
 		pa.State = report.StateAuthorized
 		pa.Authorized = true
@@ -224,11 +303,14 @@ func evidence(res checks.Result) string {
 
 func finalizeFindings(d *report.Document) {
 	d.Findings.Fails = nil
+	d.Findings.Leads = nil
 	d.Findings.NotTested = nil
 	for _, c := range d.Checks {
 		switch c.Status {
 		case report.StatusFail:
 			d.Findings.Fails = append(d.Findings.Fails, c.Name)
+		case report.StatusLead:
+			d.Findings.Leads = append(d.Findings.Leads, c.Name)
 		case report.StatusNotTested:
 			d.Findings.NotTested = append(d.Findings.NotTested, c.Name)
 		}
