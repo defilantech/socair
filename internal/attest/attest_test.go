@@ -180,7 +180,7 @@ func TestSignedForgedStateFails(t *testing.T) {
 		h, _ := DocumentHash(st.Predicate)
 		st.Predicate.Verification.DocumentHash, st.Predicate.Header.DocumentHash = h, h
 	})
-	mustFail(t, out, ring, "does not validate")
+	mustFail(t, out, ring, "NOT_TESTED")
 }
 
 func TestSignRefusesInvalidOrHeaderOnly(t *testing.T) {
