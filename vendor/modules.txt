@@ -1,3 +1,6 @@
+# github.com/defilantech/socair-verify v0.1.0
+## explicit; go 1.26
+github.com/defilantech/socair-verify
 # github.com/go-pdf/fpdf v0.9.0
 ## explicit; go 1.20
 github.com/go-pdf/fpdf

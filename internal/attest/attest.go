@@ -21,6 +21,9 @@ import (
 	"errors"
 	"fmt"
 	"strconv"
+	"strings"
+
+	"github.com/defilantech/socair-verify"
 
 	"github.com/defilantech/socair/internal/report"
 )
@@ -148,73 +151,25 @@ type Verified struct {
 }
 
 // Verify checks an envelope against a set of trusted keys and returns the
-// document it carries. It checks, in order: the envelope shape, a signature
-// by a trusted key over the DSSE encoding, the statement and predicate types,
-// that the subject digest is the document's artifact hash, the recorded
-// document hash, and that the document validates (including its promotion
-// state against its checks). Any failure is ErrVerify with the reason.
+// document it carries.
+//
+// The envelope, signature, statement, subject, and promotion-state checks are
+// github.com/defilantech/socair-verify, the same code an admission controller
+// such as LLMKube runs, so Socair and its consumers cannot disagree about what
+// verifies. Socair then holds its own documents to its full model: the
+// predicate must decode into report.Document with no unknown fields, match its
+// recorded document hash, and pass report.Validate. Any failure is ErrVerify
+// with the reason.
 func Verify(envelope []byte, trusted Keyring) (*Verified, error) {
-	var env Envelope
-	if err := json.Unmarshal(envelope, &env); err != nil {
-		return nil, verifyErr("not a DSSE envelope: %v", err)
-	}
-	if env.PayloadType != PayloadType {
-		return nil, verifyErr("payload type %q, want %q", env.PayloadType, PayloadType)
-	}
-	payload, err := base64.StdEncoding.DecodeString(env.Payload)
+	a, err := verify.Verify(envelope, verify.Keyring(trusted))
 	if err != nil {
-		return nil, verifyErr("payload is not base64: %v", err)
+		return nil, verifyErr("%s", strings.TrimPrefix(err.Error(), verify.ErrVerify.Error()+": "))
 	}
-	if len(env.Signatures) == 0 {
-		return nil, verifyErr("envelope is unsigned")
-	}
-
-	signedBy := ""
-	msg := pae(env.PayloadType, payload)
-	for _, s := range env.Signatures {
-		pub, ok := trusted[s.KeyID]
-		if !ok {
-			continue
-		}
-		sig, err := base64.StdEncoding.DecodeString(s.Sig)
-		if err != nil {
-			continue
-		}
-		if ed25519.Verify(pub, msg, sig) {
-			signedBy = s.KeyID
-			break
-		}
-	}
-	if signedBy == "" {
-		ids := make([]string, 0, len(env.Signatures))
-		for _, s := range env.Signatures {
-			ids = append(ids, s.KeyID)
-		}
-		return nil, verifyErr("no valid signature by a trusted key (signed by %v; %d key(s) trusted)", ids, len(trusted))
-	}
-
-	var st Statement
-	dec := json.NewDecoder(bytes.NewReader(payload))
+	var d report.Document
+	dec := json.NewDecoder(bytes.NewReader(a.Predicate))
 	dec.DisallowUnknownFields()
-	if err := dec.Decode(&st); err != nil {
-		return nil, verifyErr("payload is not a Socair statement: %v", err)
-	}
-	if st.Type != StatementType {
-		return nil, verifyErr("statement type %q, want %q", st.Type, StatementType)
-	}
-	if st.PredicateType != PredicateType {
-		return nil, verifyErr("predicate type %q, want %q", st.PredicateType, PredicateType)
-	}
-	if len(st.Subject) != 1 {
-		return nil, verifyErr("statement has %d subjects, want 1", len(st.Subject))
-	}
-	sha := st.Subject[0].Digest["sha256"]
-	d := st.Predicate
-	if sha == "" || sha != d.Artifact.SHA256 {
-		return nil, verifyErr("subject digest %q is not the document's artifact hash %q", sha, d.Artifact.SHA256)
-	}
-	if d.Verification.SignerKeyID != signedBy {
-		return nil, verifyErr("document names signer %q but was signed by %q", d.Verification.SignerKeyID, signedBy)
+	if err := dec.Decode(&d); err != nil {
+		return nil, verifyErr("predicate is not a Socair report document: %v", err)
 	}
 	h, err := DocumentHash(d)
 	if err != nil {
@@ -226,5 +181,5 @@ func Verify(envelope []byte, trusted Keyring) (*Verified, error) {
 	if problems := report.Validate(&d); len(problems) != 0 {
 		return nil, verifyErr("document does not validate: %v", problems)
 	}
-	return &Verified{Document: d, KeyID: signedBy, SHA256: sha}, nil
+	return &Verified{Document: d, KeyID: a.KeyID, SHA256: a.SHA256}, nil
 }
