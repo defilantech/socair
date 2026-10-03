@@ -55,12 +55,22 @@ func airlockInit(args []string) error {
 func airlockPull(args []string) error {
 	fs := parseFlags(args)
 	repo, sha, file := fs.val("repo"), fs.val("sha256"), fs.val("file")
-	if repo == "" || sha == "" || file == "" {
-		return errors.New("usage: socair airlock pull --repo <org/name> --file <name> --sha256 <hash> [--revision main] [--store <path>]")
+	if repo == "" || (file != "" && sha == "") {
+		return errors.New("usage: socair airlock pull --repo <org/name> --file <name> --sha256 <hash> [--revision main] [--store <path>]\n" +
+			"       socair airlock pull --repo <org/name> (--revision <commit> | --sha256 <manifest digest>) [--store <path>]   whole repo, as a model directory")
 	}
 	s, err := airlock.Open(storeRoot(fs))
 	if err != nil {
 		return err
+	}
+	if file == "" {
+		ev, staged, err := airlock.PullRepo(context.Background(), s, repo, fs.val("revision"), sha, airlock.DefaultEgressPolicy())
+		if err != nil {
+			return err
+		}
+		fmt.Printf("pulled %s as a model directory\n  manifest digest %s\n  %s\nstaged at %s\nscan it with its provenance:\n  SOCAIR_PROVENANCE=%s socair scan %s\n",
+			repo, ev.SHA256, ev.Detail, staged, filepath.Join(filepath.Dir(staged), "provenance.json"), staged)
+		return nil
 	}
 	dst, err := s.StagingFile(sha, file)
 	if err != nil {
@@ -90,7 +100,7 @@ func airlockIngest(args []string) error {
 		source = "cache"
 		resolved, err = airlock.ResolveCache(airlock.DefaultCacheDir(), fs.val("repo"), fs.val("revision"), fs.val("file"))
 	default:
-		return errors.New("usage: socair airlock ingest --local <path> | --cache --repo <org/name> --file <name> [--revision main] [--scan]")
+		return errors.New("usage: socair airlock ingest --local <file or directory> | --cache --repo <org/name> [--file <name>] [--revision main] [--scan]")
 	}
 	if err != nil {
 		return err

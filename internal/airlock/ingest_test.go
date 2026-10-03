@@ -54,9 +54,41 @@ func TestIngestLocalMissingPathErrors(t *testing.T) {
 	}
 }
 
-func TestIngestLocalRejectsADirectory(t *testing.T) {
-	if _, err := IngestLocal(t.TempDir()); err == nil {
-		t.Fatal("a directory is not an artifact and must be an error")
+func TestIngestLocalAcceptsAModelDirectory(t *testing.T) {
+	dir := t.TempDir()
+	got, err := IngestLocal(dir)
+	if err != nil || got != dir {
+		t.Fatalf("a model directory is an artifact: %q, %v", got, err)
+	}
+}
+
+// A real hub cache names snapshots by commit and branches in refs/, and an
+// empty file resolves the snapshot directory.
+func TestResolveCacheFollowsRefsAndResolvesDirectories(t *testing.T) {
+	cache := t.TempDir()
+	const commit = "c1899de289a04d12100db370d81485cdf75e47ca"
+	repoDir := filepath.Join(cache, "models--org--name")
+	snap := filepath.Join(repoDir, "snapshots", commit)
+	if err := os.MkdirAll(snap, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(snap, "config.json"), []byte("{}"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(repoDir, "refs"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(repoDir, "refs", "main"), []byte(commit), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := ResolveCache(cache, "org/name", "main", "config.json"); err != nil || got != filepath.Join(snap, "config.json") {
+		t.Fatalf("branch through refs: %q, %v", got, err)
+	}
+	if got, err := ResolveCache(cache, "org/name", "main", ""); err != nil || got != snap {
+		t.Fatalf("whole snapshot: %q, %v", got, err)
+	}
+	if _, err := ResolveCache(cache, "org/name", "main", "."); err == nil {
+		t.Error("a file argument naming a directory must say to omit --file")
 	}
 }
 

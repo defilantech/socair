@@ -2,6 +2,8 @@ package airlock
 
 import (
 	"context"
+	"github.com/defilantech/socair/internal/engine"
+	"github.com/defilantech/socair/internal/modeldir"
 	"io"
 	"net/http"
 	"os"
@@ -77,5 +79,40 @@ func TestPullRealEgress(t *testing.T) {
 	ev, _ := s.Events()
 	if len(ev) != 1 || !strings.EqualFold(ev[0].Repo, repo) {
 		t.Errorf("pull not logged with the repo, got %+v", ev)
+	}
+}
+
+// TestPullRepoRealEgress pulls a whole small repo from the real hub at a
+// pinned commit, verifying every file against the hub's own hashes, and
+// checks a scan of the staged tree attests the same digest.
+func TestPullRepoRealEgress(t *testing.T) {
+	if os.Getenv("SOCAIR_TEST_EGRESS") == "" {
+		t.Skip("set SOCAIR_TEST_EGRESS=1 to pull from huggingface.co")
+	}
+	t.Setenv("SOCAIR_EGRESS", "")
+	s, err := Init(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	const commit = "71034c5d8bde858ff824298bdedc65515b97d2b9"
+	e, staged, err := PullRepo(context.Background(), s, "hf-internal-testing/tiny-random-gpt2", commit, "", DefaultEgressPolicy())
+	if err != nil {
+		t.Fatalf("real repo pull: %v", err)
+	}
+	got, files, err := modeldir.Hash(staged)
+	if err != nil || got != e.SHA256 {
+		t.Fatalf("staged digest %s (%v), pull logged %s", got, err, e.SHA256)
+	}
+	t.Logf("%d files, digest %s: %s", len(files), got, e.Detail)
+	t.Setenv("SOCAIR_PROVENANCE", filepath.Join(filepath.Dir(staged), "provenance.json"))
+	d, err := engine.Scan(staged)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if d.Artifact.SHA256 != got || d.Artifact.CommitSHA != commit {
+		t.Fatalf("scan subject %s commit %q", d.Artifact.SHA256, d.Artifact.CommitSHA)
+	}
+	for _, c := range d.Checks {
+		t.Logf("%-10s %s", c.Status, c.Name)
 	}
 }

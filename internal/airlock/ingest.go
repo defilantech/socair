@@ -8,9 +8,10 @@ import (
 	"strings"
 )
 
-// IngestLocal validates a local artifact path and returns its absolute path, so
-// a scan reads the bytes that are actually on disk. A missing path is a clean,
-// named error, never a silently empty report.
+// IngestLocal validates a local artifact path, a file or a model directory,
+// and returns its absolute path, so a scan reads the bytes that are actually
+// on disk. A missing path is a clean, named error, never a silently empty
+// report.
 func IngestLocal(path string) (string, error) {
 	if strings.TrimSpace(path) == "" {
 		return "", errors.New("no local path given")
@@ -26,21 +27,20 @@ func IngestLocal(path string) (string, error) {
 		}
 		return "", fmt.Errorf("read local path %q: %w", path, err)
 	}
-	if fi.IsDir() {
-		return "", fmt.Errorf("local path %q is a directory, want an artifact file", path)
+	if !fi.IsDir() && !fi.Mode().IsRegular() {
+		return "", fmt.Errorf("local path %q is not a file or a directory", path)
 	}
 	return abs, nil
 }
 
-// ResolveCache maps a Hugging Face hub cache to a local artifact file, for
+// ResolveCache maps a Hugging Face hub cache to a local artifact, for
 // air-gapped customers who ship a cache in rather than pull. The layout is
-// <cache>/models--<org>--<name>/snapshots/<rev>/<file>.
+// <cache>/models--<org>--<name>/snapshots/<commit>/<file>, with a branch or
+// tag name resolved through <cache>/models--<org>--<name>/refs/<name>. An
+// empty file resolves the whole snapshot directory, for a directory scan.
 func ResolveCache(cacheDir, repo, revision, file string) (string, error) {
 	if strings.TrimSpace(repo) == "" {
 		return "", errors.New("repo is required to resolve the cache")
-	}
-	if strings.TrimSpace(file) == "" {
-		return "", errors.New("artifact file is required to resolve the cache")
 	}
 	if strings.TrimSpace(revision) == "" {
 		revision = "main"
@@ -64,6 +64,14 @@ func ResolveCache(cacheDir, repo, revision, file string) (string, error) {
 		return "", fmt.Errorf("artifact file %q must be a relative path inside the repo", file)
 	}
 	snap := filepath.Join(cacheDir, repoCacheDir(repo), "snapshots")
+	if _, err := os.Stat(filepath.Join(snap, revision)); err != nil {
+		// Snapshots are named by commit; a branch or tag maps to one in refs/.
+		if b, rerr := os.ReadFile(filepath.Join(cacheDir, repoCacheDir(repo), "refs", filepath.FromSlash(revision))); rerr == nil {
+			if commit := strings.TrimSpace(string(b)); validRevision(commit) == nil && !strings.Contains(commit, "/") {
+				revision = commit
+			}
+		}
+	}
 	p := filepath.Join(snap, revision, file)
 	if !within(snap, p) {
 		return "", fmt.Errorf("cache path %q escapes the cache", p)
@@ -73,8 +81,11 @@ func ResolveCache(cacheDir, repo, revision, file string) (string, error) {
 		return "", fmt.Errorf("no cached artifact %s/%s (%s) under %s; run a pull first or point --local at the file",
 			repo, file, revision, cacheDir)
 	}
-	if fi.IsDir() {
-		return "", fmt.Errorf("cached path %q is a directory, want an artifact file", p)
+	if fi.IsDir() != (strings.TrimSpace(file) == "") {
+		if fi.IsDir() {
+			return "", fmt.Errorf("cached path %q is a directory, want an artifact file (omit --file to resolve the whole snapshot)", p)
+		}
+		return "", fmt.Errorf("cached path %q is not a snapshot directory", p)
 	}
 	return p, nil
 }
