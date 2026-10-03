@@ -1,12 +1,18 @@
 package engine
 
 import (
+	"bytes"
+	"context"
+	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/defilantech/socair/internal/checks/provenance"
 	"github.com/defilantech/socair/internal/modeldir"
@@ -18,7 +24,124 @@ import (
 // certificates), each a PEM file or a directory of them. There is no default:
 // no system roots, no built-in keys.
 func publisherTrust() (oms.Trust, error) {
-	return oms.LoadTrust(strings.TrimSpace(os.Getenv("SOCAIR_PUBLISHER_KEYS")), strings.TrimSpace(os.Getenv("SOCAIR_PUBLISHER_ROOTS")))
+	t, err := oms.LoadTrust(strings.TrimSpace(os.Getenv("SOCAIR_PUBLISHER_KEYS")), strings.TrimSpace(os.Getenv("SOCAIR_PUBLISHER_ROOTS")))
+	if err != nil {
+		return t, err
+	}
+	if v := strings.TrimSpace(os.Getenv("SOCAIR_SIGSTORE_VERIFIER")); v != "" {
+		k, err := keylessVerifier(v, strings.TrimSpace(os.Getenv("SOCAIR_SIGSTORE_TRUSTED_ROOT")), strings.TrimSpace(os.Getenv("SOCAIR_SIGSTORE_IDENTITIES")))
+		if err != nil {
+			return t, err
+		}
+		t.Keyless = k
+	}
+	return t, nil
+}
+
+// keylessTimeout bounds one call to the keyless verifier.
+const keylessTimeout = 2 * time.Minute
+
+type keylessIdentity struct {
+	Issuer       string `json:"issuer,omitempty"`
+	IssuerRegexp string `json:"issuer_regexp,omitempty"`
+	SAN          string `json:"san,omitempty"`
+	SANRegexp    string `json:"san_regexp,omitempty"`
+}
+
+// keylessVerifier configures the optional socair-sigstore helper. The trust
+// root and the identity policy are required with it: a keyless signature
+// verified against no identity would accept anyone who can sign in to an
+// OIDC provider. The identities file holds one "<issuer> <subject>" pair per
+// line, either side optionally "regexp:<pattern>"; # starts a comment.
+func keylessVerifier(bin, trustedRoot, identities string) (func([]byte) oms.KeylessVerdict, error) {
+	if trustedRoot == "" || identities == "" {
+		return nil, errors.New("SOCAIR_SIGSTORE_VERIFIER needs SOCAIR_SIGSTORE_TRUSTED_ROOT (a Sigstore trusted_root.json) and SOCAIR_SIGSTORE_IDENTITIES (accepted signers)")
+	}
+	if fi, err := os.Stat(bin); err != nil || fi.IsDir() {
+		return nil, fmt.Errorf("SOCAIR_SIGSTORE_VERIFIER %q is not a file", bin)
+	}
+	rootAbs, err := filepath.Abs(trustedRoot)
+	if err != nil {
+		return nil, err
+	}
+	if b, err := os.ReadFile(rootAbs); err != nil || !json.Valid(b) {
+		return nil, fmt.Errorf("SOCAIR_SIGSTORE_TRUSTED_ROOT %q is not a readable JSON trust root", trustedRoot)
+	}
+	ids, err := readIdentities(identities)
+	if err != nil {
+		return nil, err
+	}
+	return func(bundle []byte) oms.KeylessVerdict {
+		req, err := json.Marshal(map[string]any{
+			"bundle":       base64.StdEncoding.EncodeToString(bundle),
+			"trusted_root": rootAbs,
+			"identities":   ids,
+		})
+		if err != nil {
+			return oms.KeylessVerdict{State: oms.Unverified, Detail: err.Error()}
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), keylessTimeout)
+		defer cancel()
+		cmd := exec.CommandContext(ctx, bin)
+		cmd.Stdin = bytes.NewReader(req)
+		var stdout, stderr bytes.Buffer
+		cmd.Stdout, cmd.Stderr = &stdout, &stderr
+		if err := cmd.Run(); err != nil {
+			return oms.KeylessVerdict{State: oms.Unverified, Detail: "the keyless verifier did not run: " + strings.TrimSpace(err.Error()+" "+stderr.String())}
+		}
+		var v oms.KeylessVerdict
+		var out struct {
+			State  string `json:"state"`
+			Signer string `json:"signer"`
+			Detail string `json:"detail"`
+		}
+		if err := json.Unmarshal(stdout.Bytes(), &out); err != nil {
+			return oms.KeylessVerdict{State: oms.Unverified, Detail: "the keyless verifier's answer is unreadable"}
+		}
+		switch out.State {
+		case oms.Verified, oms.Invalid, oms.Unverified:
+			v = oms.KeylessVerdict{State: out.State, Signer: out.Signer, Detail: out.Detail}
+		default:
+			v = oms.KeylessVerdict{State: oms.Unverified, Detail: fmt.Sprintf("the keyless verifier answered %q", out.State)}
+		}
+		return v
+	}, nil
+}
+
+func readIdentities(p string) ([]keylessIdentity, error) {
+	b, err := os.ReadFile(p)
+	if err != nil {
+		return nil, fmt.Errorf("SOCAIR_SIGSTORE_IDENTITIES: %w", err)
+	}
+	var ids []keylessIdentity
+	for n, line := range strings.Split(string(b), "\n") {
+		if i := strings.IndexByte(line, '#'); i >= 0 {
+			line = line[:i]
+		}
+		f := strings.Fields(line)
+		if len(f) == 0 {
+			continue
+		}
+		if len(f) != 2 {
+			return nil, fmt.Errorf("SOCAIR_SIGSTORE_IDENTITIES line %d: want \"<issuer> <subject>\"", n+1)
+		}
+		var id keylessIdentity
+		if re, ok := strings.CutPrefix(f[0], "regexp:"); ok {
+			id.IssuerRegexp = re
+		} else {
+			id.Issuer = f[0]
+		}
+		if re, ok := strings.CutPrefix(f[1], "regexp:"); ok {
+			id.SANRegexp = re
+		} else {
+			id.SAN = f[1]
+		}
+		ids = append(ids, id)
+	}
+	if len(ids) == 0 {
+		return nil, fmt.Errorf("SOCAIR_SIGSTORE_IDENTITIES %s names no signer", p)
+	}
+	return ids, nil
 }
 
 func readBundle(p string) ([]byte, error) {

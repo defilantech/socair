@@ -69,6 +69,18 @@ type Trust struct {
 	Keys map[string]*ecdsa.PublicKey
 	// Roots are trusted certificate authorities; nil when none were given.
 	Roots *x509.CertPool
+	// Keyless, when set, verifies a keyless Sigstore bundle (the optional
+	// socair-sigstore helper): the certificate chain, transparency log, and
+	// signer identity. It sees the same bundle bytes this package then reads
+	// the payload from. Nil leaves keyless signatures unverified.
+	Keyless func(bundle []byte) KeylessVerdict
+}
+
+// KeylessVerdict is the keyless verifier's answer.
+type KeylessVerdict struct {
+	State  string // Verified, Invalid, or Unverified
+	Signer string // "<san> (<issuer>)"
+	Detail string
 }
 
 // Empty reports whether the policy trusts nothing.
@@ -331,7 +343,27 @@ func verify(raw []byte, trust Trust) Outcome {
 		signer = "certificate " + subjectOf(leaf)
 		method = "certificate"
 		if len(vm.TlogEntries) > 0 || isFulcio(leaf) {
-			return unverified("keyless", signer, "a keyless Sigstore signature (Fulcio certificate, transparency log); keyless verification is not built")
+			if trust.Keyless == nil {
+				return unverified("keyless", signer, "a keyless Sigstore signature, and no keyless verifier is configured (SOCAIR_SIGSTORE_VERIFIER)")
+			}
+			kv := trust.Keyless(raw)
+			if kv.Signer != "" {
+				signer = kv.Signer
+			}
+			switch kv.State {
+			case Verified:
+				// The helper verified the signature over this envelope; what
+				// it signs is read here, from the same bytes.
+				m, err := manifestOf(st)
+				if err != nil {
+					return Outcome{State: Invalid, Method: "keyless", Signer: signer, Detail: err.Error()}
+				}
+				return Outcome{State: Verified, Method: "keyless", Signer: signer, Manifest: m}
+			case Invalid:
+				return Outcome{State: Invalid, Method: "keyless", Signer: signer, Detail: kv.Detail}
+			default:
+				return unverified("keyless", signer, kv.Detail)
+			}
 		}
 		if trust.Roots == nil {
 			return unverified(method, signer, "signed with a certificate, and no publisher roots are configured (SOCAIR_PUBLISHER_ROOTS)")

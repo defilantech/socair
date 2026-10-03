@@ -86,7 +86,18 @@ from a key you did not configure proves nothing about who made the model.
 |---|---|---|
 | From a trusted key or root; every signed file matches | PASS | verified (OMS, signer) |
 | From a trusted signer; the signature, or a file, does not match | FAIL | invalid (OMS): what differs |
-| From an untrusted signer, keyless Sigstore (#115), or pre-1.0 | the manifest rules decide; the signature is named | present, not verified |
+| From an untrusted signer, or pre-1.0 | the manifest rules decide; the signature is named | present, not verified |
+| Keyless Sigstore, with `socair-sigstore` configured | as above: verified, invalid, or not in the identity policy | as above, naming the signer's subject and issuer |
+| Keyless Sigstore, no verifier configured | the manifest rules decide; the signature is named | present, not verified |
+
+Keyless signatures (a Fulcio certificate and a Rekor log entry) are verified
+by the optional `socair-sigstore` helper, a separate binary built from
+`tools/socair-sigstore`, so the scanner's own build keeps its small dependency
+set. Configure it with `SOCAIR_SIGSTORE_VERIFIER`, `SOCAIR_SIGSTORE_TRUSTED_ROOT`
+(a Sigstore `trusted_root.json`), and `SOCAIR_SIGSTORE_IDENTITIES` (the signers
+you accept, required); see `tools/socair-sigstore/README.md`. The helper
+vouches for the signature; the scanner still binds the signed manifest to the
+files.
 
 A verified signature proves the files are the ones the key holder signed. It
 is a statement of origin and integrity, never of safety: the other rows still

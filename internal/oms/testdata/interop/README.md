@@ -11,3 +11,8 @@ being committed:
 
 The model files are random bytes, not models. Only public keys and the CA
 certificate are kept; the private keys were discarded.
+- `keyless/`: a keyless (Sigstore) OMS signature from the reference
+  implementation's own test suite (`scripts/tests/v1.1.0-sigstore`), signed by
+  `stefanb@us.ibm.com` through `https://sigstore.verify.ibm.com/oauth2`. Verify it
+  with `tools/socair-sigstore` and `keys/trusted-root-public-good.json` (the
+  public-good trusted root from sigstore-go v1.3.0).
