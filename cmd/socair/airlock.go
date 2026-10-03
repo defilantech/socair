@@ -167,6 +167,21 @@ func airlockLog(args []string) error {
 	if err != nil {
 		return err
 	}
+	if fs.has("verify") || fs.val("expect-head") != "" {
+		r, err := s.Verify(airlock.VerifyOptions{ExpectHead: fs.val("expect-head")})
+		if err != nil {
+			return err
+		}
+		if r.Broken != 0 {
+			return fmt.Errorf("activity log chain broken at line %d: %s", r.Broken, r.Reason)
+		}
+		fmt.Printf("activity log chain intact: %d entries", r.Entries)
+		if r.Legacy > 0 {
+			fmt.Printf(" (the first %d predate chaining and are not covered)", r.Legacy)
+		}
+		fmt.Printf("\nhead %s\nRecord the head; `socair airlock log --verify --expect-head <head>` later also detects entries cut off the end.\n", r.Head)
+		return nil
+	}
 	ev, err := s.Events()
 	if err != nil {
 		return err
