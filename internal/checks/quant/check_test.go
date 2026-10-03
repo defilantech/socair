@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/defilantech/socair/internal/checks"
+	"github.com/defilantech/socair/internal/gguf"
 )
 
 func ptr(v uint32) *uint32 { return &v }
@@ -77,5 +78,43 @@ func TestCommunityQuantNameIsNotTested(t *testing.T) {
 		if !strings.Contains(r.Notes, declared) {
 			t.Errorf("declared %s: the note must name it, got %q", declared, r.Notes)
 		}
+	}
+}
+
+func shares(types ...string) []gguf.TypeShare {
+	var out []gguf.TypeShare
+	for i, ty := range types {
+		out = append(out, gguf.TypeShare{Type: ty, Bytes: uint64(100 - i*10), Tensors: 1})
+	}
+	return out
+}
+
+// TestCompareObserved: the quant row used to compare two labels while the
+// report said "observed weight layout". It now looks at the tensor types.
+// Falsification: return PASS without consulting the histogram and the Q8_0
+// file of Q4_K tensors passes.
+func TestCompareObserved(t *testing.T) {
+	cases := []struct {
+		declared string
+		types    []string
+		want     checks.Status
+	}{
+		{"Q4_K_M", []string{"Q4_K", "Q6_K", "F32"}, checks.Pass},
+		{"Q4_K_XL", []string{"Q4_K", "Q8_0", "F32"}, checks.Pass},     // Unsloth naming, real tensors
+		{"Q6_K", []string{"Q6_K", "Q8_0", "F32"}, checks.Pass},        // Unsloth UD-Q6_K
+		{"IQ3_M", []string{"IQ3_S", "Q6_K", "Q4_K"}, checks.Pass},     // bartowski IQ3_M
+		{"MXFP4_MOE", []string{"MXFP4", "Q8_0", "F32"}, checks.Pass},  // gpt-oss
+		{"Q8_0", []string{"Q4_K", "Q6_K", "F32"}, checks.Fail},        // named Q8_0, holds no Q8_0
+		{"Q8_K_XL", []string{"F16", "Q8_0", "F32"}, checks.NotTested}, // no fixed base type
+		{"", []string{"Q4_K"}, checks.NotTested},
+	}
+	for _, c := range cases {
+		r := CompareObserved(c.declared, ptr(15), shares(c.types...))
+		if r.Status != c.want {
+			t.Errorf("%s over %v: status %s (%s), want %s", c.declared, c.types, r.Status, r.Notes, c.want)
+		}
+	}
+	if r := CompareObserved("Q5_K_M", ptr(17), nil); r.Status != checks.Pass {
+		t.Errorf("no tensor table must fall back to the label comparison, got %s", r.Status)
 	}
 }

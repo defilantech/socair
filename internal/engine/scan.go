@@ -75,6 +75,7 @@ func ScanMode(path string, mode Mode) (*report.Document, error) {
 	var tokenizerModel string
 	var quantDeclared string
 	var fileType *uint32
+	var observedTypes []gguf.TypeShare
 
 	if safetensors.IsSafetensors(path) {
 		m, err := safetensors.ReadHeader(path)
@@ -124,8 +125,11 @@ func ScanMode(path string, mode Mode) (*report.Document, error) {
 			QuantDeclared:      m.Quant.Declared,
 			ChatTemplateSHA256: m.ChatTemplateSHA256,
 		}
-		if m.Quant.FileType != nil {
-			id.QuantObserved = fmt.Sprintf("file_type=%d", *m.Quant.FileType)
+		observedTypes = m.TypeHistogram()
+		if h := gguf.HistogramString(observedTypes); h != "" {
+			id.QuantObserved = h + " (tensor data by type)"
+		} else if m.Quant.FileType != nil {
+			id.QuantObserved = fmt.Sprintf("file_type=%d (metadata label; no tensor data)", *m.Quant.FileType)
 		}
 		if m.MultiPart() {
 			id.Split = fmt.Sprintf("part %d of %d", m.Split.No+1, m.Split.Count)
@@ -166,7 +170,7 @@ func ScanMode(path string, mode Mode) (*report.Document, error) {
 		meta := []checks.Result{
 			chattemplate.InspectAll(chatTemplates, chatTemplateNonString),
 			tokenizer.Inspect(tokenizerModel),
-			quant.Compare(quantDeclared, fileType),
+			quant.CompareObserved(quantDeclared, fileType, observedTypes),
 		}
 		if ggufErr != nil {
 			for i := range meta {
