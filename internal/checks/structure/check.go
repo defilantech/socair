@@ -42,8 +42,30 @@ func Validate(path string) checks.Result {
 		return duplicateFail(r, m.DuplicateKeys, "GGUF metadata", "llama.cpp rejects the file and other readers disagree on which value wins")
 	}
 
+	l := m.ValidateLayout()
+	if len(l.Violations) > 0 {
+		for _, v := range l.Violations {
+			r.Findings = append(r.Findings, checks.Finding{Pattern: "tensor-layout", Span: v,
+				Detail: "the tensor table does not describe the file; llama.cpp rejects this, and unaccounted bytes can hide a payload"})
+		}
+		r.Status = checks.Fail
+		r.Notes = fmt.Sprintf("%d tensor layout violation(s): %s", len(l.Violations), strings.Join(l.Violations, "; "))
+		return r
+	}
+	if l.Truncated != "" {
+		r.Status = checks.NotTested
+		r.Notes = "GGUF tensor table parsed but the file is shorter than it describes (truncated?): " + l.Truncated
+		return r
+	}
+	if len(l.Unverified) > 0 {
+		r.Status = checks.NotTested
+		r.Notes = "GGUF tensor table parsed but its layout could not be fully checked: " + strings.Join(l.Unverified, "; ")
+		return r
+	}
+
 	r.Status = checks.Pass
-	r.Notes = fmt.Sprintf("GGUF v%d parsed: %d tensors, %d metadata pairs", m.Version, m.TensorCount, m.KVCount)
+	r.Notes = fmt.Sprintf("GGUF v%d: %d tensors tile the data section exactly, each sized by its dims and type; %d metadata pairs",
+		m.Version, len(m.Tensors), m.KVCount)
 	if m.MultiPart() {
 		r.Notes = fmt.Sprintf("part %d of %d of a split model; this artifact is one shard, not the whole model (%s)",
 			m.Split.No+1, m.Split.Count, r.Notes)

@@ -76,7 +76,7 @@
     },
     {
       "name": "Quant match",
-      "looks_for": "Declared quantization (file name) against the file type declared in metadata",
+      "looks_for": "Declared quantization (file name) against the tensor types in the file",
       "status": "PASS",
       "notes": "declared Q5_K_M matches observed file type 17"
     },

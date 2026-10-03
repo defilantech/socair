@@ -89,6 +89,28 @@ type Manifest struct {
 
 	Quant Quant  `json:"quant"`
 	Split *Split `json:"split,omitempty"`
+
+	// Alignment is general.alignment, 32 when absent.
+	Alignment uint64 `json:"alignment"`
+	// DataOffset is where the tensor data section starts in the file.
+	DataOffset int64 `json:"data_offset"`
+	// Tensors is the tensor table. Not serialized: it can hold thousands.
+	Tensors []TensorInfo `json:"-"`
+}
+
+// defaultAlignment is GGUF's alignment when general.alignment is absent.
+const defaultAlignment = 32
+
+// countingReader counts the bytes read through it, to locate the data section.
+type countingReader struct {
+	r io.Reader
+	n int64
+}
+
+func (c *countingReader) Read(p []byte) (int, error) {
+	k, err := c.r.Read(p)
+	c.n += int64(k)
+	return k, err
 }
 
 // Split records that an artifact is one shard of a multi-part model. A shard
@@ -141,6 +163,7 @@ var wanted = map[string]struct{}{
 	"tokenizer.chat_template":      {},
 	"general.file_type":            {},
 	"general.quantization_version": {},
+	"general.alignment":            {},
 	"split.no":                     {},
 	"split.count":                  {},
 	"split.tensors.count":          {},
@@ -168,9 +191,11 @@ func ReadHeader(path string) (*Manifest, error) {
 		Quant:     Quant{Declared: QuantFromFileName(filepath.Base(path))},
 	}
 
-	if err := readHeader(bufio.NewReaderSize(f, readBufSize), m); err != nil {
+	cr := &countingReader{r: bufio.NewReaderSize(f, readBufSize)}
+	if err := readHeader(cr, m); err != nil {
 		return nil, err
 	}
+	m.DataOffset = int64(alignUp(uint64(cr.n), m.Alignment))
 	return m, nil
 }
 
@@ -198,6 +223,7 @@ func ReadArtifact(path string) (*Manifest, error) {
 }
 
 func readHeader(f io.Reader, m *Manifest) error {
+	m.Alignment = defaultAlignment
 	var magicBuf [4]byte
 	if _, err := io.ReadFull(f, magicBuf[:]); err != nil {
 		return fmt.Errorf("gguf: reading magic: %w", err)
@@ -265,7 +291,7 @@ func readHeader(f io.Reader, m *Manifest) error {
 		}
 		applyWanted(m, key, val)
 	}
-	return nil
+	return readTensorInfos(f, m)
 }
 
 func applyWanted(m *Manifest, key string, val any) {
@@ -288,6 +314,10 @@ func applyWanted(m *Manifest, key string, val any) {
 	case "general.file_type":
 		if v, ok := asUint(val); ok {
 			m.Quant.FileType = &v
+		}
+	case "general.alignment":
+		if v, ok := val.(uint64); ok {
+			m.Alignment = v
 		}
 	case "general.quantization_version":
 		if v, ok := asUint(val); ok {
@@ -491,7 +521,7 @@ func readString(f io.Reader) (string, error) {
 // IQ type (IQ3_S, IQ4_XS), or a float type. Deliberately strict, so a model
 // name that merely starts with Q (for example a "qwen2" vocab file) is not
 // mistaken for a quantization.
-var quantField = regexp.MustCompile(`^(IQ[0-9][A-Z0-9_]*|Q[0-9][A-Z0-9_]*|BF16|F16|F32)$`)
+var quantField = regexp.MustCompile(`^(IQ[0-9][A-Z0-9_]*|Q[0-9][A-Z0-9_]*|TQ[12]_0|MXFP4(_MOE)?|BF16|F16|F32)$`)
 
 // QuantFromFileName extracts a quantization label such as Q5_K_M or IQ3_S from
 // an artifact file name, for the declared-vs-observed comparison. Prefix tags

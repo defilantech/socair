@@ -109,3 +109,37 @@ func writeStr(b *bytes.Buffer, s string) {
 	_ = binary.Write(b, binary.LittleEndian, uint64(len(s)))
 	b.WriteString(s)
 }
+
+// Tensor is one tensor-table entry for BuildWithTensors.
+type Tensor struct {
+	Name   string
+	Dims   []uint64
+	Type   uint32
+	Offset uint64
+}
+
+// BuildWithTensors assembles a GGUF v3 with metadata, a tensor table, padding
+// to 32-byte alignment, and dataLen bytes of tensor data.
+func BuildWithTensors(kvs []KV, tensors []Tensor, dataLen int) []byte {
+	var b bytes.Buffer
+	b.WriteString("GGUF")
+	_ = binary.Write(&b, binary.LittleEndian, uint32(3))
+	_ = binary.Write(&b, binary.LittleEndian, uint64(len(tensors)))
+	_ = binary.Write(&b, binary.LittleEndian, uint64(len(kvs)))
+	body := BuildGGUF(kvs)[24:] // the key-value section
+	b.Write(body)
+	for _, t := range tensors {
+		writeStr(&b, t.Name)
+		_ = binary.Write(&b, binary.LittleEndian, uint32(len(t.Dims)))
+		for _, d := range t.Dims {
+			_ = binary.Write(&b, binary.LittleEndian, d)
+		}
+		_ = binary.Write(&b, binary.LittleEndian, t.Type)
+		_ = binary.Write(&b, binary.LittleEndian, t.Offset)
+	}
+	for b.Len()%32 != 0 {
+		b.WriteByte(0)
+	}
+	b.Write(make([]byte, dataLen))
+	return b.Bytes()
+}

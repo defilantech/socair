@@ -241,6 +241,38 @@ was invalid (an F16 8x8 tensor in a 64-byte range), now fixed.
 SOCAIR_SAFETENSORS_CORPUS=<dir>[:<dir>...] go test ./internal/checks/structure -run RealSafetensors -v
 ```
 
+## GGUF tensor-table validation (2026-10-03)
+
+Structure used to PASS any GGUF whose metadata parsed: the tensor table was
+never read, so the audit's `poly.gguf` (claiming 12,345 tensors, holding none,
+with ELF and ZIP bytes appended) passed. The reader now parses the tensor
+table and the structure check requires the tensors to tile the data section
+exactly: each sized by its dims and ggml type, aligned to `general.alignment`,
+with only alignment padding between them and after the last. A violation is a
+FAIL; an unknown ggml type or tensor data past the end of the file (a cut-short
+download) is NOT_TESTED. The quant row now reads the tensor types: a file
+named for a quantization that holds no tensor of that type FAILs, and the
+observed histogram is reported.
+
+The ggml type table was checked against real files, since a file only tiles
+exactly if every type's block and byte size is right: 59 GGUFs validate with no
+violation. 44 are local models; 15 are header samples of public quants (the
+first megabytes fetched by range request and extended sparsely to the true
+size), covering F32, F16, BF16, Q4_0, Q4_1, Q8_0, Q2_K, Q3_K, Q4_K, Q5_K, Q6_K,
+IQ1_S, IQ1_M, IQ2_XXS, IQ2_XS, IQ2_S, IQ3_XXS, IQ3_S, IQ4_NL, IQ4_XS, and MXFP4.
+Not yet exercised by a real file: Q5_0, Q5_1, Q8_1, Q8_K, I8 to I64, F64,
+TQ1_0, TQ2_0. Engine sweep: structure 59 PASS, 0 FAIL; quant 35 PASS, 0 FAIL
+(the NOT_TESTED rows are vocabulary and imatrix files with no quant in their
+name, and Unsloth's Q8_K_XL, which holds no Q8_K).
+
+The histograms also show how far labels are from contents: Unsloth's
+UD-Q6_K is 54% Q6_K and 46% Q8_0; its UD-IQ1_M is 23% IQ1_M and 50% Q5_K; one
+"Q4_K_M" is 38% Q8_0.
+
+```
+SOCAIR_GGUF_CORPUS=<dir>[:<dir>...] go test ./internal/gguf -run RealGGUF -v
+```
+
 ## Follow-ups
 
 1. Verify the GGML file-type mapping against the current llama.cpp enum so the

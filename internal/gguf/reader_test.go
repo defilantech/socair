@@ -123,6 +123,8 @@ func TestQuantFromFileName(t *testing.T) {
 		"ggml-vocab-qwen2.gguf":                     "", // a name starting with Q is not a quant
 		"ggml-vocab-qwen35.gguf":                    "",
 		"plain.gguf":                                "",
+		"gpt-oss-20b-MXFP4.gguf":                    "MXFP4",
+		"model-TQ1_0.gguf":                          "TQ1_0",
 	}
 	for name, want := range cases {
 		if got := QuantFromFileName(name); got != want {
