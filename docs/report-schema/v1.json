@@ -29,7 +29,7 @@
         "document_id": { "type": "string", "minLength": 1 },
         "template_version": { "type": "string", "minLength": 1 },
         "issued_utc": { "type": "string", "minLength": 1 },
-        "rescan_due": { "type": "string" },
+        "rescan_due": { "type": "string", "format": "date-time" },
         "artifact_short": { "type": "string" },
         "assurance_level_awarded": { "type": "string", "minLength": 1 },
         "signer_name": { "type": "string" },
@@ -138,7 +138,7 @@
         "accepted_surfaces": { "type": "array", "items": { "type": "string" } },
         "accepted_by": { "type": "string" },
         "accepted_at": { "type": "string" },
-        "acceptance_expires": { "type": "string" }
+        "acceptance_expires": { "type": "string", "format": "date-time" }
       }
     },
     "verification": {

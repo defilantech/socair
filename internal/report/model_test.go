@@ -137,8 +137,16 @@ func TestPromotionStateRules(t *testing.T) {
 			t.Fatal("authorized_with_conditions without accepted_by must fail validation")
 		}
 		d.PromotionAuthorization.AcceptedBy = "ciso@example.com"
+		if len(Validate(d)) == 0 {
+			t.Fatal("an acceptance with no expiry cannot be enforced and must fail validation")
+		}
+		d.PromotionAuthorization.AcceptanceExpires = "end of quarter"
+		if len(Validate(d)) == 0 {
+			t.Fatal("a free-text acceptance expiry must fail validation")
+		}
+		d.PromotionAuthorization.AcceptanceExpires = "2027-01-31T00:00:00Z"
 		if problems := Validate(d); len(problems) != 0 {
-			t.Fatalf("a named acceptance should validate, got %v", problems)
+			t.Fatalf("a named acceptance with an RFC 3339 expiry should validate, got %v", problems)
 		}
 	})
 }

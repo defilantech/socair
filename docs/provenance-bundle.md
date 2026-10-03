@@ -73,8 +73,17 @@ are what turns a report with NOT_TESTED rows from `withheld` into
 `authorized_with_conditions`.
 
 - `SOCAIR_ACCEPTED_BY`: the person or role accepting the untested surfaces.
-- `SOCAIR_ACCEPTANCE_EXPIRES`: optional expiry for the acceptance, e.g.
-  `2027-01-01T00:00:00Z`.
+- `SOCAIR_ACCEPTANCE_EXPIRES`: when the acceptance lapses, as RFC 3339, e.g.
+  `2027-01-01T00:00:00Z`. Optional: without it the acceptance lapses at the
+  re-scan date. A value that is not RFC 3339, or already past, fails the scan;
+  an acceptance that cannot be enforced is not recorded.
+- `SOCAIR_RESCAN_DAYS`: days until the report's `rescan_due` (default 90).
+
+Every acceptance expires. `socair airlock promote` refuses an
+`authorized_with_conditions` attestation whose acceptance has expired, and the
+refusal is logged; the gaps need a fresh scan and a fresh acceptance. A report
+whose acceptance carries no parseable expiry does not validate, so it cannot
+be signed or verified.
 
 Without `SOCAIR_ACCEPTED_BY`, an artifact with any NOT_TESTED row is `withheld`
 with the reason "gaps not accepted". A FAIL is never cleared by acceptance; it

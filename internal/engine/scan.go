@@ -8,6 +8,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -145,6 +146,11 @@ func ScanMode(path string, mode Mode) (*report.Document, error) {
 	d := report.NewFromIdentity(id)
 	d.Header.DocumentID = fmt.Sprintf("SOCAIR-%s-%s", start.Format("20060102"), shortHashOr(id.SHA256, "headers"))
 	d.Header.IssuedUTC = start.Format(time.RFC3339)
+	rescanDue, expires, err := acceptancePolicy(start, os.Getenv("SOCAIR_RESCAN_DAYS"), os.Getenv("SOCAIR_ACCEPTANCE_EXPIRES"))
+	if err != nil {
+		return nil, err
+	}
+	d.Header.RescanDue = rescanDue
 	d.Header.ArtifactShort = id.Name
 	d.Header.AssuranceLevelAwarded = "Tier 1 (static)"
 	d.Scope.CheckSetVersion = CheckSetVersion
@@ -183,7 +189,7 @@ func ScanMode(path string, mode Mode) (*report.Document, error) {
 
 	d.Scope.ScanEndUTC = time.Now().UTC().Format(time.RFC3339)
 	finalizeFindings(d)
-	d.PromotionAuthorization = promotion(d, os.Getenv("SOCAIR_ACCEPTED_BY"), os.Getenv("SOCAIR_ACCEPTANCE_EXPIRES"))
+	d.PromotionAuthorization = promotion(d, os.Getenv("SOCAIR_ACCEPTED_BY"), expires)
 	return d, nil
 }
 
@@ -216,6 +222,40 @@ func readOpaque(path string) (report.Identity, error) {
 		id.Format = "zip"
 	}
 	return id, nil
+}
+
+// DefaultRescanDays is how long a Tier 1 result stands before the artifact is
+// due a re-scan, absent SOCAIR_RESCAN_DAYS. Detectors and allowlists move.
+const DefaultRescanDays = 90
+
+// acceptancePolicy computes when the artifact is due a re-scan and when an
+// acceptance of its gaps lapses. An acceptance always expires: absent
+// SOCAIR_ACCEPTANCE_EXPIRES it lapses at the re-scan. A value that is not RFC
+// 3339, or already past, is an error rather than an acceptance that cannot be
+// enforced.
+func acceptancePolicy(start time.Time, rescanDays, expiresEnv string) (rescanDue, expires string, err error) {
+	days := DefaultRescanDays
+	if v := strings.TrimSpace(rescanDays); v != "" {
+		n, err := strconv.Atoi(v)
+		if err != nil || n < 1 || n > 3650 {
+			return "", "", fmt.Errorf("SOCAIR_RESCAN_DAYS %q: want a whole number of days from 1 to 3650", v)
+		}
+		days = n
+	}
+	rescanDue = start.UTC().AddDate(0, 0, days).Format(time.RFC3339)
+
+	v := strings.TrimSpace(expiresEnv)
+	if v == "" {
+		return rescanDue, rescanDue, nil
+	}
+	t, err := time.Parse(time.RFC3339, v)
+	if err != nil {
+		return "", "", fmt.Errorf("SOCAIR_ACCEPTANCE_EXPIRES %q is not an RFC 3339 time, e.g. 2027-01-31T00:00:00Z", v)
+	}
+	if !t.After(start) {
+		return "", "", fmt.Errorf("SOCAIR_ACCEPTANCE_EXPIRES %s is already past", t.UTC().Format(time.RFC3339))
+	}
+	return rescanDue, t.UTC().Format(time.RFC3339), nil
 }
 
 // promotion computes the promotion state. A FAIL or a LEAD withholds and is
@@ -265,7 +305,7 @@ func promotion(d *report.Document, acceptedBy, expires string) report.PromotionA
 		pa.AcceptedBy = acceptedBy
 		pa.AcceptedAt = time.Now().UTC().Format(time.RFC3339)
 		pa.Conditions = "Authorized with conditions: " + strings.Join(gaps, ", ") +
-			" are NOT_TESTED and were accepted by " + acceptedBy + "."
+			" are NOT_TESTED and were accepted by " + acceptedBy + " until " + expires + "."
 	}
 	return pa
 }

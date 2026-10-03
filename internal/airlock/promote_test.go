@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/defilantech/socair/internal/attest"
 	"github.com/defilantech/socair/internal/engine"
@@ -396,11 +397,12 @@ func TestPromoteConditionsTravelWithArtifact(t *testing.T) {
 	d.Checks[0].Status = report.StatusNotTested
 	d.Findings.NotTested = []string{d.Checks[0].Name}
 	d.PromotionAuthorization = report.PromotionAuthorization{
-		State:            report.StateAuthorizedWithConditions,
-		Authorized:       true,
-		Level:            "Tier 1 only",
-		AcceptedBy:       "chris",
-		AcceptedSurfaces: []string{d.Checks[0].Name},
+		State:             report.StateAuthorizedWithConditions,
+		Authorized:        true,
+		Level:             "Tier 1 only",
+		AcceptedBy:        "chris",
+		AcceptedSurfaces:  []string{d.Checks[0].Name},
+		AcceptanceExpires: time.Now().Add(24 * time.Hour).UTC().Format(time.RFC3339),
 	}
 
 	s := trustedStore(t)
@@ -456,5 +458,40 @@ func TestPromoteRejectsAnUnreadableArtifact(t *testing.T) {
 	s := trustedStore(t)
 	if _, err := Promote(s, filepath.Join(t.TempDir(), "absent.gguf"), writeReport(t, d)); err == nil {
 		t.Fatal("an unreadable artifact must be an error, not a promotion")
+	}
+}
+
+// TestPromoteRefusesExpiredAcceptance: an acceptance covers its gaps only
+// until it expires. Falsification: skip the expiry comparison in Promote and
+// the lapsed attestation crosses.
+func TestPromoteRefusesExpiredAcceptance(t *testing.T) {
+	artifact, d := authorizedArtifact(t)
+	d.Checks[0].Status = report.StatusNotTested
+	d.Findings.NotTested = []string{d.Checks[0].Name}
+	d.PromotionAuthorization = report.PromotionAuthorization{
+		State:             report.StateAuthorizedWithConditions,
+		Authorized:        true,
+		Level:             "Tier 1 only",
+		AcceptedBy:        "chris",
+		AcceptedSurfaces:  []string{d.Checks[0].Name},
+		AcceptanceExpires: "2027-01-31T00:00:00Z",
+	}
+	s := trustedStore(t)
+	ticket := writeReport(t, d)
+
+	now = func() time.Time { return time.Date(2027, 1, 30, 0, 0, 0, 0, time.UTC) }
+	t.Cleanup(func() { now = time.Now })
+	if _, err := Promote(s, artifact, ticket); err != nil {
+		t.Fatalf("an acceptance still in force crosses: %v", err)
+	}
+
+	now = func() time.Time { return time.Date(2027, 1, 31, 0, 0, 0, 0, time.UTC) }
+	_, err := Promote(s, artifact, ticket)
+	if !errors.Is(err, ErrRefused) || !strings.Contains(err.Error(), "expired") {
+		t.Fatalf("an expired acceptance must be refused, got %v", err)
+	}
+	ev, _ := s.Events()
+	if last := ev[len(ev)-1]; last.Action != ActionRefuse {
+		t.Errorf("the refusal must be logged, got %+v", last)
 	}
 }
