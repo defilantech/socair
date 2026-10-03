@@ -86,7 +86,8 @@
         "input_path": { "type": "string" },
         "scan_start_utc": { "type": "string" },
         "scan_end_utc": { "type": "string" },
-        "inference_budget": { "type": "string" }
+        "inference_budget": { "type": "string" },
+        "reference_data": { "type": "string" }
       }
     },
     "checks": {

@@ -24,15 +24,12 @@ package acceptance
 import (
 	"bytes"
 	"crypto/ed25519"
-	"crypto/sha256"
-	"crypto/x509"
-	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/defilantech/socair/internal/dsse"
 	"sort"
-	"strconv"
 	"strings"
 	"time"
 )
@@ -41,7 +38,6 @@ const (
 	// PredicateType names a Socair acceptance.
 	PredicateType = "https://socair.ai/acceptance/v1"
 	statementType = "https://in-toto.io/Statement/v1"
-	payloadType   = "application/vnd.in-toto+json"
 )
 
 // ErrVerify marks an acceptance that does not verify.
@@ -74,17 +70,6 @@ type statement struct {
 	Predicate     Predicate `json:"predicate"`
 }
 
-type envelope struct {
-	PayloadType string      `json:"payloadType"`
-	Payload     string      `json:"payload"`
-	Signatures  []signature `json:"signatures"`
-}
-
-type signature struct {
-	KeyID string `json:"keyid"`
-	Sig   string `json:"sig"`
-}
-
 // Acceptance is a parsed acceptance.
 type Acceptance struct {
 	Predicate
@@ -97,27 +82,7 @@ type Acceptance struct {
 }
 
 // KeyID is a public key's id: the hex SHA-256 of its PKIX DER encoding.
-func KeyID(pub ed25519.PublicKey) (string, error) {
-	der, err := x509.MarshalPKIXPublicKey(pub)
-	if err != nil {
-		return "", err
-	}
-	sum := sha256.Sum256(der)
-	return hex.EncodeToString(sum[:]), nil
-}
-
-func pae(payload []byte) []byte {
-	var b bytes.Buffer
-	b.WriteString("DSSEv1 ")
-	b.WriteString(strconv.Itoa(len(payloadType)))
-	b.WriteByte(' ')
-	b.WriteString(payloadType)
-	b.WriteByte(' ')
-	b.WriteString(strconv.Itoa(len(payload)))
-	b.WriteByte(' ')
-	b.Write(payload)
-	return b.Bytes()
-}
+func KeyID(pub ed25519.PublicKey) (string, error) { return dsse.KeyID(pub) }
 
 // Sign signs an acceptance of p for the artifact (name, sha256) with the
 // acceptor's key. The predicate must be well-formed (see Check).
@@ -138,12 +103,7 @@ func Sign(p Predicate, artifactName, artifactSHA256 string, key ed25519.PrivateK
 	if err != nil {
 		return nil, err
 	}
-	sig := ed25519.Sign(key, pae(payload))
-	return json.MarshalIndent(envelope{
-		PayloadType: payloadType,
-		Payload:     base64.StdEncoding.EncodeToString(payload),
-		Signatures:  []signature{{KeyID: keyID, Sig: base64.StdEncoding.EncodeToString(sig)}},
-	}, "", "  ")
+	return dsse.Sign(payload, keyID, func(msg []byte) []byte { return ed25519.Sign(key, msg) })
 }
 
 func verifyErr(format string, args ...any) error {
@@ -152,22 +112,9 @@ func verifyErr(format string, args ...any) error {
 
 // decode reads an envelope and its statement, without checking a signature.
 func decode(raw []byte) (*Acceptance, []byte, []byte, error) {
-	var e envelope
-	dec := json.NewDecoder(bytes.NewReader(raw))
-	dec.DisallowUnknownFields()
-	if err := dec.Decode(&e); err != nil {
-		return nil, nil, nil, verifyErr("not a DSSE envelope: %v", err)
-	}
-	if e.PayloadType != payloadType || len(e.Signatures) != 1 {
-		return nil, nil, nil, verifyErr("want one signature over an in-toto payload")
-	}
-	payload, err := base64.StdEncoding.DecodeString(e.Payload)
+	payload, sig, keyID, err := dsse.Open(raw)
 	if err != nil {
-		return nil, nil, nil, verifyErr("payload is not base64")
-	}
-	sig, err := base64.StdEncoding.DecodeString(e.Signatures[0].Sig)
-	if err != nil {
-		return nil, nil, nil, verifyErr("signature is not base64")
+		return nil, nil, nil, verifyErr("%v", err)
 	}
 	var st statement
 	sdec := json.NewDecoder(bytes.NewReader(payload))
@@ -185,7 +132,7 @@ func decode(raw []byte) (*Acceptance, []byte, []byte, error) {
 		Predicate:      st.Predicate,
 		ArtifactName:   st.Subject[0].Name,
 		ArtifactSHA256: strings.ToLower(st.Subject[0].Digest["sha256"]),
-		KeyID:          e.Signatures[0].KeyID,
+		KeyID:          keyID,
 	}
 	if err := a.wellFormed(); err != nil {
 		return nil, nil, nil, verifyErr("%v", err)
@@ -211,7 +158,7 @@ func Verify(raw []byte, acceptors map[string]ed25519.PublicKey) (*Acceptance, er
 	if !ok {
 		return nil, verifyErr("signed by key %s, which is not a trusted acceptor key", short(a.KeyID))
 	}
-	if !ed25519.Verify(pub, pae(payload), sig) {
+	if !ed25519.Verify(pub, dsse.PAE(payload), sig) {
 		return nil, verifyErr("the signature does not verify against acceptor key %s", short(a.KeyID))
 	}
 	return a, nil

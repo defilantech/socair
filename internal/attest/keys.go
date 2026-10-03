@@ -21,6 +21,10 @@ type PrivateKey struct {
 	key ed25519.PrivateKey
 }
 
+// Sign signs msg with the key: the signer Socair's other signed statements
+// (feeds) take, without exposing the key itself.
+func (k *PrivateKey) Sign(msg []byte) []byte { return ed25519.Sign(k.key, msg) }
+
 // Keyring maps key id to a trusted public key.
 type Keyring map[string]ed25519.PublicKey
 

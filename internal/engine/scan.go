@@ -14,7 +14,6 @@ import (
 
 	"github.com/defilantech/socair/internal/checks"
 	"github.com/defilantech/socair/internal/checks/chattemplate"
-	"github.com/defilantech/socair/internal/checks/denylist"
 	"github.com/defilantech/socair/internal/checks/inventory"
 	"github.com/defilantech/socair/internal/checks/pickle"
 	"github.com/defilantech/socair/internal/checks/provenance"
@@ -51,11 +50,17 @@ func Scan(path string) (*report.Document, error) { return ScanMode(path, ModeFul
 // report document.
 func ScanMode(path string, mode Mode) (*report.Document, error) {
 	start := time.Now().UTC()
+	// Reference data first: a feed that does not verify stops the scan before
+	// any snapshot is copied.
+	refs, err := loadReferences(start)
+	if err != nil {
+		return nil, err
+	}
 	if fi, err := os.Stat(path); err == nil && fi.IsDir() {
 		if mode != ModeFull {
 			return nil, fmt.Errorf("%s is a directory; a directory scan always reads every file in full", path)
 		}
-		return scanDir(path, start)
+		return scanDir(path, start, refs)
 	}
 
 	// A full scan is an attestation, so it checks a private snapshot whose
@@ -167,6 +172,7 @@ func ScanMode(path string, mode Mode) (*report.Document, error) {
 	if err != nil {
 		return nil, err
 	}
+	d.Scope.ReferenceData = refs.scope()
 
 	// The check set is per format: a GGUF carries metadata checks that a pickle
 	// checkpoint does not, and vice versa. The report lists only what ran.
@@ -176,12 +182,14 @@ func ScanMode(path string, mode Mode) (*report.Document, error) {
 		// Provenance reads signature sidecars beside the artifact, so it looks
 		// next to the original, not the snapshot.
 		provenance.Inspect(provOpts),
-		denylist.Check(id.SHA256, os.Getenv("SOCAIR_DENYLIST")),
+		refs.denylist(id.SHA256),
 	}
 	if id.Format == "GGUF" {
+		tokRow := tokenizer.InspectGGUF(tokenizerModel, tok, chatTemplates)
+		tokRow.Notes += refs.tokenizerNote(id.TokenizerSHA256)
 		meta := []checks.Result{
-			chattemplate.InspectAll(chatTemplates, chatTemplateNonString),
-			tokenizer.InspectGGUF(tokenizerModel, tok, chatTemplates),
+			chattemplate.InspectAllWith(chatTemplates, chatTemplateNonString, refs.reviewedTemplates()),
+			tokRow,
 			quant.CompareObserved(quantDeclared, fileType, observedTypes),
 		}
 		if ggufErr != nil {

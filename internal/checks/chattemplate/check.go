@@ -91,6 +91,23 @@ func InspectAll(templates map[string]string, nonString []string) checks.Result {
 	return inspectAll(templates, nonString, allowlist)
 }
 
+// InspectAllWith is InspectAll with more reviewed template hashes, from a
+// verified feed, alongside the embedded allowlist. Like the embedded list,
+// they clear language leads only; structural evidence still FAILs.
+func InspectAllWith(templates map[string]string, nonString []string, reviewed map[string]struct{}) checks.Result {
+	if len(reviewed) == 0 {
+		return InspectAll(templates, nonString)
+	}
+	allow := make(map[string]struct{}, len(allowlist)+len(reviewed))
+	for h := range allowlist {
+		allow[h] = struct{}{}
+	}
+	for h := range reviewed {
+		allow[strings.ToLower(h)] = struct{}{}
+	}
+	return inspectAll(templates, nonString, allow)
+}
+
 func inspectAll(templates map[string]string, nonString []string, allow map[string]struct{}) checks.Result {
 	r := checks.Result{Name: resultName, LooksFor: resultLooksFor}
 	if len(templates) == 0 && len(nonString) == 0 {

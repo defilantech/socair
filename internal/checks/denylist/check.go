@@ -7,6 +7,7 @@ package denylist
 
 import (
 	"bufio"
+	"fmt"
 	"os"
 	"strings"
 
@@ -71,12 +72,28 @@ func Check(sha256hex, listPath string) checks.Result {
 		r.Notes = "could not read denylist: " + err.Error()
 		return r
 	}
-	if len(entries) == 0 {
+	return Match(sha, entries, "denylist "+listPath)
+}
+
+// Match reports whether sha256hex is among entries, which came from source
+// (named in the notes, so a reader knows what was matched against). No
+// entries is NOT_TESTED: nothing was matched.
+func Match(sha256hex string, entries map[string]Entry, source string) checks.Result {
+	r := checks.Result{
+		Name:     "Known-bad hash match",
+		LooksFor: "Match against the known-bad artifact denylist",
+	}
+	sha := strings.ToLower(strings.TrimSpace(sha256hex))
+	if sha == "" {
 		r.Status = checks.NotTested
-		r.Notes = "denylist is empty; nothing was matched against"
+		r.Notes = "no artifact hash available to match"
 		return r
 	}
-
+	if len(entries) == 0 {
+		r.Status = checks.NotTested
+		r.Notes = "the denylist is empty (" + source + "); nothing was matched against"
+		return r
+	}
 	if e, ok := entries[sha]; ok {
 		r.Status = checks.Fail
 		label := e.Label
@@ -91,8 +108,7 @@ func Check(sha256hex, listPath string) checks.Result {
 		r.Notes = "artifact hash is on the denylist: " + label
 		return r
 	}
-
 	r.Status = checks.Pass
-	r.Notes = "no denylist entry matched"
+	r.Notes = fmt.Sprintf("no entry matched among %d known-bad hashes (%s)", len(entries), source)
 	return r
 }

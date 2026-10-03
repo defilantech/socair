@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"encoding/base64"
 	"encoding/json"
+	"github.com/defilantech/socair/internal/dsse"
 	"strings"
 	"testing"
 	"time"
@@ -63,23 +64,23 @@ func TestSignVerifyRoundTrip(t *testing.T) {
 // A trusted key's acceptance, altered after signing, does not verify.
 // Falsification: skip ed25519.Verify and these pass.
 func TestTamperedAcceptanceFails(t *testing.T) {
-	for name, mutate := range map[string]func(*envelope){
-		"signature byte": func(e *envelope) {
+	for name, mutate := range map[string]func(*dsse.Envelope){
+		"signature byte": func(e *dsse.Envelope) {
 			sig, _ := base64.StdEncoding.DecodeString(e.Signatures[0].Sig)
 			sig[0] ^= 1
 			e.Signatures[0].Sig = base64.StdEncoding.EncodeToString(sig)
 		},
-		"expiry extended": func(e *envelope) {
+		"expiry extended": func(e *dsse.Envelope) {
 			p, _ := base64.StdEncoding.DecodeString(e.Payload)
 			e.Payload = base64.StdEncoding.EncodeToString([]byte(strings.Replace(string(p), "2026-12-01", "2027-12-01", 1)))
 		},
-		"surface added": func(e *envelope) {
+		"surface added": func(e *dsse.Envelope) {
 			p, _ := base64.StdEncoding.DecodeString(e.Payload)
 			e.Payload = base64.StdEncoding.EncodeToString([]byte(strings.Replace(string(p), `["a","b"]`, `["a","b","c"]`, 1)))
 		},
 	} {
 		raw, ring := signed(t)
-		var e envelope
+		var e dsse.Envelope
 		if err := json.Unmarshal(raw, &e); err != nil {
 			t.Fatal(err)
 		}
