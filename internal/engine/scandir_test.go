@@ -19,7 +19,7 @@ func modelRepo(t *testing.T, extra map[string]string) string {
 		"config.json":           `{"_name_or_path":"org/tiny","architectures":["LlamaForCausalLM"],"model_type":"llama"}`,
 		"model.safetensors":     string(safetensorstest.Clean()),
 		"tokenizer_config.json": `{"chat_template":"{% for m in messages %}{{ m['role'] }}: {{ m['content'] }}\n{% endfor %}"}`,
-		"tokenizer.json":        `{"model":{"type":"BPE"}}`,
+		"tokenizer.json":        `{"model":{"type":"BPE","vocab":{"<s>":0,"</s>":1,"a":2}},"added_tokens":[{"id":0,"content":"<s>","special":true},{"id":1,"content":"</s>","special":true}]}`,
 	}
 	for k, v := range extra {
 		files[k] = v
@@ -67,7 +67,7 @@ func TestDirectoryScanCoversEveryFile(t *testing.T) {
 	}
 	for name, want := range map[string]report.Status{
 		"Format and structure": report.StatusPass, "Chat template (hero)": report.StatusPass,
-		"Remote code": report.StatusPass, "Tokenizer config": report.StatusNotTested,
+		"Remote code": report.StatusPass, "Tokenizer config": report.StatusPass,
 	} {
 		if got := row(d, name).Status; got != want {
 			t.Errorf("%s = %s (%s), want %s", name, got, row(d, name).Notes, want)
@@ -161,5 +161,28 @@ func TestShardIndexDisagreementFailsTheDirectory(t *testing.T) {
 	}
 	if r := row(d, "Format and structure"); r.Status != report.StatusFail || !strings.Contains(r.Evidence+r.Notes, "lm_head.weight") {
 		t.Fatalf("structure %s (%s / %s), want FAIL naming the phantom tensor", r.Status, r.Evidence, r.Notes)
+	}
+}
+
+// A directory's tokenizer is inspected and identified: a clean one PASSes
+// with its hash in the identity section, and one whose EOS id names no token
+// FAILs the directory.
+func TestDirectoryTokenizerIsInspected(t *testing.T) {
+	d, err := Scan(modelRepo(t, nil))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(d.Artifact.TokenizerHash) != 64 {
+		t.Errorf("tokenizer_hash %q, want the SHA-256 of tokenizer.json", d.Artifact.TokenizerHash)
+	}
+	bad, err := Scan(modelRepo(t, map[string]string{"config.json": `{"model_type":"llama","eos_token_id":4242}`}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if r := row(bad, "Tokenizer config"); r.Status != report.StatusFail || !strings.Contains(r.Evidence+r.Notes, "eos_token_id") {
+		t.Fatalf("tokenizer row %s (%s), want FAIL naming eos_token_id", r.Status, r.Notes)
+	}
+	if bad.PromotionAuthorization.Authorized {
+		t.Fatal("a tokenizer FAIL must withhold the directory")
 	}
 }

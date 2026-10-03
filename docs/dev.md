@@ -50,7 +50,11 @@ artifact:
   and any `.jinja` file.
 - **Remote code** is a LEAD when any config carries `auto_map` or the
   directory holds a `.py` file: code `trust_remote_code` would run.
-- HF tokenizer files are hashed and listed, not inspected (NOT_TESTED).
+- The tokenizer is inspected from `tokenizer.json`, `tokenizer_config.json`,
+  `special_tokens_map.json`, and the special-token ids in `config.json` and
+  `generation_config.json` (`tokenizer.InspectHF`): inconsistent tables FAIL,
+  injected text LEADs, and a repo with no `tokenizer.json` is NOT_TESTED.
+  `artifact.tokenizer_hash` is the SHA-256 of `tokenizer.json`.
 - An adapter (`adapter_config.json`) names its base model as a separate
   artifact that needs its own attestation.
 - `airlock pull --repo` (pinned to a commit or digest) stages a whole repo,

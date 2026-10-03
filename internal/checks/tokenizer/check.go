@@ -1,11 +1,13 @@
-// Package tokenizer inspects the tokenizer a GGUF carries.
+// Package tokenizer inspects the tokenizer a model ships: the vocabulary a
+// GGUF carries (InspectGGUF), or a model directory's Hugging Face tokenizer
+// files (InspectHF, in hf.go).
 //
 // A tokenizer can be tampered with without touching the weights: a special
 // token id pointed outside the vocabulary, a token-type table that no longer
 // lines up with the tokens, or a control token whose text is an instruction
 // that the serving stack will treat as a single privileged symbol. This check
 // reads the vocabulary, the token types, the score and merge counts, and the
-// special-token ids, and judges them:
+// special-token ids of a GGUF, and judges them:
 //
 //   - FAIL on positive evidence the tables are inconsistent: a special id out
 //     of range, a type or score table whose length is not the vocabulary's, or
@@ -146,6 +148,15 @@ func InspectGGUF(model string, t gguf.Tokenizer, templates map[string]string) ch
 		r.Notes += " The chat template uses markers not in the vocabulary (informational; real templates do this): " + strings.Join(missing, ", ")
 	}
 	return r
+}
+
+// VocabHash identifies a GGUF tokenizer: the SHA-256 of its tokens in id
+// order, each NUL-terminated. Empty for no vocabulary.
+func VocabHash(tokens []string) string {
+	if len(tokens) == 0 {
+		return ""
+	}
+	return vocabHash(tokens)
 }
 
 func vocabHash(tokens []string) string {

@@ -320,6 +320,36 @@ None of these repos ships `auto_map` or a `.py` file, so the Remote code LEAD
 has not yet been seen on a real repo here; repos that do ship remote code
 (many research architectures) will LEAD by design, naming the files.
 
+## Hugging Face tokenizer inspection (2026-10-04)
+
+The directory Tokenizer row reads `tokenizer.json`, `tokenizer_config.json`,
+`special_tokens_map.json`, and the special-token ids in `config.json` and
+`generation_config.json`. Every rule was prototyped and measured before it was
+chosen, then the Go check was run over the same corpus: 52 public repos'
+tokenizer files (Qwen 2.5/3/QwQ/VL, DeepSeek V3 and R1 distills, Llama 3.x and
+Gemma 2/3 copies, Mistral Nemo/Small, Phi 3.5/4, GLM 4.5, MiniMax, gpt-oss,
+OLMo 2, Granite, Falcon 3, SmolLM2, StarCoder2, Yi, BERT, RoBERTa, GPT-2,
+bge-m3, jina v3, nomic, e5, and others) plus the 10 local snapshots.
+
+| Rule | Result on real tokenizers |
+|---|---|
+| FAIL: a config special-token id that names no token | 0 hits |
+| FAIL: an added token reusing a vocabulary id with other text | 0 |
+| FAIL: `added_tokens_decoder` disagreeing with `tokenizer.json` | 0 |
+| FAIL: a declared special token absent from the vocabulary | 0 |
+| FAIL: a template whose ids and tokens disagree (23 templates) | 0 |
+| FAIL: two vocabulary entries sharing an id | 0 |
+| LEAD: a special or added token carrying prose or an instruction | 0 |
+| LEAD: a normalizer rewriting input into special-token text (incl. 14,790 precompiled-charsmap targets in bge-m3 and jina) | 0 |
+| LEAD: a template inserting a non-special token | 0 |
+
+Totals: 54 PASS, 0 FAIL, 0 LEAD, 8 NOT_TESTED (no `tokenizer.json`: T5,
+InternLM 2.5, Kimi K2, GLM-4-9B, OpenHermes 2.5, and three local repos with no
+tokenizer at all). Each rule was planted once in a copy of a real tokenizer and
+fired. Identical tokenizer hashes group shared tokenizers (the three Qwen 2.5
+variants; the Llama 3.x copies; Zephyr and SOLAR), which a canonical-tokenizer
+comparison can build on.
+
 ## Follow-ups
 
 1. Verify the GGML file-type mapping against the current llama.cpp enum so the
