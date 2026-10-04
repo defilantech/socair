@@ -13,7 +13,7 @@ permissions:
 # updates (.github/dependabot.yml).
 jobs:
   build-and-test:
-    runs-on: ubuntu-latest
+    runs-on: defilantech-runners
     # Dependencies are vendored, so the build needs no network. Air-gap builds
     # use the same path.
     env:
@@ -48,7 +48,7 @@ jobs:
   # Move the pin deliberately and record the result in
   # docs/false-positive-baseline.md.
   real-template-corpus:
-    runs-on: ubuntu-latest
+    runs-on: defilantech-runners
     env:
       GOFLAGS: -mod=vendor
     steps:
@@ -73,7 +73,7 @@ jobs:
   # vulnerability database and the pinned tools, so they are kept out of the
   # air-gap job above.
   supply-chain:
-    runs-on: ubuntu-latest
+    runs-on: defilantech-runners
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
@@ -95,7 +95,7 @@ jobs:
   # with its own vendor/: its ~70 dependencies stay out of socair's build. It
   # gets the same air-gap build and the same supply-chain checks.
   sigstore-verifier:
-    runs-on: ubuntu-latest
+    runs-on: defilantech-runners
     defaults:
       run:
         working-directory: tools/socair-sigstore
@@ -133,7 +133,7 @@ jobs:
   # found here is committed under testdata/fuzz as a regression seed, and the
   # seeds already committed run in the test job on every push.
   fuzz:
-    runs-on: ubuntu-latest
+    runs-on: defilantech-runners
     env:
       GOFLAGS: -mod=vendor
     strategy:
@@ -161,7 +161,7 @@ jobs:
   # The wizard is not: it builds from the npm registry in a networked step, and
   # the shipped output is the static files this job produces.
   web:
-    runs-on: ubuntu-latest
+    runs-on: defilantech-runners
     defaults:
       run:
         working-directory: web
