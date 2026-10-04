@@ -34,6 +34,7 @@ in `scope.reference_data`.
 
 | Version | Rule fingerprint | Date | Changes |
 |---|---|---|---|
+| `tier1/0.6` | `dc0aeeb796c93da346493228ae2600a654f114d9a8d5afbc660871f668203689` | 2026-10-04 | Tokenizer: with a canonical reference table (feed `tokenizers/<name>.json` or `SOCAIR_TOKENIZER_REFERENCE`), every token is compared with the best-matching family table; a changed ordinary token or a shortened vocabulary is a LEAD (#135). |
 | `tier1/0.5` | `074eb82595b7eea04d367c17ba31def45e653e8fde3da1ff6180d1f64a4d3fa2` | 2026-10-04 | Jinja parser: `{% filter name %}` takes its first filter without a pipe, as Jinja writes it, so real filter blocks parse and are analysed instead of being reported as unreadable (#137). |
 | `tier1/0.4` | `69baef5e476c3b0c39f3c60e85af83dffaec5096d323e9df25fb705b52fe6b78` | 2026-10-04 | File inventory: string-array elements of 64+ bytes in GGUF metadata are scanned for payloads (they were skipped), and an inventory cut off at its cap is NOT_TESTED instead of PASS (#135). |
 | `tier1/0.3` | `e63d4be3a7e1ce5cb1631a98c46cf582e69b84a09c98d60e21cc8a6b646666a0` | 2026-10-04 | No rule change: the chat-template row's "looks for" text now says what the check inspects (#131). |

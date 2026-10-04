@@ -26,7 +26,7 @@ import (
 )
 
 // CheckSetVersion names the set of checks this engine runs.
-const CheckSetVersion = "tier1/0.5"
+const CheckSetVersion = "tier1/0.6"
 
 // Version is the socair version: "dev" in a source build, the release tag
 // in a release build (scripts/build-release.sh sets it with -ldflags -X).
@@ -189,6 +189,7 @@ func ScanMode(path string, mode Mode) (*report.Document, error) {
 	if id.Format == "GGUF" {
 		tokRow := tokenizer.InspectGGUF(tokenizerModel, tok, chatTemplates)
 		tokRow.Notes += refs.tokenizerNote(id.TokenizerSHA256)
+		tokRow = refs.compareTokenizer(tokRow, tok.Tokens, tokenizer.GGUFSpecial(tok))
 		meta := []checks.Result{
 			chattemplate.InspectAllWith(chatTemplates, chatTemplateNonString, refs.reviewedTemplates()),
 			tokRow,

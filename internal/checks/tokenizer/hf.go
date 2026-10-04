@@ -31,6 +31,11 @@ const (
 type HFResult struct {
 	checks.Result
 	Hash string
+	// Tokens is the vocabulary in id order, with added tokens laid over it,
+	// and Added names the added-token ids: what a reference comparison reads.
+	// Nil when tokenizer.json was not read.
+	Tokens []string
+	Added  map[int]bool
 }
 
 // hfTokenizer is the part of a tokenizer.json this check reads.
@@ -116,6 +121,9 @@ func InspectHF(root string, files []modeldir.File) HFResult {
 	if len(vocab) == 0 && len(t.AddedTokens) == 0 {
 		r.Status, r.Notes = checks.NotTested, "tokenizer.json holds no vocabulary, so there is no tokenizer to inspect"
 		return out
+	}
+	if tokens, added, err := hfLayout(vocab, t); err == nil {
+		out.Tokens, out.Added = tokens, added
 	}
 	fail := func(pattern, span, detail string) {
 		r.Findings = append(r.Findings, checks.Finding{Pattern: pattern, Span: span, Detail: detail})
@@ -323,7 +331,7 @@ func InspectHF(root string, files []modeldir.File) HFResult {
 	}
 
 	r.Status = checks.Pass
-	r.Notes = fmt.Sprintf("tokenizer.json (sha256 %s, %s model): %d tokens, %d added (%d special); special-token ids, added-token tables, declared special tokens, and template tokens agree; no token, normalizer, or template injects text. No canonical tokenizer reference was compared.",
+	r.Notes = fmt.Sprintf("tokenizer.json (sha256 %s, %s model): %d tokens, %d added (%d special); special-token ids, added-token tables, declared special tokens, and template tokens agree; no token, normalizer, or template injects text.",
 		out.Hash[:16], orUnknown(t.Model.Type), size, len(t.AddedTokens), len(special))
 	return out
 }
@@ -538,4 +546,9 @@ func firstN(fs []checks.Finding, n int) []checks.Finding {
 		return fs[:n]
 	}
 	return fs
+}
+
+// HFSpecial reports whether a tokenizer.json id is an added token.
+func (h HFResult) HFSpecial() func(int) bool {
+	return func(id int) bool { return h.Added[id] }
 }

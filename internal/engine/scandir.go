@@ -80,6 +80,7 @@ func scanDir(dir string, start time.Time, refs *references) (*report.Document, e
 	d.Scope.ReferenceData = refs.scope()
 	tokRow := tok.Result
 	tokRow.Notes += refs.tokenizerNote(tok.Hash)
+	tokRow = refs.compareTokenizer(tokRow, tok.Tokens, tok.HFSpecial())
 	d.Verification.RerunInstructions = "socair scan <directory>"
 
 	// Per-file rows.

@@ -246,6 +246,33 @@ Qwen 3.6/3.8 27B and MoE variants, Llama 3.3 Nemotron Super 49B): 262k to
 0 findings, 0 truncated. Every row was NOT_TESTED only because no repo
 mirror was given, as before.
 
+## Tokenizer: canonical reference tables (2026-10-04, check set tier1/0.6)
+
+The tokenizer row checked only internal consistency, so a swapped ordinary
+token passed (#135). With a canonical table configured, the vocabulary is now
+compared id by id with the table of its family. A table counts as the family
+only when at least 98% of shared ids agree. A changed ordinary token or a
+vocabulary that ends early is a LEAD. Renamed special or reserved tokens, and
+tokens past the table's end, are notes.
+
+Measured with 7 tokenizer.json files from the local Hugging Face cache as
+references, including the publishers' own `Qwen/Qwen3-0.6B` and
+`Qwen/Qwen3.8-27B`, against 12 local GGUFs and against each other:
+
+| Compared | Matched a family | Changed ordinary tokens | LEAD |
+|---|---|---|---|
+| 9 Qwen-family GGUFs (Qwen3 0.6B, Qwen 3.6/3.8 27B, and the Qwopus, Carnice, and ornith fine-tunes) | 9, at 100.00% | 0 | 0 |
+| 3 GGUFs of other families (Gemma 3 12B/27B, Gemma 4 26B, Llama 3.3 Nemotron 49B) | 0 (best 0.32%) | - | 0 |
+| 7 tokenizer.json against the other six | 2 (Qwen3.8 official and an MLX copy, 100%) | 0 | 0 |
+
+Same-family agreement was 100% and cross-family agreement at most 0.32%, so
+the 98% floor sits far from both. GGUFs carry 243 to 267 padding tokens past
+the Hugging Face vocabulary; they are reported as added, not as a LEAD. A real
+scan of Qwen3-0.6B-Q8_0.gguf against a table built from the official
+tokenizer.json (`socair feed tokenizer-table`) reports PASS, 100.00% of ids
+agreeing, 0 changed, 267 added. The LEAD is falsified by unit and engine tests
+(a swapped pair of ordinary tokens).
+
 ## Pickle opcode walker (2026-10-02)
 
 The pickle check matched one byte pattern, the text GLOBAL of protocols 0 to 3,

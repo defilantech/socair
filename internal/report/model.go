@@ -56,7 +56,8 @@ var passMeaning = map[string]string{
 		"and carries no override or concealment language, URL, hidden or obfuscated text, or condition on message content. " +
 		"Instructions written as ordinary guidance are not detected.",
 	"Tokenizer config": "The tokenizer tables are internally consistent, and no control token carries instructions. " +
-		"The tokenizer is not compared with a canonical copy, so changed ordinary tokens would pass.",
+		"When a canonical reference table for its family is configured (from a feed or SOCAIR_TOKENIZER_REFERENCE), " +
+		"every token was compared with it and no ordinary token differs; the notes say which reference, or that none was configured or matched.",
 	"Quant match":        "At least one tensor has the base type the declared quantization requires. This checks labeling, not safety.",
 	"Pickle opcode scan": "Every import the pickle makes is on the reviewed safe list.",
 	"Remote code":        "No auto_map entry and no Python file: a loader would run no code from the repository.",

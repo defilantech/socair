@@ -31,7 +31,8 @@ key.
 |---|---|---|
 | `denylist.txt` | Known-bad hash match | Combined with any local `SOCAIR_DENYLIST`. A match is a FAIL. In a model directory, the manifest digest and every file's hash are matched. |
 | `templates.txt` | Chat template (hero) | Added to the embedded reviewed-template allowlist. A template whose SHA-256 is listed clears *language* leads to PASS. It never clears structural evidence: code-execution reach still FAILs. |
-| `tokenizers.txt` | Tokenizer config | Informational. The row notes whether the tokenizer's hash matches a canonical tokenizer, and by name. It does not change the row's status: a fine-tune may add tokens legitimately, and judging a mismatch needs the model's family. |
+| `tokenizers.txt` | Tokenizer config | Informational. The row notes whether the tokenizer's hash matches a canonical tokenizer, and by name. A hash alone cannot say which tokens changed, so it does not change the row's status. |
+| `tokenizers/<name>.json` | Tokenizer config | A canonical tokenizer table: the family's vocabulary in id order. The check picks the table that agrees with the model's vocabulary on at least 98% of ids (anything less is another family, not compared), then compares every id. A changed ordinary token, or a vocabulary that ends early, is a LEAD with the ids as evidence. Renamed special or reserved tokens and tokens added past the table are notes: fine-tunes do both legitimately. `SOCAIR_TOKENIZER_REFERENCE` supplies the same tables locally, without a feed. |
 
 ## Format
 
@@ -43,6 +44,18 @@ feed/
   denylist.txt      optional
   templates.txt     optional
   tokenizers.txt    optional
+  tokenizers/       optional: <name>.json canonical tokenizer tables
+```
+
+A tokenizer table is `{"format": "socair.tokenizer-table/v1", "name": "qwen3",
+"tokens": [...]}`, the vocabulary in id order, or a publisher's
+`tokenizer.json` as it ships. Table names are lowercase (`[a-z0-9._-]`), and
+every table is listed in the signed statement like the other data files: a
+table the signature does not cover refuses the feed. Build one from a trusted
+`tokenizer.json` or GGUF:
+
+```
+socair feed tokenizer-table tokenizer.json --name qwen3 > feed/tokenizers/qwen3.json
 ```
 
 Each data file holds one entry per line; blank lines and lines starting with
