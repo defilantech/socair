@@ -17,6 +17,10 @@ export interface CheckResult {
 	notes?: string;
 	/** Fixed statement of what this check's PASS establishes, and where it stops. */
 	pass_means?: string;
+	/** Triage grade of a FAIL or LEAD row; absent otherwise. Does not change promotion. */
+	severity?: 'critical' | 'high' | 'medium' | 'low';
+	/** External framework entries the check addresses. */
+	maps_to?: { framework: string; id: string; name: string }[];
 }
 
 export interface PromotionAuthorization {

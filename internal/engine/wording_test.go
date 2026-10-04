@@ -36,3 +36,26 @@ func TestReportsStateWhatTheyMean(t *testing.T) {
 		}
 	}
 }
+
+// TestRowsCarrySeverityAndMappings: a FAIL row is graded from its findings,
+// and every row names what it addresses (#132). A template that reaches
+// Python internals is critical; a clean row has no severity.
+func TestRowsCarrySeverityAndMappings(t *testing.T) {
+	kvs := gguftest.WithMeta("tokenizer.chat_template",
+		gguftest.Str("tokenizer.chat_template", "{{ ''.__class__.__globals__ }}"))
+	d, err := Scan(writeFixture(t, "hostile-Q5_K_M.gguf", gguftest.BuildGGUF(kvs)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range d.Checks {
+		if len(c.MapsTo) == 0 {
+			t.Errorf("row %q maps to nothing", c.Name)
+		}
+		switch {
+		case c.Name == "Chat template (hero)" && c.Severity != report.SeverityCritical:
+			t.Errorf("template code reach: severity %q, want critical", c.Severity)
+		case (c.Status == report.StatusPass || c.Status == report.StatusNotTested) && c.Severity != "":
+			t.Errorf("%s row %q has severity %q", c.Status, c.Name, c.Severity)
+		}
+	}
+}

@@ -166,6 +166,12 @@ type CheckResult struct {
 	// PassMeans is the fixed statement of what this check's PASS establishes
 	// and where it stops (PassMeaning). It is shown whatever the status.
 	PassMeans string `json:"pass_means,omitempty"`
+	// Severity grades a FAIL or LEAD row from its findings (RowSeverity). It
+	// is for triage and does not change the promotion state.
+	Severity string `json:"severity,omitempty"`
+	// MapsTo names the external framework entries the check addresses
+	// (MapsTo), for security questionnaires.
+	MapsTo []FrameworkRef `json:"maps_to,omitempty"`
 }
 
 type Findings struct {

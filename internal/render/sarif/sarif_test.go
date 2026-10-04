@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"slices"
 	"testing"
 
 	"github.com/defilantech/socair/internal/report"
@@ -78,5 +79,26 @@ func TestSARIFIsByteStable(t *testing.T) {
 func TestRuleIDFromCheckName(t *testing.T) {
 	if got := ruleID("Chat template (hero)"); got != "chat-template-hero" {
 		t.Errorf("ruleID = %q, want chat-template-hero", got)
+	}
+}
+
+// TestSARIFCarriesSeverityAndFrameworks: code-scanning tools sort by a rule's
+// security-severity and filter by its tags, so a FAIL row carries both, and a
+// PASS row carries its framework tags without a severity (#132).
+func TestSARIFCarriesSeverityAndFrameworks(t *testing.T) {
+	d := &report.Document{Checks: []report.CheckResult{
+		{Name: "Pickle opcode scan", Status: report.StatusFail, Severity: report.SeverityCritical, MapsTo: report.MapsTo("Pickle opcode scan")},
+		{Name: "Quant match", Status: report.StatusPass, MapsTo: report.MapsTo("Quant match")},
+	}}
+	rules := Build(d).Runs[0].Tool.Driver.Rules
+	fail, pass := rules[0].Properties, rules[1].Properties
+	if fail == nil || fail.SecuritySeverity != "9.5" {
+		t.Fatalf("critical FAIL rule properties = %+v, want security-severity 9.5", fail)
+	}
+	if !slices.Contains(fail.Tags, "external/atlas/AML.T0011.000") || !slices.Contains(fail.Tags, "external/owasp-llm/LLM03") {
+		t.Errorf("tags = %v", fail.Tags)
+	}
+	if pass == nil || pass.SecuritySeverity != "" || len(pass.Tags) == 0 {
+		t.Errorf("PASS rule properties = %+v, want tags and no severity", pass)
 	}
 }

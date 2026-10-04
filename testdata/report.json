@@ -43,49 +43,158 @@
       "looks_for": "Malformed container structure, unexpected tensors",
       "status": "PASS",
       "notes": "GGUF v3 parsed: 626 tensors, 44 metadata pairs",
-      "pass_means": "The container parsed, and its tensor data tiles the data section exactly: no unaccounted bytes, overlapping tensors, or duplicate names."
+      "pass_means": "The container parsed, and its tensor data tiles the data section exactly: no unaccounted bytes, overlapping tensors, or duplicate names.",
+      "maps_to": [
+        {
+          "framework": "MITRE ATLAS",
+          "id": "AML.T0010.003",
+          "name": "AI Supply Chain Compromise: Model"
+        },
+        {
+          "framework": "OWASP LLM Top 10",
+          "id": "LLM03",
+          "name": "Supply Chain"
+        }
+      ]
     },
     {
       "name": "File inventory and payloads",
       "looks_for": "Hidden files, embedded payloads, unexpected executables",
       "status": "NOT_TESTED",
       "notes": "artifact: 44 metadata keys, 1532 string bytes, no payload indicator. Repo mirror not provided, so the repo file listing was not inspected.",
-      "pass_means": "No script, shell command, long encoded blob, or executable signature was found in string metadata values, including every string-array element of 64 bytes or more, and no native executable among the files. Shorter array elements, such as vocabulary tokens, are too short to carry one and are not scanned."
+      "pass_means": "No script, shell command, long encoded blob, or executable signature was found in string metadata values, including every string-array element of 64 bytes or more, and no native executable among the files. Shorter array elements, such as vocabulary tokens, are too short to carry one and are not scanned.",
+      "maps_to": [
+        {
+          "framework": "MITRE ATLAS",
+          "id": "AML.T0011.000",
+          "name": "User Execution: Unsafe AI Artifacts"
+        },
+        {
+          "framework": "MITRE ATLAS",
+          "id": "AML.T0010.003",
+          "name": "AI Supply Chain Compromise: Model"
+        },
+        {
+          "framework": "OWASP LLM Top 10",
+          "id": "LLM03",
+          "name": "Supply Chain"
+        }
+      ]
     },
     {
       "name": "Hash, provenance, lineage",
       "looks_for": "Traceable origin: a manifest bound to this hash, from an immutable upstream commit",
       "status": "NOT_TESTED",
       "notes": "no provenance input: no supplied manifest and no signature sidecar next to the artifact",
-      "pass_means": "A trusted publisher signature verified over this artifact, or an operator-supplied manifest binds this hash to a repository at an immutable commit. The notes say which; a manifest is the operator's claim, not a signature."
+      "pass_means": "A trusted publisher signature verified over this artifact, or an operator-supplied manifest binds this hash to a repository at an immutable commit. The notes say which; a manifest is the operator's claim, not a signature.",
+      "maps_to": [
+        {
+          "framework": "MITRE ATLAS",
+          "id": "AML.T0010.003",
+          "name": "AI Supply Chain Compromise: Model"
+        },
+        {
+          "framework": "MITRE ATLAS",
+          "id": "AML.T0058",
+          "name": "Publish Poisoned Models"
+        },
+        {
+          "framework": "OWASP LLM Top 10",
+          "id": "LLM03",
+          "name": "Supply Chain"
+        }
+      ]
     },
     {
       "name": "Known-bad hash match",
       "looks_for": "Match against the known-bad artifact denylist",
       "status": "PASS",
       "notes": "no denylist entry matched",
-      "pass_means": "This exact hash is not on the configured denylist. Any changed byte gives a new hash, so it catches only known files."
+      "pass_means": "This exact hash is not on the configured denylist. Any changed byte gives a new hash, so it catches only known files.",
+      "maps_to": [
+        {
+          "framework": "MITRE ATLAS",
+          "id": "AML.T0058",
+          "name": "Publish Poisoned Models"
+        },
+        {
+          "framework": "MITRE ATLAS",
+          "id": "AML.T0010.003",
+          "name": "AI Supply Chain Compromise: Model"
+        },
+        {
+          "framework": "OWASP LLM Top 10",
+          "id": "LLM03",
+          "name": "Supply Chain"
+        }
+      ]
     },
     {
       "name": "Chat template (hero)",
       "looks_for": "Code reach, hidden or obfuscated text, and override or content-triggered instructions in the chat template",
       "status": "PASS",
       "notes": "no structural indicator and no instruction-language lead matched. Heuristic; not a proof of absence.",
-      "pass_means": "The template parsed and reaches no Python internals or process execution, and carries no override or concealment language, URL, hidden or obfuscated text, or condition on message content. Instructions written as ordinary guidance are not detected."
+      "pass_means": "The template parsed and reaches no Python internals or process execution, and carries no override or concealment language, URL, hidden or obfuscated text, or condition on message content. Instructions written as ordinary guidance are not detected.",
+      "maps_to": [
+        {
+          "framework": "MITRE ATLAS",
+          "id": "AML.T0051",
+          "name": "LLM Prompt Injection"
+        },
+        {
+          "framework": "MITRE ATLAS",
+          "id": "AML.T0011.000",
+          "name": "User Execution: Unsafe AI Artifacts"
+        },
+        {
+          "framework": "OWASP LLM Top 10",
+          "id": "LLM01",
+          "name": "Prompt Injection"
+        },
+        {
+          "framework": "OWASP LLM Top 10",
+          "id": "LLM03",
+          "name": "Supply Chain"
+        }
+      ]
     },
     {
       "name": "Tokenizer config",
       "looks_for": "Tokenizer metadata anomalies",
       "status": "PASS",
       "notes": "tokenizer family 'llama' is recognized",
-      "pass_means": "The tokenizer tables are internally consistent, and no control token carries instructions. When a canonical reference table for its family is configured (from a feed or SOCAIR_TOKENIZER_REFERENCE), every token was compared with it and no ordinary token differs; the notes say which reference, or that none was configured or matched."
+      "pass_means": "The tokenizer tables are internally consistent, and no control token carries instructions. When a canonical reference table for its family is configured (from a feed or SOCAIR_TOKENIZER_REFERENCE), every token was compared with it and no ordinary token differs; the notes say which reference, or that none was configured or matched.",
+      "maps_to": [
+        {
+          "framework": "MITRE ATLAS",
+          "id": "AML.T0010.003",
+          "name": "AI Supply Chain Compromise: Model"
+        },
+        {
+          "framework": "OWASP LLM Top 10",
+          "id": "LLM03",
+          "name": "Supply Chain"
+        }
+      ]
     },
     {
       "name": "Quant match",
       "looks_for": "Declared quantization (file name) against the tensor types in the file",
       "status": "PASS",
       "notes": "declared Q5_K_M matches observed file type 17",
-      "pass_means": "At least one tensor has the base type the declared quantization requires. This checks labeling, not safety."
+      "pass_means": "At least one tensor has the base type the declared quantization requires. This checks labeling, not safety.",
+      "maps_to": [
+        {
+          "framework": "MITRE ATLAS",
+          "id": "AML.T0010.003",
+          "name": "AI Supply Chain Compromise: Model"
+        },
+        {
+          "framework": "OWASP LLM Top 10",
+          "id": "LLM03",
+          "name": "Supply Chain"
+        }
+      ]
     }
   ],
   "findings": {

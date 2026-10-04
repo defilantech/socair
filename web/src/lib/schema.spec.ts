@@ -8,7 +8,9 @@ import demo from '../../../internal/demo/report.json';
 // CHECK_STATUSES and every other field is checked by svelte-check through
 // these assignments: a field whose type the wizard declares differently, or a
 // required field the engine stops sending, fails the type check.
-type Wide = Omit<Document, 'checks'> & { checks: (Omit<CheckResult, 'status'> & { status: string })[] };
+type Wide = Omit<Document, 'checks'> & {
+	checks: (Omit<CheckResult, 'status' | 'severity'> & { status: string; severity?: string })[];
+};
 const docs: Record<string, Wide> = { golden, demo };
 
 describe('report contract', () => {
@@ -20,8 +22,10 @@ describe('report contract', () => {
 	it('the golden and demo documents fit the wizard type', () => {
 		for (const [name, d] of Object.entries(docs)) {
 			expect(d.schema_version, name).toBe('socair.report/v1');
+			const severities = schema.properties.checks.items.properties.severity.enum as string[];
 			for (const c of d.checks) {
 				expect(CHECK_STATUSES as readonly string[], `${name}: ${c.name}`).toContain(c.status);
+				if (c.severity !== undefined) expect(severities, `${name}: ${c.name}`).toContain(c.severity);
 			}
 		}
 	});

@@ -336,7 +336,18 @@ func checksTable(pdf *fpdf.Fpdf, d *report.Document) {
 		if c.PassMeans != "" {
 			looks += "\nPASS means: " + c.PassMeans
 		}
-		cells := []string{c.Name, looks, string(c.Status), evidence}
+		if len(c.MapsTo) > 0 {
+			ids := make([]string, 0, len(c.MapsTo))
+			for _, m := range c.MapsTo {
+				ids = append(ids, m.ID)
+			}
+			looks += "\nAddresses " + strings.Join(ids, ", ")
+		}
+		status := string(c.Status)
+		if c.Severity != "" {
+			status += "\n" + c.Severity
+		}
+		cells := []string{c.Name, looks, status, evidence}
 		bg, txt := statusColors(c.Status)
 		drawRow(pdf, cells, func(i int) rgb {
 			if i == 2 {
