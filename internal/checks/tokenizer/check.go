@@ -142,7 +142,7 @@ func InspectGGUF(model string, t gguf.Tokenizer, templates map[string]string) ch
 	}
 
 	r.Status = checks.Pass
-	r.Notes = fmt.Sprintf("%d tokens (sha256 %s), %d control; token types, scores, and %d special-token ids are consistent; no special token carries prose or instructions. No canonical tokenizer reference was compared.",
+	r.Notes = fmt.Sprintf("%d tokens (sha256 %s), %d control; token types, scores, and %d special-token ids are consistent; no special token carries prose or instructions.",
 		n, vocabHash(t.Tokens)[:16], controls, len(t.SpecialIDs))
 	if missing := missingMarkers(t.Tokens, templates); len(missing) > 0 {
 		r.Notes += " The chat template uses markers not in the vocabulary (informational; real templates do this): " + strings.Join(missing, ", ")

@@ -4,23 +4,27 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"sort"
 	"strings"
 	"time"
 
 	"github.com/defilantech/socair/internal/attest"
 	"github.com/defilantech/socair/internal/checks"
 	"github.com/defilantech/socair/internal/checks/denylist"
+	"github.com/defilantech/socair/internal/checks/tokenizer"
 	"github.com/defilantech/socair/internal/feed"
 )
 
 // references is the reference data the checks compare against: a verified
 // signed feed (SOCAIR_FEED, checked against SOCAIR_FEED_KEYS) and a local
-// denylist file (SOCAIR_DENYLIST). Either, both, or neither.
+// denylist file (SOCAIR_DENYLIST). Either, both, or neither. Canonical
+// tokenizer tables come from the feed and from SOCAIR_TOKENIZER_REFERENCE.
 type references struct {
 	feed     *feed.Feed
 	deny     map[string]denylist.Entry
 	denySrc  []string
 	denyErr  string
+	tables   []tokenizer.Table
 	describe []string
 }
 
@@ -44,12 +48,39 @@ func loadReferences(now time.Time) (*references, error) {
 		}
 		r.feed = f
 		r.describe = append(r.describe, f.Describe())
+		if n := len(f.TokenizerTables); n > 0 {
+			r.describe = append(r.describe, fmt.Sprintf("%d tokenizer table(s) from that feed", n))
+		}
 		for h, label := range f.Denylist {
 			r.deny[h] = denylist.Entry{SHA256: h, Label: label + " (feed " + f.Issuer + " " + f.Version + ")"}
 		}
 		if len(f.Denylist) > 0 {
 			r.denySrc = append(r.denySrc, "feed "+f.Issuer+" "+f.Version)
 		}
+		names := make([]string, 0, len(f.TokenizerTables))
+		for name := range f.TokenizerTables {
+			names = append(names, name)
+		}
+		sort.Strings(names)
+		for _, name := range names {
+			t, err := tokenizer.ParseTable(f.TokenizerTables[name], name)
+			if err != nil {
+				return nil, fmt.Errorf("feed %s %s: tokenizer table %s: %w", f.Issuer, f.Version, name, err)
+			}
+			t.Name = name
+			r.tables = append(r.tables, t)
+		}
+	}
+	// A configured reference that cannot be read stops the scan, like a feed
+	// that does not verify: a tokenizer row must not quietly lose its
+	// reference.
+	if p := strings.TrimSpace(os.Getenv("SOCAIR_TOKENIZER_REFERENCE")); p != "" {
+		tables, err := tokenizer.LoadTables(p)
+		if err != nil {
+			return nil, fmt.Errorf("SOCAIR_TOKENIZER_REFERENCE: %w", err)
+		}
+		r.tables = append(r.tables, tables...)
+		r.describe = append(r.describe, fmt.Sprintf("%d local tokenizer reference table(s) %s", len(tables), p))
 	}
 	if p := strings.TrimSpace(os.Getenv("SOCAIR_DENYLIST")); p != "" {
 		entries, err := denylist.Load(p)
@@ -104,6 +135,14 @@ func (r *references) tokenizerNote(hash string) string {
 		return " Tokenizer matches the canonical " + name + " tokenizer (feed " + r.feed.Issuer + " " + r.feed.Version + ")."
 	}
 	return " Tokenizer is not among the feed's canonical tokenizers (informational)."
+}
+
+// compareTokenizer folds the canonical-table comparison into a tokenizer row.
+func (r *references) compareTokenizer(row checks.Result, tokens []string, special func(int) bool) checks.Result {
+	if len(tokens) == 0 {
+		return row
+	}
+	return tokenizer.ApplyReference(row, tokenizer.Compare(tokens, special, r.tables))
 }
 
 // scope is the report's reference_data line.
