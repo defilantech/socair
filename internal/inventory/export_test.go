@@ -3,6 +3,7 @@ package inventory
 import (
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -55,13 +56,51 @@ func TestExportThenVerify(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(dir, "models", id, "report.html")); err != nil {
 		t.Fatal(err)
 	}
-	// No model bytes leave the store.
+	// Only the snapshot layout leaves the store: no model bytes, no keys.
 	_ = filepath.Walk(dir, func(p string, fi os.FileInfo, _ error) error {
-		if strings.HasSuffix(p, ".safetensors") {
-			t.Errorf("model bytes exported: %s", p)
+		if fi.IsDir() {
+			return nil
+		}
+		rel, _ := filepath.Rel(dir, p)
+		if !allowedLayout.MatchString(filepath.ToSlash(rel)) && rel != "inventory.dsse.json" {
+			t.Errorf("file outside the snapshot layout: %s", rel)
 		}
 		return nil
 	})
+}
+
+var allowedLayout = regexp.MustCompile(`^(index\.html|log\.jsonl|log-head\.txt|inventory\.json|models/[0-9a-f]{64}/(report\.html|attestation\.json|attestation\.dsse\.json))$`)
+
+func TestExportRefusesNonEmptyDir(t *testing.T) {
+	s, _, k, _ := promotedStore(t)
+	dir := filepath.Join(t.TempDir(), "snap")
+	if _, err := Export(s, dir, k, time.Now(), "socair test"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Export(s, dir, nil, time.Now(), "socair test"); err == nil || !strings.Contains(err.Error(), "not empty") {
+		t.Fatalf("an unsigned export over a signed one must be refused: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "inventory.dsse.json")); err != nil {
+		t.Fatal("the first snapshot must be untouched")
+	}
+	other := t.TempDir()
+	if err := os.WriteFile(filepath.Join(other, "op.key"), []byte("secret"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Export(s, other, k, time.Now(), "socair test"); err == nil {
+		t.Fatal("a directory with an unrelated file must be refused")
+	}
+	if b, err := os.ReadFile(filepath.Join(other, "op.key")); err != nil || string(b) != "secret" {
+		t.Fatal("the unrelated file must be untouched")
+	}
+	if _, err := os.Stat(filepath.Join(other, "index.html")); err == nil {
+		t.Fatal("nothing may be written into a refused directory")
+	}
+	// An existing empty directory is fine.
+	empty := t.TempDir()
+	if _, err := Export(s, empty, k, time.Now(), "socair test"); err != nil {
+		t.Fatalf("empty dir: %v", err)
+	}
 }
 
 func TestUnsignedExportSaysSo(t *testing.T) {

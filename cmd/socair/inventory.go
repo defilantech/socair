@@ -30,6 +30,10 @@ func inventoryCmd(args []string) error {
 	if v.SignerKeyID != "" {
 		signer = "signed by key " + attest.ShortID(v.SignerKeyID)
 	}
-	fmt.Printf("verified: %d approved model(s) as of %s, log head %s, %s\n", len(v.Predicate.Models), v.Predicate.GeneratedUTC, v.Predicate.LogHead, signer)
+	head := v.Predicate.LogHead
+	if head == "" {
+		head = "none"
+	}
+	fmt.Printf("verified: %d approved model(s) as of %s, log head %s, %s\n", len(v.Predicate.Models), v.Predicate.GeneratedUTC, head, signer)
 	return nil
 }

@@ -2,6 +2,7 @@ package api
 
 import (
 	"archive/zip"
+	"bytes"
 	"encoding/json"
 	"errors"
 	"io"
@@ -173,10 +174,9 @@ func (o Options) consoleExport(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusUnprocessableEntity, err.Error())
 		return
 	}
-	w.Header().Set("Content-Type", "application/zip")
-	w.Header().Set("Content-Disposition", `attachment; filename="socair-inventory-`+at.UTC().Format("20060102T150405Z")+`.zip"`)
-	zw := zip.NewWriter(w)
-	_ = filepath.WalkDir(tmp, func(p string, d fs.DirEntry, err error) error {
+	var buf bytes.Buffer
+	zw := zip.NewWriter(&buf)
+	err = filepath.WalkDir(tmp, func(p string, d fs.DirEntry, err error) error {
 		if err != nil || d.IsDir() {
 			return err
 		}
@@ -192,5 +192,14 @@ func (o Options) consoleExport(w http.ResponseWriter, r *http.Request) {
 		_, err = f.Write(b)
 		return err
 	})
-	_ = zw.Close()
+	if err == nil {
+		err = zw.Close()
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	w.Header().Set("Content-Type", "application/zip")
+	w.Header().Set("Content-Disposition", `attachment; filename="socair-inventory-`+at.UTC().Format("20060102T150405Z")+`.zip"`)
+	_, _ = w.Write(buf.Bytes())
 }

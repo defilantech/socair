@@ -26,18 +26,34 @@ var index = template.Must(template.New("index").Parse(indexTmpl))
 // keys, and it refuses a store whose log chain is broken: a snapshot of a
 // tampered log would not verify.
 func Export(s *airlock.Store, dir string, key *attest.PrivateKey, at time.Time, toolVersion string) (*Statement, error) {
-	chain, err := s.Verify(airlock.VerifyOptions{})
+	if entries, err := os.ReadDir(dir); err == nil && len(entries) > 0 {
+		return nil, fmt.Errorf("%s exists and is not empty; export into a new or empty directory", dir)
+	} else if err != nil && !errors.Is(err, os.ErrNotExist) {
+		return nil, err
+	}
+	if err := os.MkdirAll(filepath.Join(dir, "models"), 0o755); err != nil {
+		return nil, err
+	}
+	// The log is read once: the copy in the snapshot is the copy whose chain
+	// is checked and whose head is recorded.
+	logBytes, err := os.ReadFile(s.LogPath())
+	if err != nil && !errors.Is(err, os.ErrNotExist) {
+		return nil, err
+	}
+	logCopy := filepath.Join(dir, "log.jsonl")
+	if err := os.WriteFile(logCopy, logBytes, 0o644); err != nil {
+		return nil, err
+	}
+	chain, err := airlock.VerifyFile(logCopy, airlock.VerifyOptions{})
 	if err != nil {
 		return nil, err
 	}
 	if chain.Broken != 0 {
+		_ = os.RemoveAll(dir) // dir was absent or empty on entry
 		return nil, fmt.Errorf("the activity log chain is broken at line %d (%s); resolve it before exporting", chain.Broken, chain.Reason)
 	}
 	models, err := s.Models(at)
 	if err != nil {
-		return nil, err
-	}
-	if err := os.MkdirAll(filepath.Join(dir, "models"), 0o755); err != nil {
 		return nil, err
 	}
 	attestations := map[string][]byte{}
@@ -76,13 +92,6 @@ func Export(s *airlock.Store, dir string, key *attest.PrivateKey, at time.Time, 
 		if err := os.WriteFile(filepath.Join(out, "report.html"), html.Bytes(), 0o644); err != nil {
 			return nil, err
 		}
-	}
-	logBytes, err := os.ReadFile(s.LogPath())
-	if err != nil && !errors.Is(err, os.ErrNotExist) {
-		return nil, err
-	}
-	if err := os.WriteFile(filepath.Join(dir, "log.jsonl"), logBytes, 0o644); err != nil {
-		return nil, err
 	}
 	if err := os.WriteFile(filepath.Join(dir, "log-head.txt"), []byte(chain.Head+"\n"), 0o644); err != nil {
 		return nil, err

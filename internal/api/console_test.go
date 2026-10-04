@@ -1,6 +1,7 @@
 package api
 
 import (
+	"archive/zip"
 	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
@@ -9,6 +10,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -154,5 +156,28 @@ func TestConsoleExportIsAZip(t *testing.T) {
 	b, _ := io.ReadAll(resp.Body)
 	if resp.StatusCode != http.StatusOK || resp.Header.Get("Content-Type") != "application/zip" || !bytes.HasPrefix(b, []byte("PK\x03\x04")) {
 		t.Fatalf("%d %s", resp.StatusCode, resp.Header.Get("Content-Type"))
+	}
+	zr, err := zip.NewReader(bytes.NewReader(b), int64(len(b)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	allowed := regexp.MustCompile(`^(index\.html|log\.jsonl|log-head\.txt|inventory\.json|models/[0-9a-f]{64}/(report\.html|attestation\.json|attestation\.dsse\.json))$`)
+	var sawIndex bool
+	for _, f := range zr.File {
+		if !allowed.MatchString(f.Name) {
+			t.Errorf("entry outside the snapshot layout: %s", f.Name)
+		}
+		if f.Name == "index.html" {
+			sawIndex = true
+			rc, _ := f.Open()
+			body, _ := io.ReadAll(rc)
+			rc.Close()
+			if !strings.Contains(string(body), "UNSIGNED SNAPSHOT") {
+				t.Error("the zip's index must say UNSIGNED SNAPSHOT")
+			}
+		}
+	}
+	if !sawIndex {
+		t.Error("no index.html in the zip")
 	}
 }
