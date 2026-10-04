@@ -34,6 +34,7 @@ in `scope.reference_data`.
 
 | Version | Rule fingerprint | Date | Changes |
 |---|---|---|---|
+| `tier1/0.5` | `074eb82595b7eea04d367c17ba31def45e653e8fde3da1ff6180d1f64a4d3fa2` | 2026-10-04 | Jinja parser: `{% filter name %}` takes its first filter without a pipe, as Jinja writes it, so real filter blocks parse and are analysed instead of being reported as unreadable (#137). |
 | `tier1/0.4` | `69baef5e476c3b0c39f3c60e85af83dffaec5096d323e9df25fb705b52fe6b78` | 2026-10-04 | File inventory: string-array elements of 64+ bytes in GGUF metadata are scanned for payloads (they were skipped), and an inventory cut off at its cap is NOT_TESTED instead of PASS (#135). |
 | `tier1/0.3` | `e63d4be3a7e1ce5cb1631a98c46cf582e69b84a09c98d60e21cc8a6b646666a0` | 2026-10-04 | No rule change: the chat-template row's "looks for" text now says what the check inspects (#131). |
 | `tier1/0.3` | `3cae86387201e2303e8dfe9d04383d6f43a15ee4824fdcc363232aad75a5247c` | 2026-10-04 | Chat template: process execution is judged from the parsed template (a module, builtin, or process function referenced in an expression), not from a regex over the raw text, so code words in prose no longer FAIL. Dunder reach was already tree-based; its raw-text regex is removed too (#130). |

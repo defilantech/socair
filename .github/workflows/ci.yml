@@ -41,6 +41,34 @@ jobs:
       - name: test (race detector)
         run: go test -race ./...
 
+  # The chat-template check against real templates: the 70 that llama.cpp
+  # ships in models/templates, at a pinned commit. Networked (it fetches that
+  # directory), so it is kept out of the air-gap job above. The templates come
+  # from model vendors under their own licenses and are not committed here.
+  # Move the pin deliberately and record the result in
+  # docs/false-positive-baseline.md.
+  real-template-corpus:
+    runs-on: ubuntu-latest
+    env:
+      GOFLAGS: -mod=vendor
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          repository: ggml-org/llama.cpp
+          ref: 7fe450e19305b828c199d602c23a8337aaa1f03b
+          path: corpus/llama.cpp
+          sparse-checkout: models/templates
+          persist-credentials: false
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: no real template is flagged
+        run: |
+          SOCAIR_TEMPLATE_CORPUS="$GITHUB_WORKSPACE/corpus/llama.cpp/models/templates" \
+            go test ./internal/checks/chattemplate -run RealTemplates -v
+
   # Networked checks on the supply chain and the code. They fetch the
   # vulnerability database and the pinned tools, so they are kept out of the
   # air-gap job above.

@@ -211,13 +211,19 @@ gpt-oss), under the old and the new rules:
 |---|---|---|---|
 | tier1/0.2 (raw-text regex) | 69 | 1 | 0 |
 | tier1/0.3 (parsed template) | 69 | 1 | 0 |
+| tier1/0.5 (filter blocks parse) | 70 | 0 | 0 |
 
 No real template mentions those words in prose, so the corpus result is
 unchanged; the fix is pinned by `TestCodeWordsInTextAreNotCode` and the
 `benign-code-words-in-prompt.jinja` fixture. The one LEAD is unrelated and
 predates this change: `fireworks-ai-llama-3-firefunction-v2.jinja` does not
 parse ("line 4: unexpected trim"), which the check reports as an unreadable
-template. The evasion corpus gains `attr-concat-popen.jinja` (a process
+template. Check set tier1/0.5 fixes it: the parser demanded a pipe
+before a filter block's first filter (`{% filter |trim %}`), which is not how
+Jinja writes it (`{% filter trim %}`). With filter blocks parsing, and their
+filter and body analysed like any other code, the corpus is **70 PASS, 0 LEAD,
+0 FAIL**. CI now runs this corpus on every push (`real-template-corpus` job,
+llama.cpp pinned at `7fe450e1`, 2026-09-23). The evasion corpus gains `attr-concat-popen.jinja` (a process
 function reached through `attr` with a concatenated name), which FAILs.
 
 ## File inventory: string arrays and truncation (2026-10-04, check set tier1/0.4)
