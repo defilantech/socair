@@ -23,6 +23,7 @@ import (
 	"github.com/defilantech/socair/internal/airlock"
 	"github.com/defilantech/socair/internal/attest"
 	"github.com/defilantech/socair/internal/dsse"
+	"github.com/defilantech/socair/internal/report"
 )
 
 const (
@@ -194,10 +195,12 @@ func Verify(dir string, trusted attest.Keyring, opts VerifyOptions) (*Verified, 
 			return nil, fmt.Errorf("%s: promotion_state %q disagrees with the attestation (%q)", e.ID, e.PromotionState, pa.State)
 		case e.SignerKeyID != v.KeyID:
 			return nil, fmt.Errorf("%s: signer_key_id %q disagrees with the attestation (%q)", e.ID, e.SignerKeyID, v.KeyID)
-		case !sameSet(e.AcceptedSurfaces, pa.AcceptedSurfaces):
+		case pa.State == report.StateAuthorizedWithConditions && !sameSet(e.AcceptedSurfaces, pa.AcceptedSurfaces):
 			return nil, fmt.Errorf("%s: accepted_surfaces disagree with the attestation", e.ID)
-		case e.AcceptanceExpires != pa.AcceptanceExpires:
+		case pa.State == report.StateAuthorizedWithConditions && e.AcceptanceExpires != pa.AcceptanceExpires:
 			return nil, fmt.Errorf("%s: acceptance_expires %q disagrees with the attestation (%q)", e.ID, e.AcceptanceExpires, pa.AcceptanceExpires)
+		case pa.State != report.StateAuthorizedWithConditions && (len(e.AcceptedSurfaces) > 0 || e.AcceptanceExpires != ""):
+			return nil, fmt.Errorf("%s: accepted_surfaces or acceptance_expires on a model that is not authorized with conditions", e.ID)
 		}
 	}
 	r, err := airlock.VerifyFile(filepath.Join(dir, "log.jsonl"), airlock.VerifyOptions{ExpectHead: st.Predicate.LogHead})

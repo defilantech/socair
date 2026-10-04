@@ -3,7 +3,6 @@ package inventory
 import (
 	"crypto/sha256"
 	"encoding/hex"
-	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -38,20 +37,7 @@ func snapshotDirWith(t *testing.T, k *attest.PrivateKey, env []byte, id string, 
 	_ = os.WriteFile(filepath.Join(dir, "log.jsonl"), line, 0o644)
 	head := sha256.Sum256(line[:len(line)-1])
 	envSum := sha256.Sum256(env)
-	// The entry mirrors the attestation's own claims (read, not verified:
-	// Verify under test does the verifying).
-	body, _, _, err := dsse.Open(env)
-	if err != nil {
-		t.Fatal(err)
-	}
-	var stmt struct {
-		Predicate report.Document `json:"predicate"`
-	}
-	if err := json.Unmarshal(body, &stmt); err != nil {
-		t.Fatal(err)
-	}
-	pa := stmt.Predicate.PromotionAuthorization
-	st := Build([]airlock.Model{{ID: id, Name: "m", Location: "clean", Stage: airlock.StageApproved, PromotionState: "authorized", SignerKeyID: k.ID, AcceptanceExpires: pa.AcceptanceExpires}},
+	st := Build([]airlock.Model{{ID: id, Name: "m", Location: "clean", Stage: airlock.StageApproved, PromotionState: "authorized", SignerKeyID: k.ID}},
 		map[string][]byte{id: env}, hex.EncodeToString(head[:]), "socair test", time.Unix(0, 0))
 	if st.Predicate.Models[0].AttestationSHA256 != hex.EncodeToString(envSum[:]) {
 		t.Fatal("Build did not hash the attestation")
