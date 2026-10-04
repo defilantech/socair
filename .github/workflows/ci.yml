@@ -79,7 +79,7 @@ jobs:
           cache: false
       - name: gofmt check
         run: |
-          unformatted="$(gofmt -l *.go)"
+          unformatted="$(gofmt -l ./*.go)"
           if [ -n "$unformatted" ]; then
             echo "gofmt needed on:"
             echo "$unformatted"
