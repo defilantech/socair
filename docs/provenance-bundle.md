@@ -153,6 +153,12 @@ promote an unsigned acceptance. `SOCAIR_RESCAN_DAYS` sets the report's
 A FAIL or a LEAD is never cleared by an acceptance; it goes to escalated
 review.
 
+## 5. A signed reference feed, `SOCAIR_FEED` and `SOCAIR_FEED_KEYS`
+
+A feed supplies known-bad hashes, reviewed chat templates, and canonical
+tokenizers as a signed bundle; see [feed.md](feed.md). Its denylist joins
+`SOCAIR_DENYLIST`.
+
 ## What each input buys, in one table
 
 | Input | Row it moves | Without it |

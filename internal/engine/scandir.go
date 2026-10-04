@@ -11,7 +11,6 @@ import (
 
 	"github.com/defilantech/socair/internal/checks"
 	"github.com/defilantech/socair/internal/checks/chattemplate"
-	"github.com/defilantech/socair/internal/checks/denylist"
 	"github.com/defilantech/socair/internal/checks/inventory"
 	"github.com/defilantech/socair/internal/checks/pickle"
 	"github.com/defilantech/socair/internal/checks/provenance"
@@ -30,7 +29,7 @@ var pickleExt = map[string]bool{".bin": true, ".pt": true, ".pth": true, ".ckpt"
 // Every file is snapshotted and hashed; the subject is the manifest digest.
 // Each per-file check runs on every file it applies to and reports one merged
 // row, so one bad shard withholds the whole directory.
-func scanDir(dir string, start time.Time) (*report.Document, error) {
+func scanDir(dir string, start time.Time, refs *references) (*report.Document, error) {
 	root, files, excluded, cleanup, err := modeldir.Snapshot(dir, strings.TrimSpace(os.Getenv("SOCAIR_SCAN_TMP")))
 	if err != nil {
 		return nil, err
@@ -78,6 +77,9 @@ func scanDir(dir string, start time.Time) (*report.Document, error) {
 	if err != nil {
 		return nil, err
 	}
+	d.Scope.ReferenceData = refs.scope()
+	tokRow := tok.Result
+	tokRow.Notes += refs.tokenizerNote(tok.Hash)
 	d.Verification.RerunInstructions = "socair scan <directory>"
 
 	// Per-file rows.
@@ -122,7 +124,7 @@ func scanDir(dir string, start time.Time) (*report.Document, error) {
 	}
 
 	templates, nonString, unread := modeldir.ChatTemplates(root, files)
-	tmplRow := chattemplate.InspectAll(templates, nonString)
+	tmplRow := chattemplate.InspectAllWith(templates, nonString, refs.reviewedTemplates())
 	if len(templates) == 0 && len(nonString) == 0 {
 		tmplRow.Notes = "no chat template in tokenizer_config.json, chat_template.json, or a .jinja file"
 	}
@@ -135,9 +137,9 @@ func scanDir(dir string, start time.Time) (*report.Document, error) {
 		structRow,
 		invRow,
 		provenance.Inspect(provOpts),
-		denylistRow(files, id.SHA256),
+		denylistRow(files, id.SHA256, refs),
 		tmplRow,
-		tok.Result,
+		tokRow,
 		remotecode.Inspect(root, files),
 	}
 	if len(pickleParts) > 0 {
@@ -147,16 +149,15 @@ func scanDir(dir string, start time.Time) (*report.Document, error) {
 }
 
 // denylistRow checks the manifest digest and every file's hash. With no list
-// supplied it is one NOT_TESTED, not one per file.
-func denylistRow(files []modeldir.File, digest string) checks.Result {
-	list := os.Getenv("SOCAIR_DENYLIST")
-	whole := denylist.Check(digest, list)
-	if list == "" {
+// configured it is one NOT_TESTED, not one per file.
+func denylistRow(files []modeldir.File, digest string, refs *references) checks.Result {
+	whole := refs.denylist(digest)
+	if !refs.configured() {
 		return whole
 	}
 	parts := []checks.Part{{File: "(directory manifest)", Result: whole}}
 	for _, f := range files {
-		parts = append(parts, checks.Part{File: f.Path, Result: denylist.Check(f.SHA256, list)})
+		parts = append(parts, checks.Part{File: f.Path, Result: refs.denylist(f.SHA256)})
 	}
 	return checks.Merge(whole.Name, whole.LooksFor, parts)
 }

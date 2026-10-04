@@ -110,6 +110,9 @@ type Scope struct {
 	ScanStartUTC     string `json:"scan_start_utc,omitempty"`
 	ScanEndUTC       string `json:"scan_end_utc,omitempty"`
 	InferenceBudget  string `json:"inference_budget,omitempty"`
+	// ReferenceData names the reference data the checks compared against: a
+	// signed feed (issuer, version, dates, key) and any local denylist.
+	ReferenceData string `json:"reference_data,omitempty"`
 }
 
 type CheckResult struct {

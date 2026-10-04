@@ -80,6 +80,11 @@ func main() {
 			fmt.Fprintln(os.Stderr, "error:", err)
 			os.Exit(1)
 		}
+	case "feed":
+		if err := feedCmd(os.Args[2:]); err != nil {
+			fmt.Fprintln(os.Stderr, "error:", err)
+			os.Exit(1)
+		}
 	case "accept":
 		if err := acceptCmd(os.Args[2:]); err != nil {
 			fmt.Fprintln(os.Stderr, "error:", err)
@@ -116,6 +121,9 @@ Usage:
   socair render <path>     scan and write the HTML attestation to stdout
   socair key gen --out <prefix>   create an Ed25519 signing key pair
   socair sign --key <key> --report <report.json>   sign a report as a DSSE attestation
+  socair feed sign <dir> --key <key> --issuer <name> --version <v> --expires <time>
+                           sign a reference-data feed (denylist, templates, tokenizers)
+  socair feed verify <dir> --keys <key.pub|dir>   check a feed before importing it
   socair accept --attestation <r.dsse.json> --key <acceptor.key> --by <name> --expires <time>
                            sign an acceptance of a withheld report's untested surfaces
   socair sign --key <key> --attestation <r.dsse.json> --acceptance <a.dsse.json>
