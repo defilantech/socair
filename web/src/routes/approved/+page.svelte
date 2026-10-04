@@ -6,6 +6,7 @@
 	let list = $state<Model[] | null>(null);
 	let error = $state('');
 	let exporting = $state(false);
+	let exportError = $state('');
 
 	onMount(async () => {
 		try {
@@ -18,15 +19,17 @@
 
 	async function onExport() {
 		exporting = true;
+		exportError = '';
 		try {
 			const blob = await exportSnapshot();
 			const a = document.createElement('a');
 			a.href = URL.createObjectURL(blob);
 			a.download = 'socair-inventory.zip';
 			a.click();
-			URL.revokeObjectURL(a.href);
+			const href = a.href;
+			setTimeout(() => URL.revokeObjectURL(href), 1000);
 		} catch (e) {
-			error = e instanceof Error ? e.message : String(e);
+			exportError = e instanceof Error ? e.message : String(e);
 		} finally {
 			exporting = false;
 		}
@@ -64,4 +67,5 @@
 	</p>
 	<pre class="cmd">socair airlock export --out snapshot --key operator.key</pre>
 	<div class="actions"><button type="button" onclick={onExport} disabled={exporting}>{exporting ? 'Exporting...' : 'Download unsigned snapshot'}</button></div>
+	{#if exportError}<div class="state failed"><p class="error-title">The snapshot could not be exported</p><p>{exportError}</p></div>{/if}
 </div>

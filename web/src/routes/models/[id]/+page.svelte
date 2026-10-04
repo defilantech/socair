@@ -1,5 +1,4 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
 	import { page } from '$app/state';
 	import { model, evidenceURL, type Model, type Document, type AirlockEvent } from '$lib/api';
 	import { stageLabel, stageTone } from '$lib/console';
@@ -11,6 +10,7 @@
 	let error = $state('');
 
 	const files = [
+		'provenance.json',
 		'report.json',
 		'report.dsse.json',
 		'report.acceptance.dsse.json',
@@ -19,15 +19,26 @@
 		'attestation.dsse.json'
 	];
 
-	onMount(async () => {
-		try {
-			const out = await model(page.params.id ?? '');
-			m = out.model;
-			report = out.report;
-			events = out.events;
-		} catch (e) {
-			error = e instanceof Error ? e.message : String(e);
-		}
+	$effect(() => {
+		const id = page.params.id ?? '';
+		m = null;
+		report = null;
+		events = [];
+		error = '';
+		const ctl = new AbortController();
+		(async () => {
+			try {
+				const out = await model(id, ctl.signal);
+				m = out.model;
+				report = out.report;
+				events = out.events;
+			} catch (e) {
+				if (e instanceof DOMException && e.name === 'AbortError') return;
+				if (e instanceof Error && e.name === 'AbortError') return;
+				error = e instanceof Error ? e.message : String(e);
+			}
+		})();
+		return () => ctl.abort();
 	});
 </script>
 
@@ -43,7 +54,7 @@
 		{#if m.next.command}<pre class="cmd">{m.next.command}</pre>{/if}
 
 		{#if report}
-			<ReportView {report} />
+			<ReportView {report} signed={!!m.signer_key_id} />
 		{:else}
 			<p class="hint">No verified report to show.</p>
 		{/if}

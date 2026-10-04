@@ -2,13 +2,13 @@
 	import type { Document } from '$lib/api';
 	import { statusPill, promotionLabel, promotionPill, counts } from '$lib/report';
 
-	let { report }: { report: Document } = $props();
+	let { report, signed = false }: { report: Document; signed?: boolean } = $props();
 	const c = $derived(counts(report));
 </script>
 
 	<p>
 		<span class="pill {promotionPill(report)}">{promotionLabel(report)}</span>
-		&nbsp; Tier 1 (static) &middot; unsigned until signed (socair sign)
+		&nbsp; Tier 1 (static) &middot; {signed ? 'signed' : 'unsigned until signed (socair sign)'}
 	</p>
 	{#if c}
 		<div class="counts">
