@@ -1,7 +1,8 @@
 # Model Assurance Attestation
 
 - Template version: 0.1
-- Issuer: Defilan Technologies, product Socair
+- Product: Socair, by Defilan Technologies
+- Issuer: `[issuer]`, whoever signs the attestation (see section 12)
 - Status: v1 draft
 
 ## How to use this template
@@ -164,7 +165,17 @@ The artifact hash binds this attestation to one exact file. A re-pulled artifact
 
 ## 12. Issuer and liability
 
-Signed by: `[signer_name]`, `[signer_role]`, under the authority of Defilan Technologies.
+Issued by: `[issuer]` (key `[signer_key_id]`)
+
+The issuer is whoever signs the attestation. An operator who scans and signs
+with their own key issues it themselves. A third party (an independent
+assessor, or Defilan Technologies for a Defilan-issued attestation) issues it
+with its own published key. The issuer's name comes from the signing key and is
+covered by the signature. A verifier confirms it against the name its own trust
+list gives that key: an attestation whose claimed issuer contradicts that name
+is refused, and one from a key the verifier has not named is shown as
+"claimed". Socair is the tool; it is never the issuer of a report it was not
+used to sign. An unsigned report states that no issuer has signed it.
 
 What this signature warrants: `[warrant_scope]`
 

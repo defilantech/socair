@@ -149,3 +149,16 @@ func TestBadFeedStopsTheScan(t *testing.T) {
 		t.Fatalf("a feed without keys must stop the scan, got %v", err)
 	}
 }
+
+// A scan is not an issuance: until a key signs it, the report names no
+// issuer, and never Defilan. Falsification: restore the old hard-coded
+// authority and this fails.
+func TestUnsignedReportNamesNoIssuer(t *testing.T) {
+	d, err := Scan(modelRepo(t, nil))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if d.Issuer.Authority != report.Unissued || d.Issuer.SignedBy != "" || strings.Contains(d.Issuer.Authority, "Defilan") {
+		t.Fatalf("issuer %+v", d.Issuer)
+	}
+}

@@ -79,11 +79,18 @@ func (s *Store) TrustPath() string { return filepath.Join(s.Root, trustDir) }
 // TrustedKeys loads the store's trust policy. No trusted key is an error that
 // says how to add one, because a store that trusts nobody refuses everything.
 func (s *Store) TrustedKeys() (attest.Keyring, error) {
-	ring, err := attest.LoadKeyring(s.TrustPath())
+	ring, _, err := s.TrustedIssuers()
+	return ring, err
+}
+
+// TrustedIssuers is TrustedKeys with the issuer name the store gives each
+// key: who the store says holds it.
+func (s *Store) TrustedIssuers() (attest.Keyring, attest.Names, error) {
+	ring, names, err := attest.LoadNamedKeyring(s.TrustPath())
 	if err != nil {
-		return nil, fmt.Errorf("no trusted signing key in %s; add one with `socair airlock trust add <key.pub>`: %v", s.TrustPath(), err)
+		return nil, nil, fmt.Errorf("no trusted signing key in %s; add one with `socair airlock trust add <key.pub>`: %v", s.TrustPath(), err)
 	}
-	return ring, nil
+	return ring, names, nil
 }
 
 // AcceptorPath holds the public keys whose signed acceptances of untested
@@ -122,7 +129,12 @@ func (s *Store) TrustAcceptor(pubPath string) (string, error) {
 
 // Trust adds a public key to the store's trust policy, stored under its key
 // id so the same key is never listed twice. An acceptor key is refused.
-func (s *Store) Trust(pubPath string) (string, error) {
+func (s *Store) Trust(pubPath string) (string, error) { return s.TrustAs(pubPath, "") }
+
+// TrustAs is Trust with the issuer name the store gives the key, replacing
+// whatever name the key file declares. Empty keeps the file's name. An
+// attestation signed with the key must then claim this issuer.
+func (s *Store) TrustAs(pubPath, issuer string) (string, error) {
 	id, _, err := attest.LoadPublicKey(pubPath)
 	if err != nil {
 		return "", err
@@ -134,10 +146,23 @@ func (s *Store) Trust(pubPath string) (string, error) {
 	if err != nil {
 		return "", err
 	}
+	if issuer != "" {
+		if b, err = attest.WithIssuer(b, issuer); err != nil {
+			return "", err
+		}
+	}
 	if err := writeBytes(s.TrustPath(), filepath.Join(s.TrustPath(), id+".pub"), b); err != nil {
 		return "", err
 	}
-	return id, s.Record(Event{Action: ActionTrust, Outcome: OutcomeOK, Detail: "trusted signing key " + id})
+	_, _, name, err := attest.LoadNamedPublicKey(filepath.Join(s.TrustPath(), id+".pub"))
+	if err != nil {
+		return "", err
+	}
+	detail := "trusted signing key " + id
+	if name != "" {
+		detail += " as issuer " + name
+	}
+	return id, s.Record(Event{Action: ActionTrust, Outcome: OutcomeOK, Detail: detail})
 }
 
 func (s *Store) stagingRoot() string { return filepath.Join(s.Root, stagingDir) }

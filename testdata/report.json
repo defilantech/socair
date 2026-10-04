@@ -120,14 +120,14 @@
   },
   "verification": {
     "document_hash": "",
-    "signing_method": "unsigned (OSS tier)",
+    "signing_method": "unsigned",
     "signer_key_id": "",
     "artifact_sha256": "13d44e37860489806f575deb0b219c6058c9421fe1982a9311a0e367c4e8f444",
     "rerun_instructions": "socair inspect <path>"
   },
   "issuer": {
     "signed_by": "",
-    "authority": "Defilan Technologies",
+    "authority": "Unsigned: no issuer has signed this report",
     "warrants": "",
     "excludes": "No absence guarantee. See the bounded statement and out-of-scope ceiling."
   },
