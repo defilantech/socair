@@ -66,6 +66,7 @@ npm run build     # static output in web/build
 
 - Tests are hermetic: no network, secrets, or model files. Fixtures are generated in code (`internal/gguf/gguftest`, `internal/safetensors/safetensorstest`), not committed. The airlock tests use `httptest` for the hub and a temp dir for the store.
 - Every check needs a falsification test that fails if the detector is neutered.
+- A rule change (check packages, GGUF/safetensors parsers) needs a row in `docs/check-set.md`, and a `CheckSetVersion` bump if it can alter a verdict; `TestCheckSetVersionTracksRules` fails until then.
 - `vendor/` is committed on purpose for air-gap builds. After changing deps, run `go mod vendor`.
 - The CLI is a harness, not the product surface. Product behavior belongs in `internal/`.
 - `docs/overnight/status*.md` are historical slice reports, not current specs.

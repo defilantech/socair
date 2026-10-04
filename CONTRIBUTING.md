@@ -53,6 +53,9 @@ negotiable:
   real-corpus gate (`SOCAIR_TEMPLATE_CORPUS`, `SOCAIR_SAFETENSORS_CORPUS`,
   `SOCAIR_GGUF_CORPUS`, `SOCAIR_TOKENIZER_CORPUS`) and record the result in
   `docs/false-positive-baseline.md`.
+- **A rule change bumps the check-set version.** If a change can alter a
+  verdict, bump `CheckSetVersion` and add a row to `docs/check-set.md`; a test
+  fails until you do. See that file for when a change keeps the version.
 - **Tests are hermetic**: no network, secrets, or model files. Fixtures are
   generated in code.
 - **The report format is a contract** (`docs/report-schema/v1.json`): a shape
