@@ -25,7 +25,7 @@ model's report, and verify the snapshot offline with
 |---|---|---|
 | Who uses it live | The operator, on loopback, as `socair serve` does today | No logins in Step 1, so no network exposure |
 | How leadership sees it | A static, signed export | It needs no server and works offline. It is a dated snapshot auditors can file, and the inventory signature makes the list tamper-evident |
-| Actions in the console | View, plus the actions the API already has (pull, scan, promote), plus uploading a signed attestation | Signing stays in the CLI: the console never holds a private key |
+| Actions in the console | View, plus scanning a staged model and uploading a signed attestation; pull, sign, accept and promote stay copyable CLI commands in Step 1 | Signing stays in the CLI: the console never holds a private key |
 | Deployment | Inside `socair serve --store`, with no new binary and no database | State is derived from store files; nothing new to run or back up |
 | Free and paid | Free: everything here, and Step 1b's OIDC login. Paid: SAML/SCIM, roles beyond viewer/operator, multi-approver hardware-key signing in the browser, multiple sites, HA, support | Login is not paywalled. The paid tier is organizational scale |
 | Hosted auth (Clerk and similar) | Not used for the self-hosted console | It needs the internet, which an air-gapped site cannot reach, and puts a third party in the approval path. It may fit a hosted SaaS (Step 3) |
