@@ -14,3 +14,8 @@
 		}
 	});
 </script>
+
+<svelte:head><title>Socair</title></svelte:head>
+
+<h1 class="visually-hidden">Socair</h1>
+<p class="meta" role="status">Opening the console.</p>
