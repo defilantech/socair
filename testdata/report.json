@@ -50,7 +50,7 @@
       "looks_for": "Hidden files, embedded payloads, unexpected executables",
       "status": "NOT_TESTED",
       "notes": "artifact: 44 metadata keys, 1532 string bytes, no payload indicator. Repo mirror not provided, so the repo file listing was not inspected.",
-      "pass_means": "No script, shell command, long encoded blob, or executable signature was found in string metadata values, and no native executable among the files. String arrays in GGUF metadata are not yet scanned."
+      "pass_means": "No script, shell command, long encoded blob, or executable signature was found in string metadata values, including every string-array element of 64 bytes or more, and no native executable among the files. Shorter array elements, such as vocabulary tokens, are too short to carry one and are not scanned."
     },
     {
       "name": "Hash, provenance, lineage",

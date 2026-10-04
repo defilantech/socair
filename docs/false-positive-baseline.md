@@ -220,6 +220,26 @@ parse ("line 4: unexpected trim"), which the check reports as an unreadable
 template. The evasion corpus gains `attr-concat-popen.jinja` (a process
 function reached through `attr` with a concatenated name), which FAILs.
 
+## File inventory: string arrays and truncation (2026-10-04, check set tier1/0.4)
+
+The inventory scanned only string-typed GGUF metadata values and skipped
+string arrays, so a payload in an array value passed. It also passed an
+inventory cut off at its 8 MiB / 20k-entry cap, with only a note (#135).
+
+String-array elements of 64 bytes or more are now scanned with the same
+patterns (script or shell content, a base64 run of 512+ characters, an
+executable or archive signature). Shorter elements are counted, not kept:
+a vocabulary's tokens are short, include strings such as `<script` and `#!`,
+and are too short to carry an executable or a 512-character blob. An
+inventory that reaches its cap is NOT_TESTED, unless a payload was already
+found, which stays a FAIL.
+
+Measured on 12 local GGUFs (Gemma 3 12B/27B, Gemma 4 26B, Qwen3 0.6B,
+Qwen 3.6/3.8 27B and MoE variants, Llama 3.3 Nemotron Super 49B): 262k to
+777k string-array elements each, up to 4,146 of 64+ bytes scanned per file,
+0 findings, 0 truncated. Every row was NOT_TESTED only because no repo
+mirror was given, as before.
+
 ## Pickle opcode walker (2026-10-02)
 
 The pickle check matched one byte pattern, the text GLOBAL of protocols 0 to 3,
