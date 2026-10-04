@@ -55,33 +55,20 @@ func Promote(s *Store, artifactPath, envelopePath string) (Event, error) {
 		return e, fmt.Errorf("%w: %s", ErrRefused, reason)
 	}
 
-	ring, names, err := s.TrustedIssuers()
+	a, err := s.Assess(envelope, now())
+	if a != nil {
+		sha = a.SHA256
+	}
 	if err != nil {
 		return refuse(err.Error())
 	}
-	v, err := attest.Verify(envelope, ring)
-	if err != nil {
+	if err := a.Admits(); err != nil {
 		return refuse(err.Error())
 	}
-	// Who issued it: the store's name for the key, and the attestation must
-	// not claim otherwise.
-	issuer, confirmed, err := v.Issuer(names)
-	if err != nil {
-		return refuse(err.Error())
-	}
-	issuerNote := "issued by " + issuer
-	if !confirmed {
+	v, d := a.Verified, a.Verified.Document
+	issuerNote := "issued by " + a.Issuer
+	if !a.IssuerConfirmed {
 		issuerNote += " (claimed; the store does not name this key)"
-	}
-	d := v.Document
-	sha = normalizeSHA(v.SHA256)
-
-	switch d.PromotionAuthorization.State {
-	case report.StateAuthorized, report.StateAuthorizedWithConditions:
-		// crosses
-	default:
-		return refuse(fmt.Sprintf("attestation state %q withholds promotion; a FAIL or LEAD is clearable only by escalated review",
-			d.PromotionAuthorization.State))
 	}
 
 	isDir := false
@@ -109,31 +96,9 @@ func Promote(s *Store, artifactPath, envelopePath string) (Event, error) {
 	outcome := OutcomeOK
 	detail := "clean attestation " + issuerNote + ", signed by " + attest.ShortID(v.KeyID)
 	if conditional {
-		// An acceptance covers its gaps only until it expires. Verify has
-		// already required an RFC 3339 expiry; a lapsed one is refused, and
-		// the gaps need a fresh scan and a fresh acceptance.
-		exp, err := time.Parse(time.RFC3339, pa.AcceptanceExpires)
-		if err != nil {
-			return refuse(fmt.Sprintf("acceptance expiry %q cannot be enforced", pa.AcceptanceExpires))
-		}
-		if !now().Before(exp) {
-			return refuse(fmt.Sprintf("the acceptance by %s of %d untested surface(s) expired at %s; re-scan and re-accept",
-				pa.AcceptedBy, len(pa.AcceptedSurfaces), exp.UTC().Format(time.RFC3339)))
-		}
-		// The acceptance must be the acceptor's own signature, from a key in
-		// acceptor-keys, never the operator's: a name typed at scan time
-		// (SOCAIR_ACCEPTED_BY) is not an acceptance the airlock honours.
-		acceptors, err := s.AcceptorKeys()
-		if err != nil {
-			return refuse(err.Error())
-		}
-		acc, err := attest.VerifyAcceptance(v, acceptors, now())
-		if err != nil {
-			return refuse("the conditional attestation's acceptance does not hold: " + err.Error())
-		}
 		outcome = OutcomeConditional
 		detail = fmt.Sprintf("authorized with conditions accepted by %s (signed acceptance, acceptor key %s) on %d surface(s) until %s, attestation %s, signed by %s",
-			acc.AcceptedBy, attest.ShortID(acc.KeyID), len(pa.AcceptedSurfaces), exp.UTC().Format(time.RFC3339), issuerNote, attest.ShortID(v.KeyID))
+			a.Acceptance.AcceptedBy, attest.ShortID(a.Acceptance.KeyID), len(pa.AcceptedSurfaces), a.Expires.UTC().Format(time.RFC3339), issuerNote, attest.ShortID(v.KeyID))
 	}
 	if already, _ := sameBytes(filepath.Join(clean, attestationEnvelope), envelope); already {
 		detail += "; already promoted"

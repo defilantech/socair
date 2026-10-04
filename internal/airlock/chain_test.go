@@ -147,3 +147,24 @@ func TestConcurrentAppendsStayChained(t *testing.T) {
 		t.Fatalf("concurrent appends: %+v", r)
 	}
 }
+
+// An actor on new entries leaves older, actor-less lines valid: the chain is
+// over exact line bytes.
+func TestActorKeepsTheChain(t *testing.T) {
+	s := chainedStore(t, 2)
+	s.Actor = "local-operator"
+	if err := s.Record(Event{Action: ActionIngest, Outcome: OutcomeOK}); err != nil {
+		t.Fatal(err)
+	}
+	ev, err := s.Events()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ev[len(ev)-1].Actor != "local-operator" || ev[0].Actor != "" {
+		t.Fatalf("actors: %q %q", ev[0].Actor, ev[len(ev)-1].Actor)
+	}
+	r, err := VerifyFile(s.LogPath(), VerifyOptions{})
+	if err != nil || r.Broken != 0 || r.Entries != 3 {
+		t.Fatalf("%+v %v", r, err)
+	}
+}

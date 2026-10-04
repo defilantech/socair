@@ -16,6 +16,10 @@ allowed to reach the network.
   incoming/<sha256>/<file>            staging: pulled or binned, not trusted
   incoming/<digest>/<name>/           staging for a model directory (a whole repo)
   incoming/<sha256>/provenance.json   origin facts written by a pull
+  incoming/<sha256>/report.json       an unsigned scan result (the console's scan writes it)
+  incoming/<sha256>/report.dsse.json  a signed attestation (socair sign)
+  incoming/<sha256>/report.acceptance.dsse.json   a signed acceptance (socair accept)
+  incoming/<sha256>/report.conditional.dsse.json  the attestation re-issued with it (socair sign --acceptance)
   clean/<sha256>/<file>               the clean store, keyed by artifact hash
   clean/<digest>/<name>/              a promoted model directory, keyed by manifest digest
   clean/<sha256>/attestation.dsse.json  the signed attestation that let it cross
@@ -141,6 +145,87 @@ Environment:
   redirect targets. A leading dot matches subdomains.
 - `SOCAIR_PULL_TIMEOUT`: stall budget, a Go duration such as `30s`.
 - `SOCAIR_HF_CACHE` or `HF_HOME`: the offline cache root for `ingest --cache`.
+
+## Staging evidence and stages
+
+The four `report*` files are the names `socair scan`, `sign`, `accept`, and
+`sign --acceptance` already write, so running the CLI against
+`incoming/<id>/report.json` produces exactly what the console reads. Only the
+console's scan writes `report.json`; `ingest --scan` prints its report and does
+not. None of them changes what `promote` accepts.
+
+A model's stage (`staged`, `scanned`, `ready`, `needs-acceptance`, `blocked`,
+`approved`, `acceptance-expired`, `does-not-verify`) is derived from these
+files by `Store.Assess`, the verification `promote` itself uses. A staging
+entry's stage comes from the newest evidence file by modification time. A
+clean entry whose attestation no longer verifies is `does-not-verify`. A staged
+envelope that does not verify offers a rescan: the newer `report.json`
+supersedes it.
+
+`promote` leaves the staged copy in `incoming/`; nothing on the gate path
+deletes. The list omits a staging entry whose id is approved in clean, and keeps
+it when the clean entry's acceptance expired or it does not verify, so it can be
+re-scanned and re-accepted.
+
+Because a single-file pull is staged flat beside these files, `pull` refuses
+an artifact file named like one of them (`provenance.json`, the four `report*`
+names, `attestation.json`, `attestation.dsse.json`). A whole repo is staged
+under its own name, so only the repo name is checked.
+
+The console reads attestations and does not re-hash model bytes when it shows
+them. Re-running `socair airlock promote` re-verifies the bytes.
+
+## Export and inventory
+
+```
+socair airlock export --out <dir> [--key <operator.key>] [--store <path>]
+socair inventory verify <dir> --trusted <key.pub|dir> [--allow-unsigned]
+```
+
+`export` writes a dated snapshot of the store for people who do not run the
+airlock. It never contains model bytes or keys, refuses a non-empty `--out`,
+and refuses a store whose log chain is broken.
+
+```
+<dir>/
+  index.html                 approved list and the other entries; snapshot time and log head
+  models/<id>/report.html    the HTML report
+  models/<id>/attestation.dsse.json, attestation.json   byte-identical to clean/<id>/
+  log.jsonl, log-head.txt    the activity log and its chain head
+  inventory.json             the inventory statement
+  inventory.dsse.json        its DSSE envelope, only with --key
+```
+
+The statement is an in-toto Statement v1, predicate type
+`https://socair.ai/inventory/v1`, one subject per approved model. Its
+predicate holds `generated_utc`, `log_head`, `tool_version`, `models` (id,
+name, promotion state, issuer, signer key id, `attestation_sha256`, and for a
+conditional entry the accepted surfaces and expiry), and `other`: the
+non-approved entries, each with its stage and reason. That includes a clean
+entry that does not verify or whose acceptance expired. Without `--key` the
+snapshot is unsigned and `index.html` says so.
+
+`inventory verify` fails, with the reason, unless all of these hold:
+
+1. The envelope verifies against `--trusted`, and the predicate type is
+   `inventory/v1`. An unsigned snapshot fails unless `--allow-unsigned`, which
+   checks the contents only.
+2. The statement's subjects equal its models, and every listed attestation
+   file is present and hashes to `attestation_sha256`.
+3. Every attestation verifies against `--trusted` for its listed id, and its
+   `promotion_state`, `signer_key_id`, and (for a conditional entry)
+   accepted surfaces and expiry match the entry. A readable
+   `attestation.json` beside it, when present, must decode as a report equal
+   to the envelope's document.
+4. `log.jsonl` verifies as a hash chain to `log_head`, which must be set when
+   models are listed.
+
+It prints the signer key, or UNSIGNED. Verification proves the snapshot is
+the one that was exported, not that the store is unchanged since: record the
+log head somewhere the box cannot rewrite, as for `log --verify`.
+
+The console's export button (`POST /api/airlock/export`) returns the same
+snapshot unsigned. To sign it, run the command above with `--key`.
 
 ## Signing and the trust policy
 

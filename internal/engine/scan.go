@@ -48,9 +48,29 @@ const (
 // the full file. It is the attestation path.
 func Scan(path string) (*report.Document, error) { return ScanMode(path, ModeFull) }
 
+// Inputs are scan inputs a caller passes directly instead of through the
+// environment, for a long-running process that scans many artifacts. An empty
+// field falls back to its environment variable.
+type Inputs struct {
+	// Provenance is the provenance manifest path (SOCAIR_PROVENANCE).
+	Provenance string
+}
+
+func (in Inputs) provenancePath() string {
+	if in.Provenance != "" {
+		return in.Provenance
+	}
+	return os.Getenv("SOCAIR_PROVENANCE")
+}
+
 // ScanMode reads the artifact at path in the given mode and returns a filled
 // report document.
 func ScanMode(path string, mode Mode) (*report.Document, error) {
+	return ScanWith(path, mode, Inputs{})
+}
+
+// ScanWith is ScanMode with explicit inputs.
+func ScanWith(path string, mode Mode, in Inputs) (*report.Document, error) {
 	start := time.Now().UTC()
 	// Reference data first: a feed that does not verify stops the scan before
 	// any snapshot is copied.
@@ -62,7 +82,7 @@ func ScanMode(path string, mode Mode) (*report.Document, error) {
 		if mode != ModeFull {
 			return nil, fmt.Errorf("%s is a directory; a directory scan always reads every file in full", path)
 		}
-		return scanDir(path, start, refs)
+		return scanDir(path, start, refs, in)
 	}
 
 	// A full scan is an attestation, so it checks a private snapshot whose
@@ -170,7 +190,7 @@ func ScanMode(path string, mode Mode) (*report.Document, error) {
 			return nil, err
 		}
 	}
-	d, provOpts, expires, err := begin(start, id, original, sig)
+	d, provOpts, expires, err := begin(start, id, original, sig, in)
 	if err != nil {
 		return nil, err
 	}
@@ -211,7 +231,7 @@ func ScanMode(path string, mode Mode) (*report.Document, error) {
 
 // begin seeds the document every scan path fills: header, re-scan policy,
 // scope, and identity fields from a provenance manifest bound to id's hash.
-func begin(start time.Time, id report.Identity, original string, sig *provenance.Signature) (*report.Document, provenance.Options, string, error) {
+func begin(start time.Time, id report.Identity, original string, sig *provenance.Signature, in Inputs) (*report.Document, provenance.Options, string, error) {
 	d := report.NewFromIdentity(id)
 	d.Header.DocumentID = fmt.Sprintf("SOCAIR-%s-%s", start.Format("20060102"), shortHashOr(id.SHA256, "headers"))
 	d.Header.IssuedUTC = start.Format(time.RFC3339)
@@ -231,7 +251,7 @@ func begin(start time.Time, id report.Identity, original string, sig *provenance
 	// Provenance comes only from the manifest the operator names. A
 	// provenance.json found beside the artifact is not read: whoever controls
 	// that directory could write one claiming any origin for these bytes.
-	provOpts := provenance.Options{ArtifactPath: original, ArtifactSHA256: id.SHA256, ManifestPath: os.Getenv("SOCAIR_PROVENANCE"), Signature: sig}
+	provOpts := provenance.Options{ArtifactPath: original, ArtifactSHA256: id.SHA256, ManifestPath: in.provenancePath(), Signature: sig}
 	if m, unbound := provenance.Bind(provOpts); m != nil && unbound == "" {
 		d.Artifact.RepoURL = m.RepoURL
 		d.Artifact.CommitOrTag = m.CommitOrTag

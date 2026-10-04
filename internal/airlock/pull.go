@@ -103,6 +103,9 @@ func Pull(ctx context.Context, s *Store, dst, repo, revision, wantSHA string, po
 	if err := validFileName(filepath.Base(dst)); err != nil {
 		return fail(err.Error())
 	}
+	if err := notEvidenceName(filepath.Base(dst)); err != nil {
+		return fail(err.Error())
+	}
 	pol = pol.withDefaults()
 
 	host, allowed := pol.allows(pol.Endpoint)

@@ -500,3 +500,25 @@ func TestUnparsedNamesUnknownArtifactAndOtherShards(t *testing.T) {
 		t.Errorf("a split shard must name the shards it did not scan: %q", d.OutOfScope.UnparsedFormats)
 	}
 }
+
+// The console scans a staged model with its pull's provenance file, without
+// setting SOCAIR_PROVENANCE in a shared process. Falsification: ignore
+// Inputs.Provenance and the provenance row stays NOT_TESTED.
+func TestScanWithProvenanceInput(t *testing.T) {
+	t.Setenv("SOCAIR_PROVENANCE", "")
+	data := safetensorstest.Clean()
+	p := writeFixture(t, "fixture.safetensors", data)
+	sum := sha256.Sum256(data)
+	prov := filepath.Join(t.TempDir(), "provenance.json")
+	body := `{"artifact_sha256":"` + hex.EncodeToString(sum[:]) + `","publisher":"example","signing_status":"signed","repo_url":"https://huggingface.co/example/model","commit_or_tag":"main","commit_sha":"71034c5d8bde858ff824298bdedc65515b97d2b9"}`
+	if err := os.WriteFile(prov, []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	d, err := ScanWith(p, ModeFull, Inputs{Provenance: prov})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := rowStatus(d, "Hash, provenance, lineage"); got != report.StatusPass {
+		t.Fatalf("provenance row %s", got)
+	}
+}

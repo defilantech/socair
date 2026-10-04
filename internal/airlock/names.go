@@ -52,6 +52,18 @@ func validFileName(name string) error {
 	return nil
 }
 
+// notEvidenceName refuses an artifact whose name in a staging entry would be
+// an evidence file's name: the artifact would hide among (or be overwritten
+// by) the reports and attestations written beside it.
+func notEvidenceName(name string) error {
+	// Evidence names are lowercase; compare folded, because on a
+	// case-insensitive filesystem REPORT.JSON and report.json are one file.
+	if IsEvidence(strings.ToLower(name)) {
+		return fmt.Errorf("artifact name %q is an airlock evidence file name and would collide with the staging entry's evidence; rename it", name)
+	}
+	return nil
+}
+
 func hasDotDot(p string) bool {
 	for _, seg := range strings.Split(p, "/") {
 		if seg == ".." || seg == "." {
@@ -78,6 +90,9 @@ func (s *Store) StagingFile(sha, file string) (string, error) {
 		return "", err
 	}
 	if err := validFileName(file); err != nil {
+		return "", err
+	}
+	if err := notEvidenceName(file); err != nil {
 		return "", err
 	}
 	p := filepath.Join(s.StagingPath(sha), file)

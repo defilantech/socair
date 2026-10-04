@@ -87,6 +87,7 @@ export interface AirlockEvent {
 	repo?: string;
 	sha256?: string;
 	detail?: string;
+	actor?: string;
 }
 
 // ApiError is a non-2xx from the engine, carrying the engine's own message.
@@ -163,4 +164,84 @@ export async function downloadReport(
 	a.download = filename;
 	a.click();
 	URL.revokeObjectURL(url);
+}
+
+export type Stage =
+	| 'staged'
+	| 'scanned'
+	| 'ready'
+	| 'needs-acceptance'
+	| 'blocked'
+	| 'approved'
+	| 'acceptance-expired'
+	| 'does-not-verify';
+
+export interface Model {
+	id: string;
+	name: string;
+	format?: string;
+	size_bytes?: number;
+	location: 'staging' | 'clean';
+	stage: Stage;
+	stage_reason?: string;
+	promotion_state?: string;
+	issuer?: string;
+	signer_key_id?: string;
+	accepted_surfaces?: string[];
+	accepted_by?: string;
+	acceptance_expires?: string;
+	expires_soon?: boolean;
+	promoted_at?: string;
+	next: { action: 'scan' | 'sign' | 'accept' | 'promote' | 'none'; command?: string };
+}
+
+export async function models(signal?: AbortSignal): Promise<Model[]> {
+	const resp = await fetch('/api/airlock/models', { signal });
+	if (!resp.ok) await decodeError(resp);
+	return ((await resp.json()) as { models?: Model[] }).models ?? [];
+}
+
+export async function model(
+	id: string,
+	signal?: AbortSignal
+): Promise<{ model: Model; report: Document | null; events: AirlockEvent[] }> {
+	const resp = await fetch(`/api/airlock/models/${encodeURIComponent(id)}`, { signal });
+	if (!resp.ok) await decodeError(resp);
+	return await resp.json();
+}
+
+export async function scanStaged(id: string): Promise<Model> {
+	const resp = await fetch(`/api/airlock/models/${encodeURIComponent(id)}/scan`, {
+		method: 'POST',
+		headers: { 'content-type': 'application/json' },
+		body: '{}'
+	});
+	if (!resp.ok) await decodeError(resp);
+	return ((await resp.json()) as { model: Model }).model;
+}
+
+// uploadAttestation sends a signed envelope unchanged: its signature covers
+// the exact bytes.
+export async function uploadAttestation(id: string, envelope: string): Promise<Model> {
+	const resp = await fetch(`/api/airlock/models/${encodeURIComponent(id)}/attestation`, {
+		method: 'POST',
+		headers: { 'content-type': 'application/json' },
+		body: envelope
+	});
+	if (!resp.ok) await decodeError(resp);
+	return ((await resp.json()) as { model: Model }).model;
+}
+
+export async function exportSnapshot(): Promise<Blob> {
+	const resp = await fetch('/api/airlock/export', {
+		method: 'POST',
+		headers: { 'content-type': 'application/json' },
+		body: '{}'
+	});
+	if (!resp.ok) await decodeError(resp);
+	return await resp.blob();
+}
+
+export function evidenceURL(id: string, name: string): string {
+	return `/api/airlock/models/${encodeURIComponent(id)}/files/${encodeURIComponent(name)}`;
 }

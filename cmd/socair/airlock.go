@@ -8,9 +8,12 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/defilantech/socair/internal/airlock"
+	"github.com/defilantech/socair/internal/attest"
 	"github.com/defilantech/socair/internal/engine"
+	"github.com/defilantech/socair/internal/inventory"
 	"github.com/defilantech/socair/internal/report"
 )
 
@@ -18,7 +21,7 @@ import (
 // store. A pull lands in staging; only a promotion moves bytes across.
 func airlockCmd(args []string) error {
 	if len(args) == 0 {
-		return errors.New("usage: socair airlock <init|pull|ingest|trust|promote|log>")
+		return errors.New("usage: socair airlock <init|pull|ingest|trust|promote|log|export>")
 	}
 	switch args[0] {
 	case "init":
@@ -33,6 +36,8 @@ func airlockCmd(args []string) error {
 		return airlockPromote(args[1:])
 	case "log":
 		return airlockLog(args[1:])
+	case "export":
+		return airlockExport(args[1:])
 	default:
 		return fmt.Errorf("unknown airlock command %q", args[0])
 	}
@@ -294,3 +299,31 @@ func parseFlags(args []string) *flagSet {
 
 func (f *flagSet) val(key string) string { return f.vals[key] }
 func (f *flagSet) has(key string) bool   { return f.vals[key] != "" }
+
+// airlockExport writes a snapshot of the store: socair airlock export --out <dir> [--key <k>] [--store <p>].
+func airlockExport(args []string) error {
+	fs := parseFlags(args)
+	if fs.val("out") == "" {
+		return errors.New("usage: socair airlock export --out <dir> [--key <operator.key>] [--store <path>]")
+	}
+	s, err := airlock.Open(storeRoot(fs))
+	if err != nil {
+		return err
+	}
+	var k *attest.PrivateKey
+	if fs.val("key") != "" {
+		if k, err = attest.LoadPrivateKey(fs.val("key")); err != nil {
+			return err
+		}
+	}
+	st, err := inventory.Export(s, fs.val("out"), k, time.Now(), "socair "+engine.Version)
+	if err != nil {
+		return err
+	}
+	signed := "UNSIGNED (pass --key to sign)"
+	if k != nil {
+		signed = "signed by key " + attest.ShortID(k.ID)
+	}
+	fmt.Printf("exported %d approved model(s), %d other, %s, to %s\n", len(st.Predicate.Models), len(st.Predicate.Other), signed, fs.val("out"))
+	return nil
+}

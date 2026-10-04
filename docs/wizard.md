@@ -7,6 +7,40 @@ buyer who clicks, not curls.
 The wizard is a client of the engine API (`docs/api.md`). It shows only state the
 engine returned and derives nothing of its own: no status, no count, no badge.
 
+## Console
+
+With a store configured (`socair serve --store <path> --web web/build`), the
+same app is the airlock console: the operator's view of what is staged, what is
+approved, and what each model waits for. Pages:
+
+- `/approved`: models in the clean store, with their attestation state. A
+  clean entry whose acceptance expired or that does not verify is listed here
+  too, in red.
+- `/pending`: staged models, grouped by stage, each with the step it waits for.
+  A promoted model leaves it once approved. Pulling stays a CLI step
+  (`socair airlock pull`); the empty pages say so.
+- `/models/<id>`: one model's report, evidence files, conditions, and log
+  entries.
+- `/activity`: the activity log.
+- `/scan`: the original wizard, ingest through download.
+
+`/` goes to `/approved` when `GET /api/health` reports the store `ready`, and to
+`/scan` otherwise.
+
+Display rules. Every label comes from what the engine returned (`stage`,
+`promotion_state`, `next`); the console computes none of them.
+
+- Only an approved model with an unconditional authorization is green.
+- Authorized with conditions, and needs-acceptance, are amber.
+- Blocked, does-not-verify, and acceptance-expired are red.
+- NOT_TESTED is never shown as a pass.
+- A report is labelled "signed" only when its attestation verified.
+
+Every step that needs a key is a copyable CLI command, not a button: promote,
+sign, accept, export with a key, and verifying the log chain. The console never
+holds a private key. Scanning a staged model and uploading a signed attestation
+are the console's own actions.
+
 ## Building and running
 
 ```
