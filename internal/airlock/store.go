@@ -27,6 +27,9 @@ import (
 // assume a clean entry.
 type Store struct {
 	Root string
+	// Actor, when set, is recorded on log entries that name none: the
+	// signed-in user, or "local-operator" for the console's loopback API.
+	Actor string
 }
 
 // ErrNotInitialized is returned when a store directory was not created by Init.

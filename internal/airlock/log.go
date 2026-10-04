@@ -30,6 +30,7 @@ type Event struct {
 	Repo    string `json:"repo,omitempty"`
 	SHA256  string `json:"sha256,omitempty"`
 	Detail  string `json:"detail,omitempty"`
+	Actor   string `json:"actor,omitempty"`
 	// Prev is the sha256 of the previous log line, or Genesis for the first.
 	// Empty only on entries written before the log was chained.
 	Prev string `json:"prev,omitempty"`
@@ -60,6 +61,9 @@ const (
 // Record appends one event to the activity log, stamping the time and the
 // default source when they are empty.
 func (s *Store) Record(e Event) error {
+	if e.Actor == "" {
+		e.Actor = s.Actor
+	}
 	if e.TS == "" {
 		e.TS = time.Now().UTC().Format(time.RFC3339Nano)
 	}
@@ -178,9 +182,12 @@ type ChainReport struct {
 
 // Verify walks the chain. A break is reported in the result, not as an
 // error; the error is for a log that cannot be read at all.
-func (s *Store) Verify(opts VerifyOptions) (ChainReport, error) {
+func (s *Store) Verify(opts VerifyOptions) (ChainReport, error) { return VerifyFile(s.LogPath(), opts) }
+
+// VerifyFile walks the hash chain of a log file, such as an exported copy.
+func VerifyFile(path string, opts VerifyOptions) (ChainReport, error) {
 	var r ChainReport
-	f, err := os.Open(s.LogPath())
+	f, err := os.Open(path)
 	if errors.Is(err, os.ErrNotExist) {
 		if opts.ExpectHead != "" {
 			r.Broken, r.Reason = 1, "the log is missing, but a head was recorded"
