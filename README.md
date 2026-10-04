@@ -19,8 +19,9 @@
 Socair inspects a model artifact (a GGUF file, safetensors, a pickle checkpoint,
 or a whole Hugging Face model directory) and produces an **attestation**: a
 graded report a CISO or Head of AI Ops can file, signed so anyone can verify it
-offline. The report answers one question: *is this exact artifact fit to serve
-on our hardware, and what was not tested?*
+offline. The report answers one question: *what was checked in this exact
+artifact, what was found, and what was not tested?* It checks the file, not the
+model's behavior: see what each result means, and the detection ceiling, below.
 
 *Socair* (SUH-ker) is Irish for "at ease, settled, secure".
 

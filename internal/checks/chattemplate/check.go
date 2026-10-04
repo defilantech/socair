@@ -140,7 +140,7 @@ const maxTemplateBytes = 1 << 20
 
 const (
 	resultName     = "Chat template (hero)"
-	resultLooksFor = "Instructions in GGUF metadata that act before user input"
+	resultLooksFor = "Code reach, hidden or obfuscated text, and override or content-triggered instructions in the chat template"
 )
 
 func inspect(template string, allow map[string]struct{}) checks.Result {

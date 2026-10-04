@@ -48,6 +48,10 @@
   th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--line); vertical-align: top; }
   th { font-size: 12px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); }
   td.looks { color: var(--muted); font-size: 13px; }
+  .passmeans { margin-top: 6px; font-size: 12px; color: #444; }
+  dl.assurance { display: grid; grid-template-columns: 11em 1fr; gap: 6px 14px; margin: 0 0 18px; font-size: 14px; }
+  dl.assurance dt { font-weight: 600; }
+  dl.assurance dd { margin: 0; }
   td.evidence { font-size: 13px; color: var(--muted); }
 
   /* Result pills. NOT_TESTED is deliberately neutral, never a pass look. */
@@ -137,7 +141,7 @@
       {{- range .Document.Checks }}
       <tr>
         <td>{{ .Name }}</td>
-        <td class="looks">{{ .LooksFor }}</td>
+        <td class="looks">{{ .LooksFor }}{{ if .PassMeans }}<div class="passmeans"><strong>PASS means:</strong> {{ .PassMeans }}</div>{{ end }}</td>
         <td>
           <span class="pill {{ statusClass .Status }}">{{ .Status }}</span>
           {{- if isNotTested .Status }}<span class="tag">not tested</span>{{ end }}
@@ -148,6 +152,16 @@
       {{- end }}
     </tbody>
   </table>
+
+  {{- with .Document.AssuranceLevel }}{{ if .Definition }}
+  <h2>Assurance level: {{ .Awarded }}</h2>
+  <dl class="assurance">
+    <dt>What it is</dt><dd>{{ .Definition }}</dd>
+    <dt>What it means</dt><dd>{{ .DoesMean }}</dd>
+    <dt>What it does not mean</dt><dd>{{ .DoesNotMean }}</dd>
+    {{- if .Tier2Note }}<dt>Tier 2</dt><dd>{{ .Tier2Note }}</dd>{{ end }}
+  </dl>
+  {{- end }}{{ end }}
 
   <h2>Bounded statement</h2>
   <p class="bounded">{{ .Document.BoundedStatement }}</p>

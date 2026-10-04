@@ -15,6 +15,8 @@ export interface CheckResult {
 	status: CheckStatus;
 	evidence?: string;
 	notes?: string;
+	/** Fixed statement of what this check's PASS establishes, and where it stops. */
+	pass_means?: string;
 }
 
 export interface PromotionAuthorization {

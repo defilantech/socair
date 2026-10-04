@@ -220,7 +220,8 @@ func begin(start time.Time, id report.Identity, original string, sig *provenance
 	}
 	d.Header.RescanDue = rescanDue
 	d.Header.ArtifactShort = id.Name
-	d.Header.AssuranceLevelAwarded = "Tier 1 (static)"
+	d.AssuranceLevel = report.Tier1Assurance()
+	d.Header.AssuranceLevelAwarded = d.AssuranceLevel.Awarded
 	d.Scope.CheckSetVersion = CheckSetVersion
 	d.Scope.ScanStartUTC = start.Format(time.RFC3339)
 	d.Scope.ToolVersions = "socair " + Version
@@ -383,11 +384,12 @@ func applyResults(d *report.Document, results []checks.Result) {
 	d.Checks = make([]report.CheckResult, 0, len(results))
 	for _, res := range results {
 		d.Checks = append(d.Checks, report.CheckResult{
-			Name:     res.Name,
-			LooksFor: res.LooksFor,
-			Status:   report.Status(res.Status),
-			Evidence: evidence(res),
-			Notes:    res.Notes,
+			Name:      res.Name,
+			LooksFor:  res.LooksFor,
+			Status:    report.Status(res.Status),
+			Evidence:  evidence(res),
+			Notes:     res.Notes,
+			PassMeans: report.PassMeaning(res.Name),
 		})
 	}
 }

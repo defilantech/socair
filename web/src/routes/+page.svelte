@@ -147,7 +147,10 @@
 						{#each d.checks as check (check.name)}
 							<tr>
 								<td class="check">{check.name}</td>
-								<td class="evidence">{check.looks_for}</td>
+								<td class="evidence">
+									{check.looks_for}
+									{#if check.pass_means}<div class="pass-means"><strong>PASS means:</strong> {check.pass_means}</div>{/if}
+								</td>
 								<td><span class="pill {statusPill(check.status)}">{check.status}</span></td>
 								<td class="notes">{check.notes ?? ''}</td>
 							</tr>

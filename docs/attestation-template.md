@@ -71,10 +71,12 @@ canonical manifest of those hashes (`socair.modeldir/v1`, see
 
 Each row returns PASS, FAIL, LEAD, or NOT_TESTED. FAIL is positive evidence. LEAD is a suspicious signal that is not conclusive, such as instruction-override language in a chat template; it is not a gap, so a named acceptance never clears it, only escalated review. An ambiguous or unverifiable result is recorded as NOT_TESTED with a named reason, never as a silent pass.
 
+Every row also carries a fixed **PASS means** line (`pass_means`): what that check's PASS establishes and where it stops, for example that the tokenizer check tests internal consistency and does not compare against a canonical copy. The wording is fixed per check (`report.PassMeaning`), never per artifact.
+
 | Check | Looks for | Result | Evidence | Notes |
-|---|---|---|---|
+|---|---|---|---|---|
 | Format and structure | Malformed GGUF/safetensors structure, unexpected tensors | `[result]` | `[evidence]` | `[notes]` |
-| Chat template (hero) | Instructions in GGUF metadata that act before user input | `[result]` | `[evidence]` | `[notes]` |
+| Chat template (hero) | Code reach, hidden or obfuscated text, and override or content-triggered instructions in the chat template | `[result]` | `[evidence]` | `[notes]` |
 | Tokenizer config | Tokenizer metadata anomalies | `[result]` | `[evidence]` | `[notes]` |
 | Safetensors header and opcodes | Serialized code gadgets in headers or pickle opcodes | `[result]` | `[evidence]` | `[notes]` |
 | Hash, provenance, lineage | Traceable origin: a manifest bound to this hash, from an immutable upstream commit | `[result]` | `[evidence]` | `[notes]` |
@@ -100,6 +102,8 @@ Each row returns PASS, FAIL, LEAD, or NOT_TESTED. FAIL is positive evidence. LEA
 
 ## 6. Assurance level
 
+The wording for each level is fixed (`report.Tier1Assurance` for Tier 1), like the bounded statement. Tier 1 states that it is not an assessment of the model's behavior or safety.
+
 Awarded level: `[assurance_level]`
 
 Definition: `[level_definition]`
@@ -118,11 +122,17 @@ What Tier 2 would add, and whether it ran: `[tier2_note]`
 
 This attestation does not certify the absence of unknown backdoors. Within the named scope, it reports what was examined and what was not. The following are outside the scope of every level below Tier 2 on the production class:
 
-- Unknown triggers outside our probe library.
-- Differential behavior across serving stacks (backdoors that are dormant on one platform and live on another), unless Tier 2 ran on the production node class.
-- Sleeper or polymorphic behavior that needs more inference budget than we run.
-- Artifact formats we do not parse.
+- Backdoors, trojans, or poisoning in the model weights. Tier 1 reads the weights' layout, never their behavior.
+- Triggered, sleeper, or polymorphic behavior. Tier 1 runs no inference.
+- Behavior that appears only after quantization, or only on particular hardware or serving stacks, unless Tier 2 ran on the production node class.
+- Behavioral safety: jailbreak susceptibility, harmful capability, and bias.
 - Malicious behavior that only emerges at runtime under real traffic.
+- Artifact formats we do not parse.
+- Pickle code execution reached only through imports on the reviewed safe list.
+- Chat-template instructions written as ordinary guidance (no override or concealment phrase, URL, hidden or obfuscated text, or condition on message content), unless the template matches a reviewed template.
+- License and usage-policy compliance.
+
+The same list is `docs/detection-ceiling.json` and `report.DefaultCeiling()`; a test holds them equal.
 
 Formats not parsed for this artifact: `[unparsed_formats]`
 

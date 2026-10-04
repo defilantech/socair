@@ -83,6 +83,27 @@ func RenderPDF(w io.Writer, d *report.Document) error {
 	checksTable(pdf, d)
 	pdf.Ln(4)
 
+	if al := d.AssuranceLevel; al.Definition != "" {
+		heading(pdf, "Assurance level: "+al.Awarded)
+		for _, row := range [][2]string{
+			{"What it is", al.Definition},
+			{"What it means", al.DoesMean},
+			{"What it does not mean", al.DoesNotMean},
+			{"Tier 2", al.Tier2Note},
+		} {
+			if row[1] == "" {
+				continue
+			}
+			pdf.SetFont("Helvetica", "B", 9)
+			pdf.SetTextColor(ink.r, ink.g, ink.b)
+			pdf.MultiCell(contentW, lineH, row[0], "", "L", false)
+			pdf.SetFont("Helvetica", "", 9)
+			pdf.SetTextColor(muted.r, muted.g, muted.b)
+			pdf.MultiCell(contentW, lineH, row[1], "", "L", false)
+		}
+		pdf.Ln(4)
+	}
+
 	heading(pdf, "Bounded statement")
 	pdf.SetFont("Helvetica", "I", 10)
 	pdf.SetTextColor(ink.r, ink.g, ink.b)
@@ -311,7 +332,11 @@ func checksTable(pdf *fpdf.Fpdf, d *report.Document) {
 		if evidence == "" {
 			evidence = c.Notes
 		}
-		cells := []string{c.Name, c.LooksFor, string(c.Status), evidence}
+		looks := c.LooksFor
+		if c.PassMeans != "" {
+			looks += "\nPASS means: " + c.PassMeans
+		}
+		cells := []string{c.Name, looks, string(c.Status), evidence}
 		bg, txt := statusColors(c.Status)
 		drawRow(pdf, cells, func(i int) rgb {
 			if i == 2 {

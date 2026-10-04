@@ -101,7 +101,7 @@ files.
 
 A verified signature proves the files are the ones the key holder signed. It
 is a statement of origin and integrity, never of safety: the other rows still
-decide whether the model is fit to serve. Files the signer excluded with
+decide whether it is promoted. Files the signer excluded with
 `ignore_paths` (`.gitattributes` and the like by default) are named as not
 covered.
 
