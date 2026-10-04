@@ -242,5 +242,7 @@ SOCAIR_TEST_EGRESS=1 go test ./internal/airlock -run RealEgress -v
 - A pull verifies the artifact hash, not a publisher signature.
 - An operator signature says the operator ran the checks and stands behind the
   report. It is not a Defilan signature; that is the paid tier (#22).
-- The clean store is a directory of bytes and attestations. It is not yet an
-  admission gate for a serving stack; that is the v2 webhook.
+- The clean store is a directory of bytes and attestations, not an admission
+  gate for a serving stack. On Kubernetes, LLMKube's gate refuses to serve a
+  model without an admitted attestation. For the end-to-end deployment, see
+  [intake-host.md](intake-host.md).
