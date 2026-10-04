@@ -119,7 +119,7 @@ Usage:
   socair corpus <dir>      sweep every GGUF under a directory, headers only
   socair template <path>   print the chat template and hero-check findings
   socair render <path>     scan and write the HTML attestation to stdout
-  socair key gen --out <prefix>   create an Ed25519 signing key pair
+  socair key gen --out <prefix> [--issuer <name>]   create an Ed25519 signing key pair
   socair sign --key <key> --report <report.json>   sign a report as a DSSE attestation
   socair feed sign <dir> --key <key> --issuer <name> --version <v> --expires <time>
                            sign a reference-data feed (denylist, templates, tokenizers)

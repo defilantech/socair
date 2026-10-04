@@ -173,3 +173,45 @@ func TestTrustListsAreDisjoint(t *testing.T) {
 		t.Error("a signing key must not also become an acceptor key")
 	}
 }
+
+// The store names the keys it trusts; promote refuses an attestation whose
+// claimed issuer contradicts that name, and logs a confirmed issuer.
+func TestPromoteChecksTheIssuer(t *testing.T) {
+	artifact, d := authorizedArtifact(t)
+	prefix := filepath.Join(t.TempDir(), "imposter")
+	if _, err := attest.GenerateNamedKey(prefix, "Defilan Technologies"); err != nil {
+		t.Fatal(err)
+	}
+	k, err := attest.LoadPrivateKey(prefix + ".key")
+	if err != nil {
+		t.Fatal(err)
+	}
+	env, err := attest.Sign(*d, k)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ticket := filepath.Join(t.TempDir(), "a.dsse.json")
+	if err := os.WriteFile(ticket, env, 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	s, err := Init(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.TrustAs(prefix+".pub", "Acme ML Platform"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Promote(s, artifact, ticket); !errors.Is(err, ErrRefused) || !strings.Contains(err.Error(), "Acme ML Platform") {
+		t.Fatalf("an issuer claim contradicting the store must be refused, got %v", err)
+	}
+
+	s2, _ := Init(t.TempDir())
+	if _, err := s2.TrustAs(prefix+".pub", ""); err != nil {
+		t.Fatal(err)
+	}
+	e, err := Promote(s2, artifact, ticket)
+	if err != nil || !strings.Contains(e.Detail, "issued by Defilan Technologies") {
+		t.Fatalf("the store took the key's own name, so it is confirmed: %v %q", err, e.Detail)
+	}
+}

@@ -117,6 +117,11 @@ func Sign(d report.Document, k *PrivateKey) ([]byte, error) {
 	d.Verification.SigningMethod = SigningMethod
 	d.Verification.SignerKeyID = k.ID
 	d.Header.SignerKeyID = k.ID
+	// The issuer is whoever holds the signing key, as its file names them.
+	// The signature covers this claim; a verifier confirms it against its
+	// own name for the key (Verified.Issuer).
+	d.Issuer.SignedBy = IssuerLabel(k.Issuer, k.ID)
+	d.Issuer.Authority = d.Issuer.SignedBy
 	h, err := DocumentHash(d)
 	if err != nil {
 		return nil, err
@@ -182,4 +187,36 @@ func Verify(envelope []byte, trusted Keyring) (*Verified, error) {
 		return nil, verifyErr("document does not validate: %v", problems)
 	}
 	return &Verified{Document: d, KeyID: a.KeyID, SHA256: a.SHA256}, nil
+}
+
+// IssuerLabel names an issuer for a report: the key's declared name, or, for
+// a key that declares none, its id.
+func IssuerLabel(name, keyID string) string {
+	if name != "" {
+		return name
+	}
+	return "unnamed issuer (key " + ShortID(keyID) + ")"
+}
+
+// ErrIssuer marks an attestation whose claimed issuer is not who the
+// verifier's trust list says holds the key.
+var ErrIssuer = errors.New("attestation issuer does not match the trusted key")
+
+// Issuer resolves who issued a verified attestation, against the names the
+// verifier's trust list gives its keys. When the trust list names the
+// signing key, the attestation's claimed issuer must be that name, and the
+// result is confirmed; a different claim is ErrIssuer. When it does not, the
+// claim is returned unconfirmed: a key can call itself anything.
+func (v *Verified) Issuer(names Names) (name string, confirmed bool, err error) {
+	claimed := v.Document.Issuer.SignedBy
+	if trusted, ok := names[v.KeyID]; ok && trusted != "" {
+		if claimed != trusted {
+			return "", false, fmt.Errorf("%w: it claims %q, but key %s is %q in the trust list", ErrIssuer, claimed, ShortID(v.KeyID), trusted)
+		}
+		return trusted, true, nil
+	}
+	if claimed == "" {
+		claimed = IssuerLabel("", v.KeyID)
+	}
+	return claimed, false, nil
 }

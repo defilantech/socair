@@ -55,13 +55,23 @@ func Promote(s *Store, artifactPath, envelopePath string) (Event, error) {
 		return e, fmt.Errorf("%w: %s", ErrRefused, reason)
 	}
 
-	ring, err := s.TrustedKeys()
+	ring, names, err := s.TrustedIssuers()
 	if err != nil {
 		return refuse(err.Error())
 	}
 	v, err := attest.Verify(envelope, ring)
 	if err != nil {
 		return refuse(err.Error())
+	}
+	// Who issued it: the store's name for the key, and the attestation must
+	// not claim otherwise.
+	issuer, confirmed, err := v.Issuer(names)
+	if err != nil {
+		return refuse(err.Error())
+	}
+	issuerNote := "issued by " + issuer
+	if !confirmed {
+		issuerNote += " (claimed; the store does not name this key)"
 	}
 	d := v.Document
 	sha = normalizeSHA(v.SHA256)
@@ -97,7 +107,7 @@ func Promote(s *Store, artifactPath, envelopePath string) (Event, error) {
 	pa := d.PromotionAuthorization
 	conditional := pa.State == report.StateAuthorizedWithConditions
 	outcome := OutcomeOK
-	detail := "clean attestation signed by " + attest.ShortID(v.KeyID)
+	detail := "clean attestation " + issuerNote + ", signed by " + attest.ShortID(v.KeyID)
 	if conditional {
 		// An acceptance covers its gaps only until it expires. Verify has
 		// already required an RFC 3339 expiry; a lapsed one is refused, and
@@ -122,8 +132,8 @@ func Promote(s *Store, artifactPath, envelopePath string) (Event, error) {
 			return refuse("the conditional attestation's acceptance does not hold: " + err.Error())
 		}
 		outcome = OutcomeConditional
-		detail = fmt.Sprintf("authorized with conditions accepted by %s (signed acceptance, acceptor key %s) on %d surface(s) until %s, attestation signed by %s",
-			acc.AcceptedBy, attest.ShortID(acc.KeyID), len(pa.AcceptedSurfaces), exp.UTC().Format(time.RFC3339), attest.ShortID(v.KeyID))
+		detail = fmt.Sprintf("authorized with conditions accepted by %s (signed acceptance, acceptor key %s) on %d surface(s) until %s, attestation %s, signed by %s",
+			acc.AcceptedBy, attest.ShortID(acc.KeyID), len(pa.AcceptedSurfaces), exp.UTC().Format(time.RFC3339), issuerNote, attest.ShortID(v.KeyID))
 	}
 	if already, _ := sameBytes(filepath.Join(clean, attestationEnvelope), envelope); already {
 		detail += "; already promoted"

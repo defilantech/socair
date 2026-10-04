@@ -19,20 +19,30 @@ import (
 
 // keyCmd manages operator signing keys.
 func keyCmd(args []string) error {
+	const usage = "usage: socair key gen --out <prefix> [--issuer <name>]   (writes <prefix>.key and <prefix>.pub)"
 	if len(args) == 0 || args[0] != "gen" {
-		return errors.New("usage: socair key gen --out <prefix>   (writes <prefix>.key and <prefix>.pub)")
+		return errors.New(usage)
 	}
 	fs := parseFlags(args[1:])
 	prefix := fs.val("out")
 	if prefix == "" {
-		return errors.New("usage: socair key gen --out <prefix>")
+		return errors.New(usage)
 	}
-	id, err := attest.GenerateKey(prefix)
+	issuer := fs.val("issuer")
+	if issuer == "true" {
+		return errors.New(usage)
+	}
+	id, err := attest.GenerateNamedKey(prefix, issuer)
 	if err != nil {
 		return err
 	}
 	fmt.Printf("key id %s\n  private: %s.key (keep it secret; mode 0600)\n  public:  %s.pub (share it; add it to a store with `socair airlock trust add`)\n",
 		id, prefix, prefix)
+	if issuer != "" {
+		fmt.Printf("  issuer:  %s (reports signed with this key name it as their issuer)\n", issuer)
+	} else {
+		fmt.Println("  no issuer name: reports signed with it name the key id; pass --issuer to name who signs")
+	}
 	return nil
 }
 
@@ -88,18 +98,23 @@ func verifyCmd(args []string) error {
 		return err
 	}
 	var ring attest.Keyring
+	var names attest.Names
 	if t := fs.val("trusted"); t != "" {
-		ring, err = attest.LoadKeyring(t)
+		ring, names, err = attest.LoadNamedKeyring(t)
 	} else {
 		var s *airlock.Store
 		if s, err = airlock.Open(fs.val("store")); err == nil {
-			ring, err = s.TrustedKeys()
+			ring, names, err = s.TrustedIssuers()
 		}
 	}
 	if err != nil {
 		return err
 	}
 	v, err := attest.Verify(env, ring)
+	if err != nil {
+		return err
+	}
+	issuer, confirmed, err := v.Issuer(names)
 	if err != nil {
 		return err
 	}
@@ -130,8 +145,12 @@ func verifyCmd(args []string) error {
 		}
 	}
 	d := v.Document
-	fmt.Printf("verified: signed by %s\n  artifact %s (%s)\n  promotion %s, %d check(s), document %s\n",
-		v.KeyID, v.SHA256, d.Artifact.FileName, d.PromotionAuthorization.State, len(d.Checks), d.Verification.DocumentHash)
+	how := "confirmed: your trust list names this key"
+	if !confirmed {
+		how = "claimed: your trust list does not name this key"
+	}
+	fmt.Printf("verified: issued by %s (%s)\n  signed by key %s\n  artifact %s (%s)\n  promotion %s, %d check(s), document %s\n",
+		issuer, how, v.KeyID, v.SHA256, d.Artifact.FileName, d.PromotionAuthorization.State, len(d.Checks), d.Verification.DocumentHash)
 	if pa := d.PromotionAuthorization; pa.State == report.StateAuthorizedWithConditions {
 		switch {
 		case !pa.Signed():

@@ -152,7 +152,7 @@ func airlockPromote(args []string) error {
 }
 
 func airlockTrust(args []string) error {
-	const usage = "usage: socair airlock trust add [--acceptor] <key.pub> [--store <path>]"
+	const usage = "usage: socair airlock trust add [--acceptor] <key.pub> [--name <issuer>] [--store <path>]"
 	if len(args) == 0 || args[0] != "add" {
 		return errors.New(usage)
 	}
@@ -178,11 +178,19 @@ func airlockTrust(args []string) error {
 		fmt.Printf("store %s now honours acceptances signed by key %s\n", s.Root, id)
 		return nil
 	}
-	id, err := s.Trust(fs.pos[0])
+	name := fs.val("name")
+	if name == "true" {
+		return errors.New(usage)
+	}
+	id, err := s.TrustAs(fs.pos[0], name)
 	if err != nil {
 		return err
 	}
-	fmt.Printf("store %s now trusts signing key %s\n", s.Root, id)
+	if _, names, err := s.TrustedIssuers(); err == nil && names[id] != "" {
+		fmt.Printf("store %s now trusts signing key %s as issuer %q\n", s.Root, id, names[id])
+	} else {
+		fmt.Printf("store %s now trusts signing key %s (unnamed: attestations it signs show their issuer as claimed; pass --name to name it)\n", s.Root, id)
+	}
 	return nil
 }
 

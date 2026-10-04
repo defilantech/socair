@@ -220,6 +220,9 @@ type Appendices struct {
 	Glossary         string `json:"glossary,omitempty"`
 }
 
+// Unissued is the issuer of a report no key has signed.
+const Unissued = "Unsigned: no issuer has signed this report"
+
 func splitLabel(m *gguf.Manifest) string {
 	if !m.MultiPart() {
 		return ""
@@ -296,11 +299,14 @@ func NewFromIdentity(id Identity) *Document {
 			NotRun:              Tier2NotRun(),
 		},
 		Verification: Verification{
-			SigningMethod:  "unsigned (OSS tier)",
+			SigningMethod:  "unsigned",
 			ArtifactSHA256: id.SHA256,
 		},
+		// No one has issued a report until a key signs it; signing names
+		// the issuer (attest.Sign). Socair is the tool, not the issuer.
 		Issuer: Issuer{
-			Authority: "Defilan Technologies",
+			Authority: Unissued,
+			Excludes:  "No absence guarantee. See the bounded statement and out-of-scope ceiling.",
 		},
 		// A freshly seeded document has run no checks, so promotion is withheld
 		// until the engine evaluates it.

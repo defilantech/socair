@@ -150,13 +150,24 @@ Ed25519: subject the artifact's SHA-256, predicate type
 offline; there is no transparency log or certificate authority to reach.
 
 ```
-socair key gen --out operator                        # operator.key (0600), operator.pub
+socair key gen --out operator --issuer "Acme ML Platform"   # operator.key (0600), operator.pub
 socair scan model.gguf > report.json
 socair sign --key operator.key --report report.json  # report.dsse.json
 socair verify report.dsse.json --trusted operator.pub --artifact model.gguf
-socair airlock trust add operator.pub
+socair airlock trust add operator.pub [--name "Acme ML Platform"]
 socair airlock promote model.gguf --attestation report.dsse.json
 ```
+
+**Who issued it.** The issuer is whoever signs. `key gen --issuer` records a
+name in the key files, on a `Socair-Issuer:` line outside the PEM block, which
+PEM parsers (OpenSSL included) ignore. `sign` writes that name into the
+report's `issuer` section, under the signature. The trusted copy of a key in
+`trusted-keys/` carries the *store's* name for it. `trust add` keeps the key
+file's name, or `--name` sets your own. `promote` and `verify` refuse an
+attestation whose claimed issuer contradicts that name, and log or show the
+issuer as confirmed. A key the store has not named shows its issuer as
+"claimed": anyone can name a key "Defilan Technologies", so when you trust a
+key, check the name it carries.
 
 `promote` checks, in order: a signature by a key in `trusted-keys/` over the
 DSSE encoding; the statement and predicate types; that the subject digest is
