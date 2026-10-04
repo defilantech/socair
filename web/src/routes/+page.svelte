@@ -150,8 +150,12 @@
 								<td class="evidence">
 									{check.looks_for}
 									{#if check.pass_means}<div class="pass-means"><strong>PASS means:</strong> {check.pass_means}</div>{/if}
+									{#if check.maps_to?.length}<div class="maps">Addresses {check.maps_to.map((m) => m.id).join(' · ')}</div>{/if}
 								</td>
-								<td><span class="pill {statusPill(check.status)}">{check.status}</span></td>
+								<td>
+									<span class="pill {statusPill(check.status)}">{check.status}</span>
+									{#if check.severity}<span class="severity">{check.severity}</span>{/if}
+								</td>
 								<td class="notes">{check.notes ?? ''}</td>
 							</tr>
 						{/each}

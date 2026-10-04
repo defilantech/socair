@@ -86,6 +86,28 @@ Every row also carries a fixed **PASS means** line (`pass_means`): what that che
 | Forward-pass trigger probes (Tier 2) | Behavior under the production serving stack | `[result / not run]` | `[evidence]` | `[notes]` |
 | Serving-stack differential (Tier 2) | Same artifact behaving differently across stacks | `[result / not run]` | `[evidence]` | `[notes]` |
 
+### Severity and framework mapping
+
+A FAIL or LEAD row carries a **severity** (`critical`, `high`, `medium`, `low`), the highest of its findings' patterns, fixed per pattern in `report.patternSeverity`. It is for triage: any FAIL or LEAD withholds promotion whatever its severity. Code a loader or template would execute, and a known-bad hash, are critical. Positive evidence of tampering is high. A suspicious or inconsistent signal is medium. A mislabelled quantization is low.
+
+Every row names what it **addresses** (`maps_to`), against MITRE ATLAS 5.6.0 and the OWASP Top 10 for LLM Applications 2025. A mapping is a claim about what the check inspects, never the wider threat:
+
+| Check | MITRE ATLAS | OWASP LLM |
+|---|---|---|
+| Format and structure | AML.T0010.003 | LLM03 |
+| File inventory and payloads | AML.T0011.000, AML.T0010.003 | LLM03 |
+| Chat template (hero) | AML.T0051, AML.T0011.000 | LLM01, LLM03 |
+| Tokenizer config | AML.T0010.003 | LLM03 |
+| Quant match | AML.T0010.003 | LLM03 |
+| Pickle opcode scan | AML.T0011.000, AML.T0010.003 | LLM03 |
+| Remote code | AML.T0011.000, AML.T0010.001 | LLM03 |
+| Hash, provenance, lineage | AML.T0010.003, AML.T0058 | LLM03 |
+| Known-bad hash match | AML.T0058, AML.T0010.003 | LLM03 |
+
+The SARIF output carries both: each rule's `security-severity` (critical 9.5, high 8.0, medium 5.5, low 3.0) and tags such as `external/atlas/AML.T0011.000` and `external/owasp-llm/LLM03`.
+
+No Tier 1 check addresses AML.T0018 (Manipulate AI Model) or LLM04 (Data and Model Poisoning): Tier 1 reads no weights for behavior. Those stay on the detection ceiling.
+
 ## 5. Results and findings
 
 - FAIL entries: what, where, evidence, and why it matters, in plain language.

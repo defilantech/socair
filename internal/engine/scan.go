@@ -391,8 +391,18 @@ func applyResults(d *report.Document, results []checks.Result) {
 			Evidence:  evidence(res),
 			Notes:     res.Notes,
 			PassMeans: report.PassMeaning(res.Name),
+			Severity:  report.RowSeverity(report.Status(res.Status), patterns(res.Findings)),
+			MapsTo:    report.MapsTo(res.Name),
 		})
 	}
+}
+
+func patterns(fs []checks.Finding) []string {
+	out := make([]string, 0, len(fs))
+	for _, f := range fs {
+		out = append(out, f.Pattern)
+	}
+	return out
 }
 
 func evidence(res checks.Result) string {
