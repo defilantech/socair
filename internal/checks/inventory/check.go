@@ -121,6 +121,7 @@ func Inspect(path string, opts Options) checks.Result {
 
 	var values []string
 	var invNote string
+	truncated := false
 	switch {
 	case safetensors.IsSafetensors(path):
 		sm, err := safetensors.ReadHeader(path)
@@ -144,11 +145,10 @@ func Inspect(path string, opts Options) checks.Result {
 			}
 			return r
 		}
-		values = inv.Strings
-		invNote = fmt.Sprintf("artifact: %d metadata keys, %d string bytes", len(inv.Keys), inv.TotalStrings)
-		if inv.Truncated {
-			invNote += " (inventory truncated at the cap)"
-		}
+		values = append(inv.Strings, inv.ArrayStrings...)
+		invNote = fmt.Sprintf("artifact: %d metadata keys, %d string bytes, %d string-array elements (%d of %d+ bytes scanned)",
+			len(inv.Keys), inv.TotalStrings, inv.ArrayElements, len(inv.ArrayStrings), gguf.ArrayScanMin)
+		truncated = inv.Truncated
 	}
 
 	for _, s := range values {
@@ -176,6 +176,14 @@ func Inspect(path string, opts Options) checks.Result {
 	if len(r.Findings) > 0 {
 		r.Status = checks.Fail
 		r.Notes = fmt.Sprintf("%d embedded payload indicator(s) in artifact metadata (%s)", len(r.Findings), invNote)
+		return r
+	}
+
+	// A FAIL above stands on its evidence; without one, an inventory cut off
+	// at a cap did not see every value, so it cannot pass.
+	if truncated {
+		r.Status = checks.NotTested
+		r.Notes = invNote + ". The metadata inventory reached its cap, so some values were not scanned."
 		return r
 	}
 
