@@ -28,8 +28,10 @@ import (
 // CheckSetVersion names the set of checks this engine runs.
 const CheckSetVersion = "tier1/0.1"
 
-// Version is the engine version, set by the CLI build.
-var Version = "0.1.0-dev"
+// Version is the socair version: "dev" in a source build, the release tag
+// in a release build (scripts/build-release.sh sets it with -ldflags -X).
+// Reports record it in scope.tool_versions.
+var Version = "dev"
 
 // Mode selects how much of the artifact a scan reads.
 type Mode int

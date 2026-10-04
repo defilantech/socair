@@ -86,13 +86,12 @@ Run on a machine that has never seen the repo, after it is public:
   `docs/airlock.md` describes.
 - [ ] `socair serve --web web/build` serves the wizard after `npm ci && npm run
   build` in `web/`.
-- [ ] **The version string.** `engine.Version` is the constant `0.1.0-dev`.
-  Set it for the release (an `-ldflags -X` in a release build, or bump the
-  constant). It is printed in every report's `tool_versions`.
-- [ ] **Release artifacts.** There is no release workflow. Decide between
-  source-only and signed binaries with checksums. Binaries for a security tool
-  should ship with their own provenance (a SLSA attestation or a Sigstore
-  bundle). *Owner.*
+- [x] **The version string.** Set from the tag at build time
+  (`engine.Version`, `-ldflags -X`); source builds say `dev` (#124).
+- [x] **Release artifacts.** A tag builds reproducible binaries for linux and
+  darwin, amd64 and arm64, with `SHA256SUMS` and SLSA build-provenance
+  attestations, into a draft release (#124; `docs/releasing.md`,
+  `docs/verify-release.md`).
 
 ## 5. Public-repository settings (on the flip)
 

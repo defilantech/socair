@@ -6,10 +6,9 @@ package main
 
 import (
 	"fmt"
+	"github.com/defilantech/socair/internal/engine"
 	"os"
 )
-
-const version = "0.1.0-dev"
 
 func main() {
 	if len(os.Args) < 2 {
@@ -18,7 +17,7 @@ func main() {
 	}
 	switch os.Args[1] {
 	case "version":
-		fmt.Printf("socair %s\n", version)
+		fmt.Printf("socair %s\n", engine.Version)
 	case "inspect":
 		if len(os.Args) < 3 {
 			fmt.Fprintln(os.Stderr, "usage: socair inspect <path>")
