@@ -17,6 +17,8 @@ approved, and what each model waits for. Pages:
   clean entry whose acceptance expired or that does not verify is listed here
   too, in red.
 - `/pending`: staged models, grouped by stage, each with the step it waits for.
+  A promoted model leaves it once approved. Pulling stays a CLI step
+  (`socair airlock pull`); the empty pages say so.
 - `/models/<id>`: one model's report, evidence files, conditions, and log
   entries.
 - `/activity`: the activity log.

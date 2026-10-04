@@ -112,8 +112,7 @@ The wizard keeps its scan page. With a store configured it adds a top nav:
    - "authorized with conditions" is amber, never green;
    - `does-not-verify` is red.
 2. **Pending.** Staging grouped by stage, each with its next step as a button
-   or a copyable command. Includes a **Bring in a model** form (repo and a
-   pinned commit) that calls the existing pull endpoint.
+   or a copyable command. An empty Pending points at `socair airlock pull`.
 3. **Model detail.** Shows:
    - the rendered report, with rows, severity, "PASS means" lines, framework
      mappings and the ceiling;
@@ -263,6 +262,24 @@ of truth.
 - **`export` refuses a non-empty `--out`,** and a store whose log chain is broken.
 - **A clean entry that fails the gate shows as `does-not-verify`,** whatever the
   reason.
+- **Pulling stays a CLI step in Step 1.** There is no "Bring in a model" form;
+  a model (one file or a whole repo) is staged with `socair airlock pull`, and the empty
+  Pending and Approved pages say so.
+- **A promoted model leaves Pending.** Promote keeps the staged copy (the gate
+  path never deletes), so `Models` omits a staging entry whose id is approved in
+  clean. It stays listed when the clean entry's acceptance expired or it does
+  not verify, as the way to re-scan or re-accept. The console's scan and upload
+  act on the staged copy directly (`Store.StagedModel`), never the clean entry,
+  and are a 404 when nothing is staged under the id. A staged envelope that
+  does not verify offers a rescan, whose newer `report.json` supersedes it.
+- **An artifact may not take an evidence name in staging.** A single-file pull
+  is staged flat beside `report.json` and the attestations, so `StagingFile`
+  and `Pull` refuse a file named like evidence (`airlock.IsEvidence`).
+  `PullRepo` stages the repo nested under its name, so only the repo name is
+  checked; a file inside the repo cannot collide.
+- **`inventory verify` checks the readable `attestation.json`.** When present
+  it must strictly decode as a report and equal the verified envelope's
+  document, so the plain file in a snapshot says what was signed.
 
 ## Docs to update
 

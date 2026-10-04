@@ -43,7 +43,7 @@
 	{:else if list === null}
 		<p class="hint">Reading the store.</p>
 	{:else if list.length === 0}
-		<p>No approved models. Bring one in from <a href="/pending">Pending</a>.</p>
+		<p>No approved models. Pull one into staging with <code>socair airlock pull</code>, then scan, sign, and promote it from <a href="/pending">Pending</a>.</p>
 	{:else}
 		<table>
 			<thead><tr><th>Model</th><th>State</th><th>Issuer</th><th>Accepted gaps</th><th>Promoted</th></tr></thead>
@@ -63,9 +63,9 @@
 
 	<h2>Share a snapshot</h2>
 	<p class="hint">
-		An unsigned snapshot for a quick look. For leadership or an auditor, export a signed one:
+		An unsigned snapshot for a quick look. For leadership or an auditor, export a signed one with the operator key (STORE is this store's path):
 	</p>
-	<pre class="cmd">socair airlock export --out snapshot --key operator.key</pre>
+	<pre class="cmd">socair airlock export --store STORE --out snapshot --key OPERATOR_KEY</pre>
 	<div class="actions"><button type="button" onclick={onExport} disabled={exporting}>{exporting ? 'Exporting...' : 'Download unsigned snapshot'}</button></div>
 	{#if exportError}<div class="state failed"><p class="error-title">The snapshot could not be exported</p><p>{exportError}</p></div>{/if}
 </div>
