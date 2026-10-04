@@ -146,3 +146,18 @@ func TestDetectorSeparatesCleanFromStructural(t *testing.T) {
 		t.Fatalf("structural escape = %s, want FAIL", got)
 	}
 }
+
+// TestFilterBlockIsAnalysed: a filter block now parses, so its body and its
+// filter are analysed like any other code. Before #137 such a template was an
+// unreadable LEAD; now code inside it is a FAIL with evidence.
+func TestFilterBlockIsAnalysed(t *testing.T) {
+	for tpl, want := range map[string]checks.Status{
+		"{% filter trim %}{{ ''.__class__ }}{% endfilter %}":           checks.Fail,
+		"{% filter attr('__globals__') %}x{% endfilter %}":             checks.Fail,
+		"{% filter trim %}You are a helpful assistant.{% endfilter %}": checks.Pass,
+	} {
+		if got := Inspect(tpl).Status; got != want {
+			t.Errorf("%q = %s, want %s", tpl, got, want)
+		}
+	}
+}

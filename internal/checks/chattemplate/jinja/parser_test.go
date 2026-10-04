@@ -138,3 +138,40 @@ func FuzzParse(f *testing.F) {
 		_, _ = Parse(s)
 	})
 }
+
+// TestParseFilterBlock: {% filter name %} takes its first filter without a
+// pipe, as Jinja writes it (firefunction-v2 uses {% filter trim %}). The
+// parser used to demand a leading pipe, so real filter blocks did not parse.
+func TestParseFilterBlock(t *testing.T) {
+	cases := map[string][]string{
+		"{% filter trim %} x {% endfilter %}":                        {"trim"},
+		"{% filter replace('a', 'b') %}a{% endfilter %}":             {"replace"},
+		"{% filter trim | upper %}x{% endfilter %}":                  {"trim", "upper"},
+		"{% set s %}{% filter trim %} y {% endfilter %}{% endset %}": nil,
+	}
+	for src, want := range cases {
+		nodes := mustParse(t, src)
+		if want == nil {
+			continue
+		}
+		fb, ok := nodes[0].(FilterBlock)
+		if !ok {
+			t.Fatalf("%q: got %T, want FilterBlock", src, nodes[0])
+		}
+		var got []string
+		for x := fb.Filter; ; {
+			f, ok := x.(Filter)
+			if !ok {
+				break
+			}
+			got = append([]string{f.Name}, got...)
+			x = f.X
+		}
+		if !reflect.DeepEqual(got, want) {
+			t.Errorf("%q: filters %v, want %v", src, got, want)
+		}
+	}
+	if _, err := Parse("{% filter %}x{% endfilter %}"); err == nil {
+		t.Error("a filter block with no filter name must not parse")
+	}
+}
