@@ -13,8 +13,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
+	"regexp"
+	"slices"
 	"time"
 
 	"github.com/defilantech/socair/internal/airlock"
@@ -102,21 +105,39 @@ type VerifyOptions struct {
 	AllowUnsigned bool
 }
 
+// Verified is a snapshot that passed Verify. SignerKeyID is the key that
+// signed the statement, empty for an AllowUnsigned check.
+type Verified struct {
+	Statement
+	SignerKeyID string
+}
+
+var idPattern = regexp.MustCompile(`^[0-9a-f]{64}$`)
+
+// sameSet compares two string lists as sets, nil equal to empty.
+func sameSet(a, b []string) bool {
+	x, y := slices.Clone(a), slices.Clone(b)
+	slices.Sort(x)
+	slices.Sort(y)
+	return slices.Equal(x, y)
+}
+
 // Verify checks a snapshot directory:
 //  1. the envelope verifies against trusted, and its predicate type is inventory/v1;
 //  2. every listed attestation file is present and hashes to its recorded value;
 //  3. every attestation verifies against trusted, for the listed id;
 //  4. log.jsonl verifies as a hash chain whose head is the recorded log_head.
-func Verify(dir string, trusted attest.Keyring, opts VerifyOptions) (*Statement, error) {
+func Verify(dir string, trusted attest.Keyring, opts VerifyOptions) (*Verified, error) {
 	var payload []byte
+	var signer string
 	env, err := os.ReadFile(filepath.Join(dir, "inventory.dsse.json"))
 	switch {
 	case err == nil:
-		p, _, err := dsse.Verify(env, trusted)
+		p, kid, err := dsse.Verify(env, trusted)
 		if err != nil {
 			return nil, fmt.Errorf("the inventory signature does not verify: %w", err)
 		}
-		payload = p
+		payload, signer = p, kid
 		if plain, err := os.ReadFile(filepath.Join(dir, "inventory.json")); err == nil && !bytes.Equal(plain, payload) {
 			return nil, errors.New("inventory.json differs from the signed statement")
 		}
@@ -136,7 +157,22 @@ func Verify(dir string, trusted attest.Keyring, opts VerifyOptions) (*Statement,
 	if err := dec.Decode(&st); err != nil || st.Type != statementType || st.PredicateType != PredicateType {
 		return nil, errors.New("not a Socair inventory statement")
 	}
+	if dec.Decode(&struct{}{}) != io.EOF {
+		return nil, errors.New("trailing data after the inventory statement")
+	}
+	if len(st.Predicate.Models) > 0 && st.Predicate.LogHead == "" {
+		return nil, errors.New("the inventory lists approved models but records no log head")
+	}
+	if len(st.Subject) != len(st.Predicate.Models) {
+		return nil, errors.New("the statement's subjects do not match its models")
+	}
 	for _, e := range st.Predicate.Models {
+		if !idPattern.MatchString(e.ID) {
+			return nil, fmt.Errorf("%q is not a model id (64 lowercase hex characters)", e.ID)
+		}
+		if !slices.ContainsFunc(st.Subject, func(s Subject) bool { return s.Name == e.Name && s.Digest["sha256"] == e.ID }) {
+			return nil, fmt.Errorf("%s: no matching subject in the statement", e.ID)
+		}
 		b, err := os.ReadFile(filepath.Join(dir, "models", e.ID, "attestation.dsse.json"))
 		if err != nil {
 			return nil, fmt.Errorf("%s: the listed attestation is missing", e.ID)
@@ -152,6 +188,17 @@ func Verify(dir string, trusted attest.Keyring, opts VerifyOptions) (*Statement,
 		if v.SHA256 != e.ID {
 			return nil, fmt.Errorf("%s: the attestation is for %s", e.ID, v.SHA256)
 		}
+		pa := v.Document.PromotionAuthorization
+		switch {
+		case e.PromotionState != string(pa.State):
+			return nil, fmt.Errorf("%s: promotion_state %q disagrees with the attestation (%q)", e.ID, e.PromotionState, pa.State)
+		case e.SignerKeyID != v.KeyID:
+			return nil, fmt.Errorf("%s: signer_key_id %q disagrees with the attestation (%q)", e.ID, e.SignerKeyID, v.KeyID)
+		case !sameSet(e.AcceptedSurfaces, pa.AcceptedSurfaces):
+			return nil, fmt.Errorf("%s: accepted_surfaces disagree with the attestation", e.ID)
+		case e.AcceptanceExpires != pa.AcceptanceExpires:
+			return nil, fmt.Errorf("%s: acceptance_expires %q disagrees with the attestation (%q)", e.ID, e.AcceptanceExpires, pa.AcceptanceExpires)
+		}
 	}
 	r, err := airlock.VerifyFile(filepath.Join(dir, "log.jsonl"), airlock.VerifyOptions{ExpectHead: st.Predicate.LogHead})
 	if err != nil {
@@ -160,5 +207,5 @@ func Verify(dir string, trusted attest.Keyring, opts VerifyOptions) (*Statement,
 	if r.Broken != 0 || r.Head != st.Predicate.LogHead {
 		return nil, fmt.Errorf("the activity log does not verify to the recorded head: %s", r.Reason)
 	}
-	return &st, nil
+	return &Verified{Statement: st, SignerKeyID: signer}, nil
 }
