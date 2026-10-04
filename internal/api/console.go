@@ -1,12 +1,16 @@
 package api
 
 import (
+	"encoding/json"
 	"errors"
+	"io"
 	"net/http"
 	"os"
+	"path/filepath"
 	"time"
 
 	"github.com/defilantech/socair/internal/airlock"
+	"github.com/defilantech/socair/internal/engine"
 )
 
 func (o Options) consoleModels(w http.ResponseWriter, r *http.Request) {
@@ -77,4 +81,74 @@ func (o Options) consoleFile(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("X-Content-Type-Options", "nosniff")
 	w.Header().Set("Content-Disposition", `attachment; filename="`+name+`"`)
 	_, _ = w.Write(b)
+}
+
+// maxEnvelope bounds an uploaded attestation: real ones are kilobytes.
+const maxEnvelope = 4 << 20
+
+func (o Options) consoleScan(w http.ResponseWriter, r *http.Request) {
+	s, err := o.storeFor(r)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	id := r.PathValue("id")
+	m, _, err := s.Model(id, time.Now())
+	if errors.Is(err, airlock.ErrNoModel) || (err == nil && m.Location != "staging") {
+		writeError(w, http.StatusNotFound, "no staged model "+id)
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if m.ArtifactPath == "" {
+		writeError(w, http.StatusUnprocessableEntity, m.StageReason)
+		return
+	}
+	prov := filepath.Join(filepath.Dir(m.ArtifactPath), airlock.ProvenanceFile)
+	d, err := engine.ScanWith(m.ArtifactPath, engine.ModeFull, engine.Inputs{Provenance: prov})
+	if err != nil {
+		writeError(w, http.StatusUnprocessableEntity, err.Error())
+		return
+	}
+	if err := s.SaveReport(id, d); err != nil {
+		writeError(w, http.StatusUnprocessableEntity, err.Error())
+		return
+	}
+	m, _, _ = s.Model(id, time.Now())
+	writeJSON(w, http.StatusOK, map[string]any{"report": d, "model": m})
+}
+
+func (o Options) consoleAttestation(w http.ResponseWriter, r *http.Request) {
+	s, err := o.storeFor(r)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	raw, err := io.ReadAll(io.LimitReader(r.Body, maxEnvelope+1))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if len(raw) > maxEnvelope {
+		writeError(w, http.StatusRequestEntityTooLarge, "an attestation is at most 4 MiB")
+		return
+	}
+	if !json.Valid(raw) {
+		writeError(w, http.StatusBadRequest, "the body is not a JSON DSSE envelope")
+		return
+	}
+	id := r.PathValue("id")
+	name, err := s.SaveAttestation(id, raw, time.Now())
+	if errors.Is(err, airlock.ErrNoModel) {
+		writeError(w, http.StatusNotFound, "no staged model "+id)
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusUnprocessableEntity, err.Error())
+		return
+	}
+	m, _, _ := s.Model(id, time.Now())
+	writeJSON(w, http.StatusOK, map[string]any{"file": name, "model": m})
 }

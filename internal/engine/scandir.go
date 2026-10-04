@@ -29,7 +29,7 @@ var pickleExt = map[string]bool{".bin": true, ".pt": true, ".pth": true, ".ckpt"
 // Every file is snapshotted and hashed; the subject is the manifest digest.
 // Each per-file check runs on every file it applies to and reports one merged
 // row, so one bad shard withholds the whole directory.
-func scanDir(dir string, start time.Time, refs *references) (*report.Document, error) {
+func scanDir(dir string, start time.Time, refs *references, in Inputs) (*report.Document, error) {
 	root, files, excluded, cleanup, err := modeldir.Snapshot(dir, strings.TrimSpace(os.Getenv("SOCAIR_SCAN_TMP")))
 	if err != nil {
 		return nil, err
@@ -73,7 +73,7 @@ func scanDir(dir string, start time.Time, refs *references) (*report.Document, e
 	if err != nil {
 		return nil, err
 	}
-	d, provOpts, expires, err := begin(start, id, dir, sig)
+	d, provOpts, expires, err := begin(start, id, dir, sig, in)
 	if err != nil {
 		return nil, err
 	}

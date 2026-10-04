@@ -115,3 +115,29 @@ func TestConsoleNeedsAStore(t *testing.T) {
 		t.Fatalf("%d", code)
 	}
 }
+
+func TestConsoleScanStagedWritesTheReport(t *testing.T) {
+	root, id := consoleStore(t)
+	ts := server(t, Options{StoreRoot: root})
+	code, body := post(t, ts, "/api/airlock/models/"+id+"/scan", map[string]any{})
+	if code != http.StatusOK {
+		t.Fatalf("%d %s", code, body)
+	}
+	var out struct{ Model airlock.Model }
+	if json.Unmarshal(body, &out) != nil || out.Model.Stage != airlock.StageScanned {
+		t.Fatalf("%s", body)
+	}
+}
+
+func TestConsoleUploadRefusesWhatDoesNotVerify(t *testing.T) {
+	root, id := consoleStore(t)
+	ts := server(t, Options{StoreRoot: root})
+	code, body := post(t, ts, "/api/airlock/models/"+id+"/attestation", map[string]any{"payloadType": "x", "payload": "e30=", "signatures": []any{}})
+	if code != http.StatusUnprocessableEntity {
+		t.Fatalf("%d %s", code, body)
+	}
+	big := map[string]any{"payload": strings.Repeat("A", 5<<20)}
+	if code, _ := post(t, ts, "/api/airlock/models/"+id+"/attestation", big); code != http.StatusRequestEntityTooLarge {
+		t.Fatalf("oversized upload: %d", code)
+	}
+}
