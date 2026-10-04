@@ -326,3 +326,38 @@ footer.foot {
 	color: var(--ink-soft);
 	font-size: 0.85rem;
 }
+
+nav.console {
+	display: flex;
+	gap: 1.25rem;
+	max-width: 1080px;
+	margin: 0.75rem auto 0;
+	padding: 0 1rem;
+}
+nav.console a[aria-current='page'] {
+	font-weight: 700;
+	text-decoration: underline;
+}
+.tone-ok {
+	color: #0f7a4a;
+	font-weight: 600;
+}
+.tone-amber {
+	color: #8a5a00;
+	font-weight: 600;
+}
+.tone-red {
+	color: #a32323;
+	font-weight: 700;
+}
+.tone-neutral {
+	color: var(--ink-soft);
+}
+pre.cmd {
+	white-space: pre-wrap;
+	overflow-wrap: anywhere;
+	background: #f4f5f6;
+	border: 1px solid #e3e5e8;
+	padding: 0.6rem 0.8rem;
+	font-size: 0.85rem;
+}
