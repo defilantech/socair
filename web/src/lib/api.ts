@@ -100,7 +100,7 @@ export class ApiError extends Error {
 	}
 }
 
-export async function decodeError(resp: Response): Promise<never> {
+async function decodeError(resp: Response): Promise<never> {
 	let message = `engine returned HTTP ${resp.status}`;
 	const text = await resp.text().catch(() => '');
 	try {
