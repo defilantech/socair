@@ -1,9 +1,16 @@
 name: ci
 
 on:
+  # main on push; every other branch through its pull request, so one change
+  # runs CI once, not twice.
   push:
-    branches: ["**"]
+    branches: [main]
   pull_request:
+
+# A newer push to the same pull request (or main) cancels the run it replaces.
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 # Read-only token: CI never writes to the repository.
 permissions:
@@ -132,30 +139,37 @@ jobs:
   # Every parser that reads untrusted bytes, for a short budget each. A crasher
   # found here is committed under testdata/fuzz as a regression seed, and the
   # seeds already committed run in the test job on every push.
+  # One job runs every fuzz target in turn: a runner per 10-second target cost
+  # more in pod start, checkout, and toolchain setup than the fuzzing itself.
+  # A failing target does not stop the others; the job fails if any did.
   fuzz:
     runs-on: defilantech-runners
     env:
       GOFLAGS: -mod=vendor
-    strategy:
-      fail-fast: false
-      matrix:
-        target:
-          - { pkg: ./internal/gguf, fn: FuzzGGUFHeader }
-          - { pkg: ./internal/safetensors, fn: FuzzSafetensorsHeader }
-          - { pkg: ./internal/checks/pickle, fn: FuzzPickleInspect }
-          - { pkg: ./internal/checks/chattemplate/jinja, fn: FuzzParse }
-          - { pkg: ./internal/checks/chattemplate, fn: FuzzInspect }
-          - { pkg: ./internal/oms, fn: FuzzVerify }
-          - { pkg: ./internal/acceptance, fn: FuzzParse }
-          - { pkg: ./internal/feed, fn: FuzzLoad }
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
         with:
           go-version-file: go.mod
           cache: false
-      - name: fuzz ${{ matrix.target.fn }}
-        run: go test ${{ matrix.target.pkg }} -run '^$' -fuzz '^${{ matrix.target.fn }}$' -fuzztime 10s
+      - name: fuzz every target for 10s
+        run: |
+          failed=""
+          while read -r pkg fn; do
+            echo "::group::$fn ($pkg)"
+            go test "$pkg" -run '^$' -fuzz "^${fn}\$" -fuzztime 10s || failed="$failed $fn"
+            echo "::endgroup::"
+          done <<'TARGETS'
+          ./internal/gguf FuzzGGUFHeader
+          ./internal/safetensors FuzzSafetensorsHeader
+          ./internal/checks/pickle FuzzPickleInspect
+          ./internal/checks/chattemplate/jinja FuzzParse
+          ./internal/checks/chattemplate FuzzInspect
+          ./internal/oms FuzzVerify
+          ./internal/acceptance FuzzParse
+          ./internal/feed FuzzLoad
+          TARGETS
+          if [ -n "$failed" ]; then echo "fuzz failures:$failed"; exit 1; fi
 
   # The Go build is air-gap: dependencies are vendored and nothing is fetched.
   # The wizard is not: it builds from the npm registry in a networked step, and

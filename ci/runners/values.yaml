@@ -8,9 +8,9 @@ githubConfigUrl: https://github.com/defilantech
 githubConfigSecret: defilantech-runners-github-app
 runnerScaleSetName: defilantech-runners
 minRunners: 0
-# One 4-CPU node shared with other workloads: at most 3 jobs at once, the
+# One 4-CPU node shared with other workloads: at most 2 jobs at once, the
 # rest queue.
-maxRunners: 3
+maxRunners: 2
 template:
   spec:
     containers:
