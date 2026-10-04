@@ -2,6 +2,7 @@ package airlock
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -75,6 +76,13 @@ func TestStageReadyNeedsAcceptanceBlocked(t *testing.T) {
 	}
 	if m := modelByID(t, s, id, time.Now()); m.Stage != StageBlocked || m.Next.Action != "none" {
 		t.Fatalf("a LEAD is blocked, never acceptable: %+v", m)
+	}
+	// Placeholders in copyable commands carry no shell metacharacters.
+	if _, err := s.SaveAttestation(id, envelopeFor(t, &gap), time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	if m := modelByID(t, s, id, time.Now()); !strings.Contains(m.Next.Command, "ACCEPTOR_KEY") || strings.ContainsAny(m.Next.Command, "<>") {
+		t.Fatalf("command has shell metacharacters: %q", m.Next.Command)
 	}
 }
 
@@ -178,5 +186,127 @@ func TestModelDetailReturnsTheDocument(t *testing.T) {
 	}
 	if _, _, err := s.Model(strings.Repeat("b", 64), time.Now()); err == nil {
 		t.Fatal("an unknown id must be an error")
+	}
+}
+
+func TestCleanEntryWithWithheldEnvelopeDoesNotVerify(t *testing.T) {
+	s := trustedStore(t)
+	id := promoted(t, s)
+	_, d := authorizedArtifact(t)
+	withholdForGap(d)
+	// Falsification: drop the Admits check in derive and this shows approved.
+	if err := os.WriteFile(filepath.Join(s.CleanPath(id), attestationEnvelope), envelopeFor(t, d), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	m := modelByID(t, s, id, time.Now())
+	if m.Stage != StageDoesNotVerify || m.StageReason == "" {
+		t.Fatalf("a withheld envelope in clean must not be approved: %+v", m)
+	}
+}
+
+func TestStagingUsesMostRecentEvidence(t *testing.T) {
+	s := trustedStore(t)
+	id := stage(t, s)
+	dir := s.StagingPath(id)
+	artifact, d := authorizedArtifact(t)
+	_ = artifact
+	gap := *d
+	gap.Checks = append([]report.CheckResult(nil), d.Checks...)
+	withholdForGap(&gap)
+	ticket, err := os.ReadFile(acceptedTicket(t, s, &gap, 10*24*time.Hour))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.SaveAttestation(id, ticket, time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	base := time.Now().Add(-time.Hour)
+	chtimes := func(name string, at time.Time) {
+		t.Helper()
+		if err := os.Chtimes(filepath.Join(dir, name), at, at); err != nil {
+			t.Fatal(err)
+		}
+	}
+	chtimes(StagedConditional, base)
+	later := time.Now().Add(20 * 24 * time.Hour) // past the 10-day acceptance
+	if m := modelByID(t, s, id, later); m.Stage != StageAcceptanceExpired {
+		t.Fatalf("expected expired: %+v", m)
+	}
+	// (a) a newer scan report supersedes the older signed evidence.
+	if err := s.SaveReport(id, d); err != nil {
+		t.Fatal(err)
+	}
+	chtimes(StagedReport, base.Add(time.Minute))
+	if m := modelByID(t, s, id, later); m.Stage != StageScanned {
+		t.Fatalf("a rescan supersedes: %+v", m)
+	}
+	// (b) a newer authorized envelope supersedes the report and the conditional.
+	if _, err := s.SaveAttestation(id, envelopeFor(t, d), time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	chtimes(StagedAttestation, base.Add(2*time.Minute))
+	if m := modelByID(t, s, id, later); m.Stage != StageReady {
+		t.Fatalf("newest envelope wins: %+v", m)
+	}
+}
+
+func TestExpiredAcceptanceForAnotherSubjectDoesNotVerify(t *testing.T) {
+	s := trustedStore(t)
+	_, d := authorizedArtifact(t)
+	withholdForGap(d)
+	ticket, err := os.ReadFile(acceptedTicket(t, s, d, 10*24*time.Hour))
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Plant that subject's conditional under a different entry.
+	other := strings.Repeat("c", 64)
+	dir := s.StagingPath(other)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "x.safetensors"), []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, StagedConditional), ticket, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	later := time.Now().Add(20 * 24 * time.Hour)
+	m := modelByID(t, s, other, later)
+	if m.Stage != StageDoesNotVerify || !strings.Contains(m.StageReason, "not this entry") {
+		t.Fatalf("expired must not mask a wrong subject: %+v", m)
+	}
+}
+
+func TestShellQuoteRoundTrips(t *testing.T) {
+	sh, err := exec.LookPath("sh")
+	if err != nil {
+		t.Skip("sh unavailable")
+	}
+	if got := shellQuote("/a/b-c_d.e/F1"); got != "/a/b-c_d.e/F1" {
+		t.Fatalf("plain path changed: %q", got)
+	}
+	for _, in := range []string{"", "a b", "it's", "$HOME", "a`id`b", `say "hi"`, "a<b>c;d"} {
+		q := shellQuote(in)
+		if !strings.HasPrefix(q, "'") {
+			t.Errorf("%q not single-quoted: %s", in, q)
+		}
+		out, err := exec.Command(sh, "-c", "printf %s "+q).Output()
+		if err != nil || string(out) != in {
+			t.Errorf("%q -> %s -> %q (%v)", in, q, out, err)
+		}
+	}
+	if got := shellQuote("it's"); got != `'it'\''s'` {
+		t.Errorf("escape form: %s", got)
+	}
+}
+
+func TestCleanArtifactNeedsExactlyOne(t *testing.T) {
+	s := trustedStore(t)
+	id := promoted(t, s)
+	if err := os.WriteFile(filepath.Join(s.CleanPath(id), "stray.txt"), []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if m := modelByID(t, s, id, time.Now()); m.ArtifactPath != "" {
+		t.Fatalf("ambiguous artifact must be empty: %q", m.ArtifactPath)
 	}
 }

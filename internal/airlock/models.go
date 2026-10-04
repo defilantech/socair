@@ -130,7 +130,7 @@ func (s *Store) derive(loc, id string, at time.Time) (Model, *report.Document) {
 		}
 		a, err := s.Assess(env, at)
 		switch {
-		case err == nil && a.SHA256 != id:
+		case a != nil && a.SHA256 != id:
 			m.Stage, m.StageReason = StageDoesNotVerify, fmt.Sprintf("the attestation is for %s, not this entry", a.SHA256)
 			return m, nil
 		case errors.Is(err, ErrAcceptanceExpired):
@@ -138,6 +138,10 @@ func (s *Store) derive(loc, id string, at time.Time) (Model, *report.Document) {
 			m.Stage, m.StageReason = StageAcceptanceExpired, err.Error()
 			return m, &a.Verified.Document
 		case err != nil:
+			m.Stage, m.StageReason = StageDoesNotVerify, err.Error()
+			return m, nil
+		}
+		if err := a.Admits(); err != nil {
 			m.Stage, m.StageReason = StageDoesNotVerify, err.Error()
 			return m, nil
 		}
@@ -154,45 +158,63 @@ func (s *Store) derive(loc, id string, at time.Time) (Model, *report.Document) {
 	m.ArtifactPath = art
 	m.Name = filepath.Base(art)
 	reportPath := filepath.Join(dir, StagedReport)
+	// The most recent evidence wins: the newest envelope (a tie prefers the
+	// conditional one), unless a scan report is newer than every envelope.
+	var newest string
+	var newestTime time.Time
 	for _, name := range []string{StagedConditional, StagedAttestation} {
-		p := filepath.Join(dir, name)
-		env, err := os.ReadFile(p)
-		if err != nil {
+		fi, err := os.Stat(filepath.Join(dir, name))
+		if err != nil || !fi.Mode().IsRegular() {
 			continue
 		}
-		m.EnvelopePath = p
-		a, err := s.Assess(env, at)
-		switch {
-		case err == nil && a.SHA256 != id:
-			m.Stage, m.StageReason = StageDoesNotVerify, fmt.Sprintf("%s is for %s, not this entry", name, a.SHA256)
-			return m, nil
-		case errors.Is(err, ErrAcceptanceExpired):
+		if newest == "" || fi.ModTime().After(newestTime) {
+			newest, newestTime = name, fi.ModTime()
+		}
+	}
+	rescanned := false
+	if newest != "" {
+		if fi, err := os.Stat(reportPath); err == nil && fi.ModTime().After(newestTime) {
+			rescanned = true
+		}
+	}
+	if newest != "" && !rescanned {
+		name := newest
+		p := filepath.Join(dir, name)
+		if env, err := os.ReadFile(p); err == nil {
+			m.EnvelopePath = p
+			a, err := s.Assess(env, at)
+			switch {
+			case a != nil && a.SHA256 != id:
+				m.Stage, m.StageReason = StageDoesNotVerify, fmt.Sprintf("%s is for %s, not this entry", name, a.SHA256)
+				return m, nil
+			case errors.Is(err, ErrAcceptanceExpired):
+				fill(&m, a, at)
+				m.Stage, m.StageReason = StageAcceptanceExpired, err.Error()
+				m.Next = Next{Action: "scan", Command: s.scanCommand(dir, art)}
+				return m, &a.Verified.Document
+			case err != nil:
+				m.Stage, m.StageReason = StageDoesNotVerify, name+": "+err.Error()
+				return m, nil
+			}
 			fill(&m, a, at)
-			m.Stage, m.StageReason = StageAcceptanceExpired, err.Error()
-			m.Next = Next{Action: "scan", Command: s.scanCommand(dir, art)}
-			return m, &a.Verified.Document
-		case err != nil:
-			m.Stage, m.StageReason = StageDoesNotVerify, name+": "+err.Error()
-			return m, nil
+			d := &a.Verified.Document
+			switch {
+			case a.Admits() == nil:
+				m.Stage = StageReady
+				m.Next = Next{Action: "promote", Command: "socair airlock promote " + shellQuote(art) + " --attestation " + shellQuote(p) + " --store " + shellQuote(s.Root)}
+			case hasFailOrLead(d):
+				m.Stage, m.StageReason = StageBlocked, "a FAIL or LEAD withholds it; only escalated review clears it"
+			default:
+				m.Stage = StageNeedsAcceptance
+				m.StageReason = "withheld on NOT_TESTED rows: " + strings.Join(d.Findings.NotTested, ", ")
+				acc := filepath.Join(dir, StagedAcceptance)
+				m.Next = Next{Action: "accept", Command: "socair accept --attestation " + shellQuote(p) +
+					` --key ACCEPTOR_KEY --by "NAME, ROLE" --expires EXPIRES_RFC3339 --store ` + shellQuote(s.Root) +
+					"\nsocair sign --key OPERATOR_KEY --attestation " + shellQuote(p) + " --acceptance " + shellQuote(acc) +
+					" --store " + shellQuote(s.Root)}
+			}
+			return m, d
 		}
-		fill(&m, a, at)
-		d := &a.Verified.Document
-		switch {
-		case a.Admits() == nil:
-			m.Stage = StageReady
-			m.Next = Next{Action: "promote", Command: "socair airlock promote " + shellQuote(art) + " --attestation " + shellQuote(p) + " --store " + shellQuote(s.Root)}
-		case hasFailOrLead(d):
-			m.Stage, m.StageReason = StageBlocked, "a FAIL or LEAD withholds it; only escalated review clears it"
-		default:
-			m.Stage = StageNeedsAcceptance
-			m.StageReason = "withheld on NOT_TESTED rows: " + strings.Join(d.Findings.NotTested, ", ")
-			acc := filepath.Join(dir, StagedAcceptance)
-			m.Next = Next{Action: "accept", Command: "socair accept --attestation " + shellQuote(p) +
-				` --key <acceptor.key> --by "<name, role>" --expires <RFC 3339> --store ` + shellQuote(s.Root) +
-				"\nsocair sign --key <operator.key> --attestation " + shellQuote(p) + " --acceptance " + shellQuote(acc) +
-				" --store " + shellQuote(s.Root)}
-		}
-		return m, d
 	}
 	if b, err := os.ReadFile(reportPath); err == nil {
 		var d report.Document
@@ -200,7 +222,7 @@ func (s *Store) derive(loc, id string, at time.Time) (Model, *report.Document) {
 			m.Stage = StageScanned
 			m.PromotionState = d.PromotionAuthorization.State
 			named(&m, &d)
-			m.Next = Next{Action: "sign", Command: "socair sign --key <operator.key> --report " + shellQuote(reportPath)}
+			m.Next = Next{Action: "sign", Command: "socair sign --key OPERATOR_KEY --report " + shellQuote(reportPath)}
 			return m, &d
 		}
 		m.StageReason = StagedReport + " does not parse; scan again"
@@ -251,12 +273,17 @@ func (s *Store) cleanArtifact(dir string) string {
 	if err != nil {
 		return ""
 	}
+	found := ""
 	for _, e := range entries {
-		if e.Name() != attestationDoc && e.Name() != attestationEnvelope {
-			return filepath.Join(dir, e.Name())
+		if e.Name() == attestationDoc || e.Name() == attestationEnvelope {
+			continue
 		}
+		if found != "" {
+			return ""
+		}
+		found = filepath.Join(dir, e.Name())
 	}
-	return ""
+	return found
 }
 
 // promotedAt maps each promoted hash to the time of its last promotion.
