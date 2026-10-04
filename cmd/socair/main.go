@@ -64,6 +64,11 @@ func main() {
 			fmt.Fprintln(os.Stderr, "error:", err)
 			os.Exit(1)
 		}
+	case "inventory":
+		if err := inventoryCmd(os.Args[2:]); err != nil {
+			fmt.Fprintln(os.Stderr, "error:", err)
+			os.Exit(1)
+		}
 	case "serve":
 		if err := serveCmd(os.Args[2:]); err != nil {
 			fmt.Fprintln(os.Stderr, "error:", err)
@@ -137,6 +142,8 @@ Usage:
   socair airlock trust add <key.pub>   trust a signing key for promotion
   socair airlock promote   promote a file or model directory with a signed attestation
   socair airlock log       print the airlock activity log (--verify checks its hash chain)
+  socair airlock export --out <dir> [--key <k>]   write a shareable, signed snapshot of the store
+  socair inventory verify <dir> --trusted <key.pub|dir>   verify an exported inventory snapshot
   socair serve             run the engine HTTP/JSON API for the click-ops wizard
   socair demo              write the SAMPLE attestation for sales
 `)

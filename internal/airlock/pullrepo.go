@@ -91,6 +91,11 @@ func PullRepo(ctx context.Context, s *Store, repo, revision, wantDigest string, 
 	if err := validFileName(name); err != nil {
 		return fail(err.Error())
 	}
+	// The repo's files are staged under incoming/<digest>/<name>/, so only
+	// name itself sits beside the entry's evidence files.
+	if err := notEvidenceName(name); err != nil {
+		return fail(err.Error())
+	}
 	client := pol.client()
 
 	// Resolve the revision to the commit every later request is pinned to.

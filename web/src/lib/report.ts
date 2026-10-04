@@ -7,8 +7,11 @@
 
 import type { CheckStatus, Document } from './api';
 
-// Pill is the visual treatment for a status or a promotion state.
-export type Pill = 'pass' | 'fail' | 'lead' | 'not-tested';
+// Pill is the visual treatment for a status or a promotion state. 'conditions'
+// is the amber caution of an authorization with conditions: never the pass
+// look and never the neutral gap look (PRODUCT.md, Capabilities and
+// Constraints: conditions and needs-acceptance are amber).
+export type Pill = 'pass' | 'fail' | 'lead' | 'not-tested' | 'conditions';
 
 // statusPill maps a check status to its treatment. NOT_TESTED is never pass.
 export function statusPill(status: CheckStatus): Pill {
@@ -23,6 +26,10 @@ export function statusPill(status: CheckStatus): Pill {
 			return 'not-tested';
 	}
 }
+
+// countOrder is the order ReportView shows the tally in: what needs action
+// first, PASS last, so a conditional report does not open on its passes.
+export const countOrder = ['fail', 'lead', 'notTested', 'pass'] as const;
 
 export function counts(d: Document): {
 	pass: number;
@@ -60,13 +67,15 @@ export function promotionLabel(d: Document): string {
 }
 
 // promotionPill gives the promotion state its treatment. Only a clean
-// authorization reads as a pass; conditions read as a caution, never green.
+// authorization reads as a pass; conditions read as an amber caution, never
+// green and never the grey of a gap. Everything else (withheld, escalated)
+// stays red: a withheld document is not cleared for the clean store.
 export function promotionPill(d: Document): Pill {
 	switch (d.promotion_authorization.state) {
 		case 'authorized':
 			return 'pass';
 		case 'authorized_with_conditions':
-			return 'not-tested';
+			return 'conditions';
 		default:
 			return 'fail';
 	}

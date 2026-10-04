@@ -84,6 +84,13 @@ set `SOCAIR_HF_ENDPOINT` (its host joins the allowlist) and, if it redirects,
 
 ## Bringing a model in
 
+The console shows each step below as it happens: run
+`socair serve --store "$SOCAIR_STORE" --web web/build` on the intake host and
+open it on that machine. It lists what is staged and approved, scans a staged
+model, files a signed attestation, and prints the exact CLI command for any
+step that needs a key (promote, sign, accept). It does not hold keys, so those
+steps stay in the commands below. See [wizard.md](wizard.md).
+
 **1. Pull it, pinned to a commit.** Take the commit from the model's page on
 the hub. The pull verifies every file and prints the scan command to run next.
 
@@ -172,6 +179,18 @@ done
   that let the bytes in, and `attestation.json` is its readable report. Anyone
   can verify the attestation offline against your public key:
   `socair verify attestation.dsse.json --trusted operator.pub --artifact <file>`.
+- **For leadership:** a dated snapshot of what is approved, for filing or for
+  someone who cannot reach the host.
+
+  ```
+  socair airlock export --out snapshot-2026-10 --key operator.key
+  socair inventory verify snapshot-2026-10 --trusted operator.pub
+  ```
+
+  The snapshot holds the approved list, each model's attestation and report,
+  and the log with its head, with no model bytes. It is signed with the
+  operator key, and `inventory verify` checks it offline. See
+  [airlock.md](airlock.md).
 - **Per action:** `log.jsonl` records every pull, ingest, trust change,
   promotion, and refusal. Each line carries the hash of the line before it, so
   an edited or deleted line breaks the chain:

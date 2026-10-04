@@ -259,3 +259,34 @@ func TestPullRepoFollowsPaginationOnlyWithinPolicy(t *testing.T) {
 		t.Fatal("SOCAIR_EGRESS=deny must stop a repo pull")
 	}
 }
+
+// A repo is staged nested, as incoming/<digest>/<repo name>/..., so only the
+// repo name sits beside the entry's evidence: a repo named like evidence is
+// refused, while a top-level repo file named report.dsse.json stays inside the
+// tree and cannot collide. Falsification: drop notEvidenceName in PullRepo
+// and the first case reaches the hub.
+func TestPullRepoRefusesAnEvidenceName(t *testing.T) {
+	t.Setenv("SOCAIR_EGRESS", "")
+	srv := newFakeHub().start(t)
+	s := trustedStore(t)
+	_, _, err := PullRepo(context.Background(), s, "org/"+StagedAttestation, hubCommit, "", hubPolicy(srv))
+	if err == nil || !strings.Contains(err.Error(), StagedAttestation) || !strings.Contains(err.Error(), "evidence") {
+		t.Fatalf("a repo named %s must be refused by name: %v", StagedAttestation, err)
+	}
+
+	hub := newFakeHub()
+	hub.files[StagedAttestation] = `{"not":"evidence"}`
+	e, staged, err := PullRepo(context.Background(), s, "org/tiny", hubCommit, "", hubPolicy(hub.start(t)))
+	if err != nil {
+		t.Fatalf("a repo file named %s is nested, not evidence: %v", StagedAttestation, err)
+	}
+	if _, err := os.Stat(filepath.Join(staged, StagedAttestation)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(s.StagingPath(e.SHA256), StagedAttestation)); !os.IsNotExist(err) {
+		t.Fatal("the repo's file must not land beside the entry's evidence")
+	}
+	if p, err := s.stagedArtifact(e.SHA256); err != nil || p != staged {
+		t.Fatalf("staged artifact %q %v", p, err)
+	}
+}

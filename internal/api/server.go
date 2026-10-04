@@ -73,19 +73,15 @@ func (o Options) handler(heavy chan struct{}) http.Handler {
 	}
 
 	mux := http.NewServeMux()
-	mux.HandleFunc("GET /api/version", o.version)
-	mux.HandleFunc("GET /api/health", o.health)
-	mux.HandleFunc("POST /api/scan", limit(o.scan))
-	mux.HandleFunc("POST /api/render", o.render)
-	mux.HandleFunc("GET /api/airlock/log", o.airlockLog)
-	mux.HandleFunc("POST /api/airlock/ingest", limit(o.airlockIngest))
-	mux.HandleFunc("POST /api/airlock/pull", limit(o.airlockPull))
-	mux.HandleFunc("POST /api/airlock/promote", limit(o.airlockPromote))
+	for _, rt := range o.routes(limit) {
+		mux.HandleFunc(rt.pattern, authorize(rt.access, rt.handler))
+	}
 
 	if strings.TrimSpace(o.WebDir) != "" {
 		mux.Handle("/", spaHandler(o.WebDir))
 	}
-	return o.guard(mux)
+	guarded := o.guard(mux)
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { guarded.ServeHTTP(w, identify(r)) })
 }
 
 // guard refuses requests a browser could send on another site's behalf. The
@@ -305,7 +301,7 @@ func (o Options) airlockIngest(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	s, err := o.store()
+	s, err := o.storeFor(r)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
@@ -350,7 +346,7 @@ func (o Options) airlockPull(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "repo, file, and sha256 are required")
 		return
 	}
-	s, err := o.store()
+	s, err := o.storeFor(r)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
@@ -386,7 +382,7 @@ func (o Options) airlockPromote(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "artifact and attestation are required")
 		return
 	}
-	s, err := o.store()
+	s, err := o.storeFor(r)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
