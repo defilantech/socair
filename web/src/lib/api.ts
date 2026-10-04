@@ -55,9 +55,23 @@ export interface ArtifactFile {
 	role: 'weights' | 'config' | 'tokenizer' | 'chat_template' | 'code' | 'adapter' | 'other';
 }
 
+/** Section 3 of the attestation: how and against what the checks ran. */
+export interface Scope {
+	check_set_version: string;
+	tool_versions?: string;
+	execution_context: string;
+	input_path: string;
+	scan_start_utc?: string;
+	scan_end_utc?: string;
+	inference_budget?: string;
+	reference_data?: string;
+}
+
 export interface Document {
 	schema_version: string;
 	artifact: Artifact;
+	/** Always sent by the engine; optional here so hand-built fixtures stay small. */
+	scope?: Scope;
 	checks: CheckResult[];
 	findings: { fails: string[]; leads?: string[]; not_tested: string[] };
 	promotion_authorization: PromotionAuthorization;
@@ -204,7 +218,13 @@ export async function models(signal?: AbortSignal): Promise<Model[]> {
 export async function model(
 	id: string,
 	signal?: AbortSignal
-): Promise<{ model: Model; report: Document | null; events: AirlockEvent[] }> {
+): Promise<{
+	model: Model;
+	report: Document | null;
+	events: AirlockEvent[];
+	/** Evidence files this entry holds (names the files route serves). */
+	evidence: string[];
+}> {
 	const resp = await fetch(`/api/airlock/models/${encodeURIComponent(id)}`, { signal });
 	if (!resp.ok) await decodeError(resp);
 	return await resp.json();

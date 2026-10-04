@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import type { Document } from './api';
-import { statusPill, promotionLabel, promotionPill, counts, availableLevels } from './report';
+import { statusPill, promotionLabel, promotionPill, counts, countOrder, availableLevels } from './report';
 
 function doc(state: string, statuses: string[]): Document {
 	return {
@@ -49,6 +49,15 @@ describe('promotion badge', () => {
 	it('treats conditions as a caution, never clean green', () => {
 		expect(promotionPill(doc('authorized_with_conditions', []))).not.toBe('pass');
 	});
+	// PRODUCT.md (Capabilities and Constraints): conditions are amber. The
+	// grey NOT_TESTED look would make one state read two ways on a model page.
+	it('gives conditions the amber caution, not the gap look', () => {
+		expect(promotionPill(doc('authorized_with_conditions', []))).toBe('conditions');
+		expect(promotionPill(doc('authorized_with_conditions', []))).not.toBe('not-tested');
+	});
+	it('keeps escalated review red', () => {
+		expect(promotionPill(doc('escalated', []))).toBe('fail');
+	});
 });
 
 describe('counts', () => {
@@ -59,6 +68,12 @@ describe('counts', () => {
 			lead: 1,
 			notTested: 1
 		});
+	});
+});
+
+describe('count order', () => {
+	it('puts what needs action first and PASS last', () => {
+		expect([...countOrder]).toEqual(['fail', 'lead', 'notTested', 'pass']);
 	});
 });
 
