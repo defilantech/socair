@@ -64,7 +64,7 @@
 {:else if m}
 	<p class="meta">
 		{m.location === 'clean' ? 'In the clean store' : 'In staging'} ·
-		<span class="mono" title={m.id}>{m.id.slice(0, 12)}</span>{#if m.format} · {m.format}{/if}
+		<span class="mono" title={m.id}>{m.id.slice(0, 12)}</span>{#if m.format}{' · '}{m.format}{/if}
 	</p>
 
 	<section class="status-block" aria-labelledby="status-h">

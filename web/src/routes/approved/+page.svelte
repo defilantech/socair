@@ -59,14 +59,13 @@
 		<section aria-labelledby="sec-{sec.key}">
 			<h2 id="sec-{sec.key}">{sec.heading}</h2>
 			<table class="stack models">
+				<colgroup><col class="c-model" /><col class="c-status" /><col class="c-gaps" /><col class="c-expires" /><col class="c-issuer" /><col class="c-promoted" /></colgroup>
 				<thead>
 					<tr>
 						<th scope="col">Model</th>
 						<th scope="col">Status</th>
-						{#if sec.key === 'conditions'}
-							<th scope="col">Accepted gaps</th>
-							<th scope="col">Acceptance expires</th>
-						{/if}
+						<th scope="col">Accepted gaps</th>
+						<th scope="col">Acceptance expires</th>
 						<th scope="col">Issuer</th>
 						<th scope="col">Promoted</th>
 					</tr>
@@ -77,21 +76,23 @@
 						<tr>
 							<th scope="row" class="check" data-label="Model">
 								<a href="/models/{m.id}">{m.name}</a>
-								<div class="meta"><span class="mono">{m.id.slice(0, 12)}</span>{#if m.format} · {m.format}{/if}</div>
+								<div class="meta"><span class="mono">{m.id.slice(0, 12)}</span>{#if m.format}{' · '}{m.format}{/if}</div>
 							</th>
 							<td data-label="Status">
 								<span class="status tone-{stageTone(m)}">{stageLabel(m)}</span>
 								{#if reason}<div class="meta">{reason}</div>{/if}
 							</td>
-							{#if sec.key === 'conditions'}
-								<td data-label="Accepted gaps">
+							<td data-label="Accepted gaps">
+								{#if m.accepted_surfaces?.length}
 									<div class="meta">{acceptedLine(m.accepted_surfaces)}</div>
 									<ul class="surfaces">
-										{#each m.accepted_surfaces ?? [] as s (s)}<li>{s}</li>{/each}
+										{#each m.accepted_surfaces as s (s)}<li>{s}</li>{/each}
 									</ul>
-								</td>
-								<td data-label="Acceptance expires"><When iso={m.acceptance_expires} rel /></td>
-							{/if}
+								{:else}<span class="meta">None</span>{/if}
+							</td>
+							<td data-label="Acceptance expires">
+								{#if m.acceptance_expires}<When iso={m.acceptance_expires} rel />{:else}<span class="meta">None</span>{/if}
+							</td>
 							<td data-label="Issuer">{m.issuer ?? ''}</td>
 							<td data-label="Promoted"><When iso={m.promoted_at} /></td>
 						</tr>

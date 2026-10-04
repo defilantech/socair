@@ -7,4 +7,4 @@
 	const distance = $derived(rel ? relative(iso) : '');
 </script>
 
-{#if iso}<time datetime={iso} title={iso}>{shortDate(iso)}</time>{#if distance}<span class="rel"> ({distance})</span>{/if}{/if}
+{#if iso}<span class="when"><time datetime={iso} title={iso}>{shortDate(iso)}</time>{#if distance}{' '}<span class="rel">({distance})</span>{/if}</span>{/if}
