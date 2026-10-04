@@ -1,9 +1,11 @@
 package api
 
 import (
+	"archive/zip"
 	"encoding/json"
 	"errors"
 	"io"
+	"io/fs"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -11,6 +13,7 @@ import (
 
 	"github.com/defilantech/socair/internal/airlock"
 	"github.com/defilantech/socair/internal/engine"
+	"github.com/defilantech/socair/internal/inventory"
 )
 
 func (o Options) consoleModels(w http.ResponseWriter, r *http.Request) {
@@ -151,4 +154,43 @@ func (o Options) consoleAttestation(w http.ResponseWriter, r *http.Request) {
 	}
 	m, _, _ := s.Model(id, time.Now())
 	writeJSON(w, http.StatusOK, map[string]any{"file": name, "model": m})
+}
+
+func (o Options) consoleExport(w http.ResponseWriter, r *http.Request) {
+	s, err := o.storeFor(r)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	tmp, err := os.MkdirTemp("", "socair-export-*")
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	defer os.RemoveAll(tmp)
+	at := time.Now()
+	if _, err := inventory.Export(s, tmp, nil, at, "socair "+o.Version); err != nil {
+		writeError(w, http.StatusUnprocessableEntity, err.Error())
+		return
+	}
+	w.Header().Set("Content-Type", "application/zip")
+	w.Header().Set("Content-Disposition", `attachment; filename="socair-inventory-`+at.UTC().Format("20060102T150405Z")+`.zip"`)
+	zw := zip.NewWriter(w)
+	_ = filepath.WalkDir(tmp, func(p string, d fs.DirEntry, err error) error {
+		if err != nil || d.IsDir() {
+			return err
+		}
+		rel, _ := filepath.Rel(tmp, p)
+		f, err := zw.Create(filepath.ToSlash(rel))
+		if err != nil {
+			return err
+		}
+		b, err := os.ReadFile(p)
+		if err != nil {
+			return err
+		}
+		_, err = f.Write(b)
+		return err
+	})
+	_ = zw.Close()
 }

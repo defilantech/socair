@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"io"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -139,5 +140,19 @@ func TestConsoleUploadRefusesWhatDoesNotVerify(t *testing.T) {
 	big := map[string]any{"payload": strings.Repeat("A", 5<<20)}
 	if code, _ := post(t, ts, "/api/airlock/models/"+id+"/attestation", big); code != http.StatusRequestEntityTooLarge {
 		t.Fatalf("oversized upload: %d", code)
+	}
+}
+
+func TestConsoleExportIsAZip(t *testing.T) {
+	root, _ := consoleStore(t)
+	ts := server(t, Options{StoreRoot: root})
+	resp, err := http.Post(ts.URL+"/api/airlock/export", "application/json", strings.NewReader("{}"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	b, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode != http.StatusOK || resp.Header.Get("Content-Type") != "application/zip" || !bytes.HasPrefix(b, []byte("PK\x03\x04")) {
+		t.Fatalf("%d %s", resp.StatusCode, resp.Header.Get("Content-Type"))
 	}
 }

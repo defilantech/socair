@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Socair model inventory, {{.St.Predicate.GeneratedUTC}}</title>
+<style>
+body{font:15px/1.5 -apple-system,"Segoe UI",Helvetica,Arial,sans-serif;max-width:1040px;margin:24px auto;padding:0 16px;color:#111}
+.warn{border:1px solid #b91c1c;color:#b91c1c;padding:10px 14px;font-weight:700}
+.note{border:1px solid #d7dade;padding:10px 14px;color:#3f4347}
+table{border-collapse:collapse;width:100%;margin:12px 0}th,td{text-align:left;border-bottom:1px solid #e5e7eb;padding:6px 8px;vertical-align:top;font-size:14px}
+.amber{color:#8a5a00}.red{color:#a32323}.ok{color:#0f7a4a}code{font-size:12px}
+</style></head><body>
+<h1>Model inventory</h1>
+{{if not .Signed}}<p class="warn">UNSIGNED SNAPSHOT. Nothing here proves who made it. Export with <code>socair airlock export --key</code> for a signed snapshot, and check it with <code>socair inventory verify</code>.</p>{{end}}
+<p class="note">This snapshot contains this site's model inventory. Share it internally only.</p>
+<p>Generated {{.St.Predicate.GeneratedUTC}} by {{.St.Predicate.ToolVersion}}. Activity log head <code>{{.St.Predicate.LogHead}}</code>.</p>
+<h2>Approved models</h2>
+{{if .St.Predicate.Models}}<table><tr><th>Model</th><th>State</th><th>Issuer</th><th>Accepted gaps</th><th>Promoted</th></tr>
+{{range .St.Predicate.Models}}<tr><td><a href="models/{{.ID}}/report.html">{{.Name}}</a><br><code>{{.ID}}</code></td>
+<td>{{if eq .PromotionState "authorized_with_conditions"}}<span class="amber">authorized with conditions, until {{.AcceptanceExpires}}</span>{{else}}<span class="ok">authorized</span>{{end}}</td>
+<td>{{.Issuer}}</td><td>{{range $i, $s := .AcceptedSurfaces}}{{if $i}}, {{end}}{{$s}}{{end}}</td><td>{{.PromotedAt}}</td></tr>{{end}}</table>
+{{else}}<p>No approved models.</p>{{end}}
+{{if .St.Predicate.Other}}<h2>Not approved</h2><table><tr><th>Model</th><th>Stage</th><th>Reason</th></tr>
+{{range .St.Predicate.Other}}<tr><td>{{.Name}}<br><code>{{.ID}}</code></td><td class="{{if or (eq .Stage "does-not-verify") (eq .Stage "acceptance-expired") (eq .Stage "blocked")}}red{{end}}">{{.Stage}}</td><td>{{.Reason}}</td></tr>{{end}}</table>{{end}}
+<p class="note">Each approved model's attestation.dsse.json is in models/&lt;id&gt;/ and verifies offline: <code>socair verify models/&lt;id&gt;/attestation.dsse.json --trusted &lt;operator.pub&gt;</code>. The whole snapshot: <code>socair inventory verify . --trusted &lt;operator.pub&gt;</code>.</p>
+</body></html>

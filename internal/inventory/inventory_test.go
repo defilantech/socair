@@ -108,6 +108,14 @@ func TestInventoryVerifyCatches(t *testing.T) {
 // the envelope, the artifact id, the key, and a keyring trusting it.
 func authorizedEnvelope(t *testing.T) (env []byte, id string, k *attest.PrivateKey, ring attest.Keyring) {
 	t.Helper()
+	env, id, k, ring, _ = authorizedEnvelopeKey(t)
+	return
+}
+
+// authorizedEnvelopeKey is authorizedEnvelope that also returns the path of
+// the signing key's public file.
+func authorizedEnvelopeKey(t *testing.T) (env []byte, id string, k *attest.PrivateKey, ring attest.Keyring, pubPath string) {
+	t.Helper()
 	dir := t.TempDir()
 	mirror := filepath.Join(dir, "mirror")
 	if err := os.MkdirAll(mirror, 0o755); err != nil {
@@ -154,7 +162,7 @@ func authorizedEnvelope(t *testing.T) (env []byte, id string, k *attest.PrivateK
 	if ring, err = attest.LoadKeyring(prefix + ".pub"); err != nil {
 		t.Fatal(err)
 	}
-	return env, d.Artifact.SHA256, k, ring
+	return env, d.Artifact.SHA256, k, ring, prefix + ".pub"
 }
 
 // Falsification: each case corrupts one thing under a valid signature (the

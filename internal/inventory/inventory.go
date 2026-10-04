@@ -92,7 +92,7 @@ func Build(models []airlock.Model, attestations map[string][]byte, logHead, tool
 
 // Sign returns the statement's JSON and its DSSE envelope.
 func Sign(st Statement, k *attest.PrivateKey) (payload, envelope []byte, err error) {
-	payload, err = json.MarshalIndent(st, "", "  ")
+	payload, err = jsonIndent(st)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -212,3 +212,5 @@ func Verify(dir string, trusted attest.Keyring, opts VerifyOptions) (*Verified, 
 	}
 	return &Verified{Statement: st, SignerKeyID: signer}, nil
 }
+
+func jsonIndent(st Statement) ([]byte, error) { return json.MarshalIndent(st, "", "  ") }

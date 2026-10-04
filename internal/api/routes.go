@@ -69,6 +69,7 @@ func (o Options) routes(limit func(http.HandlerFunc) http.HandlerFunc) []route {
 		{"POST /api/airlock/ingest", writeAccess, limit(o.airlockIngest)},
 		{"POST /api/airlock/pull", writeAccess, limit(o.airlockPull)},
 		{"POST /api/airlock/promote", writeAccess, limit(o.airlockPromote)},
+		{"POST /api/airlock/export", readAccess, limit(o.consoleExport)},
 		{"GET /api/airlock/models", readAccess, o.consoleModels},
 		{"GET /api/airlock/models/{id}", readAccess, o.consoleModel},
 		{"GET /api/airlock/models/{id}/files/{name}", readAccess, o.consoleFile},
