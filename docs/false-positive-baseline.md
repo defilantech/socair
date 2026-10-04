@@ -190,6 +190,89 @@ miss: a default system prompt whose instruction reads as ordinary guidance,
 with no lead phrase, URL, obfuscation, or content condition. That class is on
 the published detection ceiling until reviewed-template diffing lands.
 
+### Code words in prose (2026-10-04, check set tier1/0.3)
+
+The structural FAIL used to come from a regex over the raw template text
+(`subprocess`, `eval(`, `exec(`, `os.system(`, and three dunder names), so a
+benign default system prompt that mentions them, such as coding advice,
+FAILed as "positive evidence" (#130). Process execution is now judged from the
+parsed template like dunder reach: a command-running module (`os`,
+`subprocess`, `sys`, ...) referenced in an expression, a call to `eval`,
+`exec`, `compile` or `__import__`, or a process function (`system`, `popen`,
+`check_output`, ...) called as an attribute or reached through `attr` with a
+folded name. Text the template outputs and Jinja comments are not code.
+
+Measured against the 70 templates in llama.cpp's `models/templates` (a
+broader set than the 49 above, including DeepSeek V3.1 to V4, Gemma 4, GLM 4.6
+and 4.7, Kimi K2/K3, MiniMax M1 to M3, Nemotron, Granite 4.x, Qwen 3.5, and
+gpt-oss), under the old and the new rules:
+
+| Rule version | PASS | LEAD | FAIL |
+|---|---|---|---|
+| tier1/0.2 (raw-text regex) | 69 | 1 | 0 |
+| tier1/0.3 (parsed template) | 69 | 1 | 0 |
+| tier1/0.5 (filter blocks parse) | 70 | 0 | 0 |
+
+No real template mentions those words in prose, so the corpus result is
+unchanged; the fix is pinned by `TestCodeWordsInTextAreNotCode` and the
+`benign-code-words-in-prompt.jinja` fixture. The one LEAD is unrelated and
+predates this change: `fireworks-ai-llama-3-firefunction-v2.jinja` does not
+parse ("line 4: unexpected trim"), which the check reports as an unreadable
+template. Check set tier1/0.5 fixes it: the parser demanded a pipe
+before a filter block's first filter (`{% filter |trim %}`), which is not how
+Jinja writes it (`{% filter trim %}`). With filter blocks parsing, and their
+filter and body analysed like any other code, the corpus is **70 PASS, 0 LEAD,
+0 FAIL**. CI now runs this corpus on every push (`real-template-corpus` job,
+llama.cpp pinned at `7fe450e1`, 2026-09-23). The evasion corpus gains `attr-concat-popen.jinja` (a process
+function reached through `attr` with a concatenated name), which FAILs.
+
+## File inventory: string arrays and truncation (2026-10-04, check set tier1/0.4)
+
+The inventory scanned only string-typed GGUF metadata values and skipped
+string arrays, so a payload in an array value passed. It also passed an
+inventory cut off at its 8 MiB / 20k-entry cap, with only a note (#135).
+
+String-array elements of 64 bytes or more are now scanned with the same
+patterns (script or shell content, a base64 run of 512+ characters, an
+executable or archive signature). Shorter elements are counted, not kept:
+a vocabulary's tokens are short, include strings such as `<script` and `#!`,
+and are too short to carry an executable or a 512-character blob. An
+inventory that reaches its cap is NOT_TESTED, unless a payload was already
+found, which stays a FAIL.
+
+Measured on 12 local GGUFs (Gemma 3 12B/27B, Gemma 4 26B, Qwen3 0.6B,
+Qwen 3.6/3.8 27B and MoE variants, Llama 3.3 Nemotron Super 49B): 262k to
+777k string-array elements each, up to 4,146 of 64+ bytes scanned per file,
+0 findings, 0 truncated. Every row was NOT_TESTED only because no repo
+mirror was given, as before.
+
+## Tokenizer: canonical reference tables (2026-10-04, check set tier1/0.6)
+
+The tokenizer row checked only internal consistency, so a swapped ordinary
+token passed (#135). With a canonical table configured, the vocabulary is now
+compared id by id with the table of its family. A table counts as the family
+only when at least 98% of shared ids agree. A changed ordinary token or a
+vocabulary that ends early is a LEAD. Renamed special or reserved tokens, and
+tokens past the table's end, are notes.
+
+Measured with 7 tokenizer.json files from the local Hugging Face cache as
+references, including the publishers' own `Qwen/Qwen3-0.6B` and
+`Qwen/Qwen3.8-27B`, against 12 local GGUFs and against each other:
+
+| Compared | Matched a family | Changed ordinary tokens | LEAD |
+|---|---|---|---|
+| 9 Qwen-family GGUFs (Qwen3 0.6B, Qwen 3.6/3.8 27B, and the Qwopus, Carnice, and ornith fine-tunes) | 9, at 100.00% | 0 | 0 |
+| 3 GGUFs of other families (Gemma 3 12B/27B, Gemma 4 26B, Llama 3.3 Nemotron 49B) | 0 (best 0.32%) | - | 0 |
+| 7 tokenizer.json against the other six | 2 (Qwen3.8 official and an MLX copy, 100%) | 0 | 0 |
+
+Same-family agreement was 100% and cross-family agreement at most 0.32%, so
+the 98% floor sits far from both. GGUFs carry 243 to 267 padding tokens past
+the Hugging Face vocabulary; they are reported as added, not as a LEAD. A real
+scan of Qwen3-0.6B-Q8_0.gguf against a table built from the official
+tokenizer.json (`socair feed tokenizer-table`) reports PASS, 100.00% of ids
+agreeing, 0 changed, 267 added. The LEAD is falsified by unit and engine tests
+(a swapped pair of ordinary tokens).
+
 ## Pickle opcode walker (2026-10-02)
 
 The pickle check matched one byte pattern, the text GLOBAL of protocols 0 to 3,

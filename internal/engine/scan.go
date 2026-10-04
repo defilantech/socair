@@ -26,7 +26,7 @@ import (
 )
 
 // CheckSetVersion names the set of checks this engine runs.
-const CheckSetVersion = "tier1/0.2"
+const CheckSetVersion = "tier1/0.6"
 
 // Version is the socair version: "dev" in a source build, the release tag
 // in a release build (scripts/build-release.sh sets it with -ldflags -X).
@@ -189,6 +189,7 @@ func ScanMode(path string, mode Mode) (*report.Document, error) {
 	if id.Format == "GGUF" {
 		tokRow := tokenizer.InspectGGUF(tokenizerModel, tok, chatTemplates)
 		tokRow.Notes += refs.tokenizerNote(id.TokenizerSHA256)
+		tokRow = refs.compareTokenizer(tokRow, tok.Tokens, tokenizer.GGUFSpecial(tok))
 		meta := []checks.Result{
 			chattemplate.InspectAllWith(chatTemplates, chatTemplateNonString, refs.reviewedTemplates()),
 			tokRow,
@@ -220,7 +221,8 @@ func begin(start time.Time, id report.Identity, original string, sig *provenance
 	}
 	d.Header.RescanDue = rescanDue
 	d.Header.ArtifactShort = id.Name
-	d.Header.AssuranceLevelAwarded = "Tier 1 (static)"
+	d.AssuranceLevel = report.Tier1Assurance()
+	d.Header.AssuranceLevelAwarded = d.AssuranceLevel.Awarded
 	d.Scope.CheckSetVersion = CheckSetVersion
 	d.Scope.ScanStartUTC = start.Format(time.RFC3339)
 	d.Scope.ToolVersions = "socair " + Version
@@ -383,13 +385,24 @@ func applyResults(d *report.Document, results []checks.Result) {
 	d.Checks = make([]report.CheckResult, 0, len(results))
 	for _, res := range results {
 		d.Checks = append(d.Checks, report.CheckResult{
-			Name:     res.Name,
-			LooksFor: res.LooksFor,
-			Status:   report.Status(res.Status),
-			Evidence: evidence(res),
-			Notes:    res.Notes,
+			Name:      res.Name,
+			LooksFor:  res.LooksFor,
+			Status:    report.Status(res.Status),
+			Evidence:  evidence(res),
+			Notes:     res.Notes,
+			PassMeans: report.PassMeaning(res.Name),
+			Severity:  report.RowSeverity(report.Status(res.Status), patterns(res.Findings)),
+			MapsTo:    report.MapsTo(res.Name),
 		})
 	}
+}
+
+func patterns(fs []checks.Finding) []string {
+	out := make([]string, 0, len(fs))
+	for _, f := range fs {
+		out = append(out, f.Pattern)
+	}
+	return out
 }
 
 func evidence(res checks.Result) string {

@@ -266,6 +266,20 @@ td.notes {
 	color: var(--ink-soft);
 	font-size: 0.9rem;
 }
+.pass-means {
+	margin-top: 0.35rem;
+	font-size: 0.82rem;
+}
+.maps {
+	margin-top: 0.25rem;
+	font-size: 0.78rem;
+}
+.severity {
+	margin-left: 0.4rem;
+	font-size: 0.72rem;
+	text-transform: uppercase;
+	letter-spacing: 0.06em;
+}
 
 .bounded {
 	border-left: 3px solid var(--ink);

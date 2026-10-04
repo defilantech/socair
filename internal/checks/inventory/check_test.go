@@ -163,3 +163,63 @@ func TestUnparsedFormatsGroupsAndCaps(t *testing.T) {
 		t.Fatalf("got %q, want one NumPy entry listing five files and 2 more", got)
 	}
 }
+
+// TestPayloadInStringArrayFails: string arrays used to be skipped, so a
+// payload in an array value passed (#135). Falsification: drop ArrayStrings
+// from the scanned values and this passes.
+func TestPayloadInStringArrayFails(t *testing.T) {
+	blob := strings.Repeat("QUJD", 200) // 800 base64 characters
+	kvs := append(gguftest.Clean(), gguftest.StrArray("general.tags", "chat", "instruct", blob))
+	p := writeFixture(t, "array-payload-Q5_K_M.gguf", gguftest.BuildGGUF(kvs))
+
+	r := Inspect(p, Options{})
+	if r.Status != checks.Fail {
+		t.Fatalf("status = %s, want FAIL for a base64 blob in a string array: %s", r.Status, r.Notes)
+	}
+	found := false
+	for _, f := range r.Findings {
+		if f.Pattern == "embedded-base64-blob" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("want an embedded-base64-blob finding, got %+v", r.Findings)
+	}
+}
+
+// TestShortArrayElementsAreNotScanned: a vocabulary holds short tokens such as
+// "<script" or "#!", which are not payloads. Elements under the scan minimum
+// are counted, not kept, so they cannot FAIL a real model.
+func TestShortArrayElementsAreNotScanned(t *testing.T) {
+	kvs := append(gguftest.Clean(), gguftest.StrArray("tokenizer.ggml.extra", "<script", "#!/bin/sh", "PK\x03\x04"))
+	p := writeFixture(t, "vocab-Q5_K_M.gguf", gguftest.BuildGGUF(kvs))
+
+	mirror := t.TempDir()
+	_ = os.WriteFile(filepath.Join(mirror, "config.json"), []byte("{}"), 0o600)
+	if r := Inspect(p, Options{RepoMirror: mirror}); r.Status != checks.Pass {
+		t.Fatalf("status = %s, want PASS for short tokens: %+v %s", r.Status, r.Findings, r.Notes)
+	}
+}
+
+// TestTruncatedInventoryIsNotTested: an inventory cut off at its cap did not
+// scan every value, so it cannot PASS (#135). It used to PASS with a note.
+// Falsification: ignore Truncated and this PASSes.
+func TestTruncatedInventoryIsNotTested(t *testing.T) {
+	big := strings.Repeat("plain notes. ", 5042) // about 64 KiB, no pattern
+	vals := make([]string, 140)                  // 140 x 64 KiB: past the 8 MiB cap
+	for i := range vals {
+		vals[i] = big
+	}
+	kvs := append(gguftest.Clean(), gguftest.StrArray("general.notes", vals...))
+	p := writeFixture(t, "big-Q5_K_M.gguf", gguftest.BuildGGUF(kvs))
+
+	mirror := t.TempDir()
+	_ = os.WriteFile(filepath.Join(mirror, "config.json"), []byte("{}"), 0o600)
+	r := Inspect(p, Options{RepoMirror: mirror})
+	if r.Status != checks.NotTested {
+		t.Fatalf("status = %s, want NOT_TESTED for a truncated inventory: %s", r.Status, r.Notes)
+	}
+	if !strings.Contains(r.Notes, "cap") {
+		t.Errorf("notes should name the cap: %s", r.Notes)
+	}
+}

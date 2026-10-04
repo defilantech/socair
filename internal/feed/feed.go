@@ -20,6 +20,11 @@
 //	denylist.txt    <sha256> <label>     known-bad artifacts (Known-bad hash match)
 //	templates.txt   <sha256> [note]      reviewed chat templates (Chat template)
 //	tokenizers.txt  <sha256> <name>      canonical tokenizers (Tokenizer config)
+//
+// and canonical tokenizer tables, one per family, that the tokenizer check
+// diffs a model's vocabulary against:
+//
+//	tokenizers/<name>.json   socair.tokenizer-table/v1 or a tokenizer.json
 package feed
 
 import (
@@ -33,7 +38,10 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path"
 	"path/filepath"
+	"regexp"
+	"sort"
 	"strings"
 	"time"
 
@@ -52,6 +60,39 @@ const (
 
 // DataFiles are the files a feed may carry.
 var DataFiles = []string{"denylist.txt", "templates.txt", "tokenizers.txt"}
+
+// TableDir holds a feed's canonical tokenizer tables, named <name>.json.
+const TableDir = "tokenizers"
+
+// tableName is a tokenizer table's file name within TableDir.
+var tableName = regexp.MustCompile(`^[a-z0-9][a-z0-9._-]{0,63}\.json$`)
+
+// isTable reports whether a subject names a tokenizer table.
+func isTable(name string) bool {
+	dir, file := path.Split(name)
+	return dir == TableDir+"/" && tableName.MatchString(file)
+}
+
+// tableFiles lists the tokenizer tables present in dir, as subject names.
+func tableFiles(dir string) ([]string, error) {
+	entries, err := os.ReadDir(filepath.Join(dir, TableDir))
+	if errors.Is(err, os.ErrNotExist) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	var out []string
+	for _, e := range entries {
+		name := TableDir + "/" + e.Name()
+		if e.IsDir() || !isTable(name) {
+			return nil, fmt.Errorf("%s/%s is not a tokenizer table name (lowercase <name>.json)", TableDir, e.Name())
+		}
+		out = append(out, name)
+	}
+	sort.Strings(out)
+	return out, nil
+}
 
 // Info is what the feed says about itself.
 type Info struct {
@@ -84,6 +125,9 @@ type Feed struct {
 	Templates map[string]struct{}
 	// Tokenizers maps a canonical tokenizer hash to its name.
 	Tokenizers map[string]string
+	// TokenizerTables holds each verified tokenizer table's bytes, by name
+	// (the file name without .json); the tokenizer check parses them.
+	TokenizerTables map[string][]byte
 }
 
 // Describe names the feed for a report.
@@ -124,8 +168,20 @@ func Sign(dir string, info Info, keyID string, sign func([]byte) []byte) error {
 		sum := sha256.Sum256(b)
 		subjects = append(subjects, subject{Name: name, Digest: map[string]string{"sha256": hex.EncodeToString(sum[:])}})
 	}
+	tables, err := tableFiles(dir)
+	if err != nil {
+		return err
+	}
+	for _, name := range tables {
+		b, err := readBounded(filepath.Join(dir, filepath.FromSlash(name)))
+		if err != nil {
+			return err
+		}
+		sum := sha256.Sum256(b)
+		subjects = append(subjects, subject{Name: name, Digest: map[string]string{"sha256": hex.EncodeToString(sum[:])}})
+	}
 	if len(subjects) == 0 {
-		return fmt.Errorf("%s holds none of %s", dir, strings.Join(DataFiles, ", "))
+		return fmt.Errorf("%s holds none of %s, and no %s/ tables", dir, strings.Join(DataFiles, ", "), TableDir)
 	}
 	payload, err := json.Marshal(statement{Type: statementType, Subject: subjects, PredicateType: PredicateType, Predicate: info})
 	if err != nil {
@@ -165,20 +221,25 @@ func Load(dir string, keys map[string]ed25519.PublicKey, now time.Time) (*Feed, 
 		return nil, fmt.Errorf("feed %s %s expired at %s; import a current feed", st.Predicate.Issuer, st.Predicate.Version, st.Predicate.Expires)
 	}
 
-	f := &Feed{Info: st.Predicate, KeyID: keyID, Denylist: map[string]string{}, Templates: map[string]struct{}{}, Tokenizers: map[string]string{}}
+	f := &Feed{Info: st.Predicate, KeyID: keyID, Denylist: map[string]string{}, Templates: map[string]struct{}{},
+		Tokenizers: map[string]string{}, TokenizerTables: map[string][]byte{}}
 	listed := map[string]bool{}
 	for _, s := range st.Subject {
-		if !known(s.Name) || listed[s.Name] {
+		if !(known(s.Name) || isTable(s.Name)) || listed[s.Name] {
 			return nil, fmt.Errorf("feed %s names %q, which is not a feed data file or is named twice", dir, s.Name)
 		}
 		listed[s.Name] = true
-		b, err := readBounded(filepath.Join(dir, s.Name))
+		b, err := readBounded(filepath.Join(dir, filepath.FromSlash(s.Name)))
 		if err != nil {
 			return nil, fmt.Errorf("feed %s: %w", dir, err)
 		}
 		sum := sha256.Sum256(b)
 		if hex.EncodeToString(sum[:]) != strings.ToLower(s.Digest["sha256"]) {
 			return nil, fmt.Errorf("feed %s: %s does not match its signed hash", dir, s.Name)
+		}
+		if isTable(s.Name) {
+			f.TokenizerTables[strings.TrimSuffix(path.Base(s.Name), ".json")] = b
+			continue
 		}
 		entries, err := parse(s.Name, b)
 		if err != nil {
@@ -199,6 +260,15 @@ func Load(dir string, keys map[string]ed25519.PublicKey, now time.Time) (*Feed, 
 	// presence means the directory is not what was signed.
 	for _, name := range DataFiles {
 		if _, err := os.Stat(filepath.Join(dir, name)); err == nil && !listed[name] {
+			return nil, fmt.Errorf("feed %s holds %s, which its signature does not cover", dir, name)
+		}
+	}
+	tables, err := tableFiles(dir)
+	if err != nil {
+		return nil, fmt.Errorf("feed %s: %w", dir, err)
+	}
+	for _, name := range tables {
+		if !listed[name] {
 			return nil, fmt.Errorf("feed %s holds %s, which its signature does not cover", dir, name)
 		}
 	}

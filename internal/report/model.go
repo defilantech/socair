@@ -28,6 +28,48 @@ const BoundedStatement = "For the artifact identified by hash in Section 2, serv
 // DoesNotCertify is the fixed ceiling sentence.
 const DoesNotCertify = "This attestation does not certify the absence of unknown backdoors."
 
+// Tier1Assurance is the fixed statement of what a Tier 1 attestation means.
+// Like BoundedStatement, it must not be edited per artifact.
+func Tier1Assurance() AssuranceLevel {
+	return AssuranceLevel{
+		Awarded:    "Tier 1 (static)",
+		Definition: "Static checks on the artifact's bytes and metadata, run offline. No inference is run, and the weights are not evaluated for behavior.",
+		DoesMean: "Each listed check ran on the exact bytes identified by the artifact hash, and each row states what its PASS means. " +
+			"A FAIL carries positive evidence, a LEAD needs escalated review, and a NOT_TESTED names why it was not tested.",
+		DoesNotMean: "It is not an assessment of the model's behavior or safety. It does not test the weights for backdoors or poisoning, " +
+			"behavior that appears only after quantization or on particular hardware, or jailbreak susceptibility and harmful capability, " +
+			"and it does not check licensing.",
+		Tier2Note: "Tier 2 (inference on the production node class) did not run.",
+	}
+}
+
+// passMeaning is the fixed statement of what each check's PASS establishes,
+// and where it stops. It is part of the report's wording, not per artifact,
+// and a reader sees it beside every row.
+var passMeaning = map[string]string{
+	"Format and structure": "The container parsed, and its tensor data tiles the data section exactly: " +
+		"no unaccounted bytes, overlapping tensors, or duplicate names.",
+	"File inventory and payloads": "No script, shell command, long encoded blob, or executable signature was found in string metadata values, " +
+		"including every string-array element of 64 bytes or more, and no native executable among the files. " +
+		"Shorter array elements, such as vocabulary tokens, are too short to carry one and are not scanned.",
+	"Chat template (hero)": "The template parsed and reaches no Python internals or process execution, " +
+		"and carries no override or concealment language, URL, hidden or obfuscated text, or condition on message content. " +
+		"Instructions written as ordinary guidance are not detected.",
+	"Tokenizer config": "The tokenizer tables are internally consistent, and no control token carries instructions. " +
+		"When a canonical reference table for its family is configured (from a feed or SOCAIR_TOKENIZER_REFERENCE), " +
+		"every token was compared with it and no ordinary token differs; the notes say which reference, or that none was configured or matched.",
+	"Quant match":        "At least one tensor has the base type the declared quantization requires. This checks labeling, not safety.",
+	"Pickle opcode scan": "Every import the pickle makes is on the reviewed safe list.",
+	"Remote code":        "No auto_map entry and no Python file: a loader would run no code from the repository.",
+	"Hash, provenance, lineage": "A trusted publisher signature verified over this artifact, or an operator-supplied manifest binds this hash " +
+		"to a repository at an immutable commit. The notes say which; a manifest is the operator's claim, not a signature.",
+	"Known-bad hash match": "This exact hash is not on the configured denylist. Any changed byte gives a new hash, so it catches only known files.",
+}
+
+// PassMeaning returns the fixed PASS statement for a check row, or "" for a
+// check without one.
+func PassMeaning(check string) string { return passMeaning[check] }
+
 // Status is a per-check result.
 type Status string
 
@@ -121,6 +163,15 @@ type CheckResult struct {
 	Status   Status `json:"status"`
 	Evidence string `json:"evidence,omitempty"`
 	Notes    string `json:"notes,omitempty"`
+	// PassMeans is the fixed statement of what this check's PASS establishes
+	// and where it stops (PassMeaning). It is shown whatever the status.
+	PassMeans string `json:"pass_means,omitempty"`
+	// Severity grades a FAIL or LEAD row from its findings (RowSeverity). It
+	// is for triage and does not change the promotion state.
+	Severity string `json:"severity,omitempty"`
+	// MapsTo names the external framework entries the check addresses
+	// (MapsTo), for security questionnaires.
+	MapsTo []FrameworkRef `json:"maps_to,omitempty"`
 }
 
 type Findings struct {
@@ -233,13 +284,15 @@ func splitLabel(m *gguf.Manifest) string {
 // DefaultCeiling is the published detection ceiling, per artifact.
 func DefaultCeiling() []string {
 	return []string{
-		"Unknown triggers outside our probe library.",
-		"Differential behavior across serving stacks, unless Tier 2 ran on the production node class.",
-		"Sleeper or polymorphic behavior that needs more inference budget than we run.",
+		"Backdoors, trojans, or poisoning in the model weights. Tier 1 reads the weights' layout, never their behavior.",
+		"Triggered, sleeper, or polymorphic behavior. Tier 1 runs no inference.",
+		"Behavior that appears only after quantization, or only on particular hardware or serving stacks, unless Tier 2 ran on the production node class.",
+		"Behavioral safety: jailbreak susceptibility, harmful capability, and bias.",
+		"Malicious behavior that only emerges at runtime under real traffic.",
 		"Artifact formats we do not parse.",
 		"Pickle code execution reached only through imports on the reviewed safe list.",
 		"Chat-template instructions written as ordinary guidance (no override or concealment phrase, URL, hidden or obfuscated text, or condition on message content), unless the template matches a reviewed template.",
-		"Malicious behavior that only emerges at runtime under real traffic.",
+		"License and usage-policy compliance.",
 	}
 }
 

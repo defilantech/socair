@@ -3,7 +3,8 @@
 # One fixture per line: file, the expected status, and a pattern the result
 # must carry. A "known-miss" fixture records an evasion the check does not
 # catch yet; it is listed on the detection ceiling, and the test fails if the
-# result changes so the list stays true.
+# result changes so the list stays true. A "benign" fixture must PASS with no
+# findings: it pins a false positive the check must not reintroduce.
 
 pillar-conditional-system.jinja LEAD content-conditional-injection
 pillar-startswith-variant.jinja LEAD content-conditional-injection
@@ -24,6 +25,8 @@ attr-hex-dunder.jinja FAIL python-object-escape
 subscript-concat-dunder.jinja FAIL python-object-escape
 map-attribute-dunder.jinja FAIL python-object-escape
 dotted-dunder.jinja FAIL python-object-escape
+attr-concat-popen.jinja FAIL process-execution
 known-miss-plain-default-prompt.jinja PASS known-miss
+benign-code-words-in-prompt.jinja PASS benign
 long-letter-chain.jinja LEAD instruction-override
 unparseable-by-design.jinja LEAD unanalysable-template

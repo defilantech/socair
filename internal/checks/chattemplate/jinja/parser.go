@@ -106,7 +106,20 @@ func (p *parser) stmt(kw string, s segment) (Node, error) {
 	case "call":
 		return p.callStmt(e)
 	case "filter":
-		f, err := e.filterChain(Name{N: ""})
+		// {% filter name(args) | more %}: the first filter has no pipe.
+		t, ok := e.next()
+		if !ok || t.kind != tName {
+			return nil, e.fail("filter block wants a filter name")
+		}
+		first := Filter{X: Name{N: ""}, Name: t.v}
+		if e.peekIs(tOp, "(") {
+			args, kw, err := e.args()
+			if err != nil {
+				return nil, err
+			}
+			first.Args, first.Kw = args, kw
+		}
+		f, err := e.filterChain(first)
 		if err != nil {
 			return nil, err
 		}

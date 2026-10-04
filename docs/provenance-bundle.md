@@ -101,7 +101,7 @@ files.
 
 A verified signature proves the files are the ones the key holder signed. It
 is a statement of origin and integrity, never of safety: the other rows still
-decide whether the model is fit to serve. Files the signer excluded with
+decide whether it is promoted. Files the signer excluded with
 `ignore_paths` (`.gitattributes` and the like by default) are named as not
 covered.
 
@@ -157,7 +157,14 @@ review.
 
 A feed supplies known-bad hashes, reviewed chat templates, and canonical
 tokenizers as a signed bundle; see [feed.md](feed.md). Its denylist joins
-`SOCAIR_DENYLIST`.
+`SOCAIR_DENYLIST`, and its tokenizer tables join `SOCAIR_TOKENIZER_REFERENCE`.
+
+## 6. Canonical tokenizer tables, `SOCAIR_TOKENIZER_REFERENCE`
+
+A table file, a publisher's `tokenizer.json`, or a directory of them (`*.json`).
+The tokenizer row compares the model's vocabulary, token by token, with the
+table of its family; see [feed.md](feed.md) for how a family is matched and
+graded. A path that cannot be read stops the scan.
 
 ## What each input buys, in one table
 
@@ -166,6 +173,7 @@ tokenizers as a signed bundle; see [feed.md](feed.md). Its denylist joins
 | `SOCAIR_REPO_MIRROR` | File inventory and payloads | NOT_TESTED |
 | `SOCAIR_DENYLIST` | Known-bad hash match | NOT_TESTED |
 | `SOCAIR_PROVENANCE`, or an OMS signature from a trusted publisher | Hash, provenance, lineage | NOT_TESTED |
+| `SOCAIR_TOKENIZER_REFERENCE`, or tables in a feed | Tokenizer config: a changed ordinary token becomes a LEAD | PASS on internal consistency only, and the row says no reference was compared |
 | A signed acceptance (`socair accept`) | the promotion state | withheld on any gap |
 
 ## Falsification

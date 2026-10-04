@@ -2,6 +2,8 @@ package gguf
 
 import (
 	"bufio"
+	"bytes"
+	"encoding/binary"
 	"fmt"
 	"io"
 	"os"
@@ -14,12 +16,22 @@ type MetadataInventory struct {
 	Keys         []string
 	Strings      []string
 	TotalStrings int
-	Truncated    bool
+	// ArrayStrings are elements of string arrays long enough to carry a
+	// payload (ArrayScanMin bytes or more). Short elements, such as the
+	// vocabulary's tokens, cannot hold an executable or a long encoded blob,
+	// so they are counted and not kept.
+	ArrayStrings  []string
+	ArrayElements int
+	// Truncated reports that a cap was reached, so some values were not
+	// collected and the inventory is incomplete.
+	Truncated bool
 }
 
 const (
 	maxInvEntries = 20000
 	maxInvBytes   = 8 << 20
+	// ArrayScanMin is the shortest string-array element the inventory keeps.
+	ArrayScanMin = 64
 )
 
 // Inventory walks the metadata section and returns its string values.
@@ -62,6 +74,17 @@ func inventoryFrom(r io.Reader) (*MetadataInventory, error) {
 		if err != nil {
 			return nil, fmt.Errorf("gguf: reading type for %q: %w", key, err)
 		}
+		if vtype == typeArray {
+			if err := inv.scanArray(r); err != nil {
+				return nil, fmt.Errorf("gguf: reading value for %q: %w", key, err)
+			}
+			if len(inv.Keys) < maxInvEntries {
+				inv.Keys = append(inv.Keys, key)
+			} else {
+				inv.Truncated = true
+			}
+			continue
+		}
 		val, err := scanValue(r, vtype, vtype == typeString)
 		if err != nil {
 			return nil, fmt.Errorf("gguf: reading value for %q: %w", key, err)
@@ -83,4 +106,41 @@ func inventoryFrom(r io.Reader) (*MetadataInventory, error) {
 		}
 	}
 	return inv, nil
+}
+
+// scanArray reads one array value. String elements long enough to carry a
+// payload are kept, under the same caps as scalar strings; other elements are
+// skipped exactly as the header reader skips them.
+func (inv *MetadataInventory) scanArray(r io.Reader) error {
+	elemType, err := readU32(r)
+	if err != nil {
+		return err
+	}
+	if elemType != typeString {
+		// Put the element type back in front of the stream for skipArray.
+		var b [4]byte
+		binary.LittleEndian.PutUint32(b[:], elemType)
+		return skipArray(io.MultiReader(bytes.NewReader(b[:]), r))
+	}
+	count, err := readU64(r)
+	if err != nil {
+		return err
+	}
+	for i := uint64(0); i < count; i++ {
+		s, err := readString(r)
+		if err != nil {
+			return err
+		}
+		inv.ArrayElements++
+		if len(s) < ArrayScanMin {
+			continue
+		}
+		inv.TotalStrings += len(s)
+		if len(inv.ArrayStrings) < maxInvEntries && inv.TotalStrings < maxInvBytes {
+			inv.ArrayStrings = append(inv.ArrayStrings, s)
+		} else {
+			inv.Truncated = true
+		}
+	}
+	return nil
 }

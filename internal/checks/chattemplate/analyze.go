@@ -456,6 +456,10 @@ func (a *analyser) scanExpr(e jinja.Expr) {
 			return
 		}
 		switch x := x.(type) {
+		case jinja.Name:
+			a.moduleUse(x.N)
+		case jinja.Call:
+			a.callUse(x)
 		case jinja.Attr:
 			a.nameUse(x.Name)
 		case jinja.Index:
@@ -463,6 +467,11 @@ func (a *analyser) scanExpr(e jinja.Expr) {
 				a.nameUse(k)
 			}
 		case jinja.Filter:
+			if x.Name == "attr" && len(x.Args) > 0 {
+				if k, ok := a.fold(x.Args[0]); ok && processAttrs[k] {
+					a.processUse(k, "template reaches the process-execution function "+k+" by name")
+				}
+			}
 			switch x.Name {
 			case "attr", "map", "selectattr", "rejectattr", "groupby", "sum", "sort", "unique", "min", "max":
 				for _, arg := range x.Args {
@@ -512,6 +521,47 @@ func (a *analyser) nameUse(n string) {
 	if len(n) > 4 && strings.HasPrefix(n, "__") && strings.HasSuffix(n, "__") {
 		a.add(signal{pattern: "python-object-escape", span: n, fail: true,
 			detail: "template reaches a Python dunder attribute"})
+	}
+}
+
+// Process execution is judged from the parsed template, never from its text:
+// a template that names os.system in prose a model will read is not code. In
+// an expression, these names are the reach a sandbox escape needs.
+var (
+	// processModules are Python modules that run commands or import others.
+	processModules = map[string]bool{"os": true, "subprocess": true, "sys": true,
+		"builtins": true, "importlib": true, "posix": true, "nt": true, "pty": true}
+	// processCalls are builtins that execute code when called by name.
+	processCalls = map[string]bool{"eval": true, "exec": true, "compile": true, "__import__": true}
+	// processAttrs are functions that start a process or import a module,
+	// reached as an attribute.
+	processAttrs = map[string]bool{"system": true, "popen": true, "spawnl": true, "spawnv": true,
+		"execv": true, "execve": true, "check_output": true, "check_call": true, "getoutput": true,
+		"getstatusoutput": true, "import_module": true}
+)
+
+func (a *analyser) processUse(span, detail string) {
+	a.add(signal{pattern: "process-execution", span: span, fail: true, detail: detail})
+}
+
+// moduleUse FAILs a reference to a command-running module in an expression.
+func (a *analyser) moduleUse(n string) {
+	if processModules[n] {
+		a.processUse(n, "template references the Python module "+n)
+	}
+}
+
+// callUse FAILs a call to a code-executing builtin or a process function.
+func (a *analyser) callUse(c jinja.Call) {
+	switch f := c.F.(type) {
+	case jinja.Name:
+		if processCalls[f.N] {
+			a.processUse(f.N+"(...)", "template calls the code-executing builtin "+f.N)
+		}
+	case jinja.Attr:
+		if processAttrs[f.Name] {
+			a.processUse("."+f.Name+"(...)", "template calls the process-execution function "+f.Name)
+		}
 	}
 }
 

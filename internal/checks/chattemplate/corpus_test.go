@@ -77,6 +77,12 @@ func TestEvasionCorpus(t *testing.T) {
 		if f[2] == "known-miss" {
 			continue
 		}
+		if f[2] == "benign" {
+			if len(r.Findings) > 0 {
+				t.Errorf("%s: benign fixture produced findings %+v", f[0], r.Findings)
+			}
+			continue
+		}
 		found := false
 		for _, fd := range r.Findings {
 			if fd.Pattern == f[2] {

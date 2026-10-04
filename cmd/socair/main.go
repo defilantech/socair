@@ -123,6 +123,8 @@ Usage:
   socair feed sign <dir> --key <key> --issuer <name> --version <v> --expires <time>
                            sign a reference-data feed (denylist, templates, tokenizers)
   socair feed verify <dir> --keys <key.pub|dir>   check a feed before importing it
+  socair feed tokenizer-table <tokenizer.json|model.gguf> --name <name>
+                           write a canonical tokenizer table for a feed or SOCAIR_TOKENIZER_REFERENCE
   socair accept --attestation <r.dsse.json> --key <acceptor.key> --by <name> --expires <time>
                            sign an acceptance of a withheld report's untested surfaces
   socair sign --key <key> --attestation <r.dsse.json> --acceptance <a.dsse.json>

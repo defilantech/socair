@@ -185,3 +185,46 @@ func TestTamperedStatementIsRefused(t *testing.T) {
 		}
 	}
 }
+
+// TestTokenizerTablesAreSignedAndCovered: a feed carries canonical tokenizer
+// tables under tokenizers/, each covered by the signature like any data file.
+// Falsification: skip the uncovered-table check and the second case loads.
+func TestTokenizerTablesAreSignedAndCovered(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.Mkdir(filepath.Join(dir, TableDir), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	write(t, dir, TableDir+"/qwen3.json", `{"format":"socair.tokenizer-table/v1","name":"qwen3","tokens":["a","b"]}`)
+	id, sign, keys := signer(t)
+	if err := Sign(dir, info(), id, sign); err != nil {
+		t.Fatal(err)
+	}
+	f, err := Load(dir, keys, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(f.TokenizerTables["qwen3"]) == 0 {
+		t.Fatalf("table not loaded: %v", f.TokenizerTables)
+	}
+
+	// A table added after signing is not part of the feed.
+	write(t, dir, TableDir+"/llama3.json", `{"format":"socair.tokenizer-table/v1","name":"llama3","tokens":["x"]}`)
+	if _, err := Load(dir, keys, now); err == nil || !strings.Contains(err.Error(), "does not cover") {
+		t.Fatalf("an unsigned table must refuse the feed, got %v", err)
+	}
+	_ = os.Remove(filepath.Join(dir, TableDir, "llama3.json"))
+
+	// A changed table no longer matches its signed hash.
+	write(t, dir, TableDir+"/qwen3.json", `{"format":"socair.tokenizer-table/v1","name":"qwen3","tokens":["a","EVIL"]}`)
+	if _, err := Load(dir, keys, now); err == nil || !strings.Contains(err.Error(), "signed hash") {
+		t.Fatalf("a changed table must refuse the feed, got %v", err)
+	}
+
+	// A table name outside the pattern is refused at signing.
+	bad := t.TempDir()
+	_ = os.Mkdir(filepath.Join(bad, TableDir), 0o755)
+	write(t, bad, TableDir+"/Qwen 3.json", "{}")
+	if err := Sign(bad, info(), id, sign); err == nil {
+		t.Error("a table named outside the pattern must not be signed")
+	}
+}

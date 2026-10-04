@@ -102,7 +102,22 @@
           "looks_for": { "type": "string" },
           "status": { "enum": ["PASS", "FAIL", "LEAD", "NOT_TESTED"] },
           "evidence": { "type": "string" },
-          "notes": { "type": "string" }
+          "notes": { "type": "string" },
+          "pass_means": { "type": "string" },
+          "severity": { "enum": ["critical", "high", "medium", "low"] },
+          "maps_to": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["framework", "id", "name"],
+              "properties": {
+                "framework": { "type": "string", "minLength": 1 },
+                "id": { "type": "string", "minLength": 1 },
+                "name": { "type": "string", "minLength": 1 }
+              }
+            }
+          }
         }
       }
     },

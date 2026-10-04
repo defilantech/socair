@@ -38,9 +38,43 @@ type driver struct {
 }
 
 type rule struct {
-	ID               string `json:"id"`
-	Name             string `json:"name"`
-	ShortDescription text   `json:"shortDescription"`
+	ID               string          `json:"id"`
+	Name             string          `json:"name"`
+	ShortDescription text            `json:"shortDescription"`
+	Properties       *ruleProperties `json:"properties,omitempty"`
+}
+
+// ruleProperties carries what code-scanning tools read from a rule: tags,
+// including the framework entries the check addresses, and the numeric
+// security-severity of a FAIL or LEAD (GitHub's 0.1 to 10 scale).
+type ruleProperties struct {
+	Tags             []string `json:"tags,omitempty"`
+	SecuritySeverity string   `json:"security-severity,omitempty"`
+}
+
+// securitySeverity maps a row severity onto the CVSS-like scale code-scanning
+// tools sort by: critical 9.0+, high 7.0+, medium 4.0+, low below.
+var securitySeverity = map[string]string{
+	report.SeverityCritical: "9.5",
+	report.SeverityHigh:     "8.0",
+	report.SeverityMedium:   "5.5",
+	report.SeverityLow:      "3.0",
+}
+
+// tags names a check's framework entries as external/<framework>/<id>.
+func tags(c report.CheckResult) []string {
+	if len(c.MapsTo) == 0 {
+		return nil
+	}
+	out := []string{"security"}
+	for _, m := range c.MapsTo {
+		fw := "atlas"
+		if strings.HasPrefix(m.Framework, "OWASP") {
+			fw = "owasp-llm"
+		}
+		out = append(out, "external/"+fw+"/"+m.ID)
+	}
+	return out
 }
 
 type text struct {
@@ -94,11 +128,15 @@ func Build(d *report.Document) log {
 	results := make([]result, 0, len(d.Checks))
 
 	for _, c := range d.Checks {
-		rules = append(rules, rule{
+		r := rule{
 			ID:               ruleID(c.Name),
 			Name:             c.Name,
 			ShortDescription: text{Text: c.LooksFor},
-		})
+		}
+		if t, sev := tags(c), securitySeverity[c.Severity]; t != nil || sev != "" {
+			r.Properties = &ruleProperties{Tags: t, SecuritySeverity: sev}
+		}
+		rules = append(rules, r)
 
 		msg := string(c.Status)
 		if c.Evidence != "" {

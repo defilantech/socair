@@ -36,21 +36,6 @@ type pattern struct {
 	detail string
 }
 
-// structural patterns are positive evidence: a template that reaches into
-// Python internals or invokes process execution.
-var structural = []pattern{
-	{
-		name:   "python-object-escape",
-		re:     regexp.MustCompile(`__globals__|__subclasses__|__class__`),
-		detail: "template reaches into Python object internals",
-	},
-	{
-		name:   "process-execution",
-		re:     regexp.MustCompile(`(?i)\bos\.system\s*\(|\bsubprocess\b|\beval\s*\(|\bexec\s*\(`),
-		detail: "template can invoke process execution",
-	},
-}
-
 // lead patterns are a signal to escalate, never a FAIL. They require
 // concealment of something sensitive, or a real code call, not a bare phrase.
 var leads = []pattern{
@@ -155,7 +140,7 @@ const maxTemplateBytes = 1 << 20
 
 const (
 	resultName     = "Chat template (hero)"
-	resultLooksFor = "Instructions in GGUF metadata that act before user input"
+	resultLooksFor = "Code reach, hidden or obfuscated text, and override or content-triggered instructions in the chat template"
 )
 
 func inspect(template string, allow map[string]struct{}) checks.Result {
@@ -192,16 +177,9 @@ func inspect(template string, allow map[string]struct{}) checks.Result {
 		return unreadable("template exceeds the analysis work budget")
 	}
 
-	// Structural evidence first. The allowlist cannot clear code.
-	for _, p := range structural {
-		if loc := p.re.FindStringIndex(template); loc != nil {
-			r.Findings = append(r.Findings, checks.Finding{
-				Pattern: p.name,
-				Span:    excerpt(template, loc[0], loc[1]),
-				Detail:  p.detail,
-			})
-		}
-	}
+	// Structural evidence first, and only from the parsed template: code the
+	// template can execute, never words in its text. The allowlist cannot
+	// clear code.
 	for _, s := range an.signals {
 		if s.fail {
 			r.Findings = append(r.Findings, checks.Finding{Pattern: s.pattern, Span: s.span, Detail: s.detail})
