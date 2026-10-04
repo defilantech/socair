@@ -1,6 +1,6 @@
 # Airlock console, Step 1: design
 
-Status: design approved in conversation 2026-10-04; this spec is for review.
+Status: design approved in conversation 2026-10-04; built on feat/airlock-console. The body below is updated to what shipped; "Refinements made while building" at the end records each change and why.
 Step 1b (free OIDC login and network access) gets its own spec.
 
 ## Goal
@@ -50,7 +50,7 @@ Two optional files per staged model. Neither changes what `promote` accepts.
 
 | File | Written when | Meaning |
 |---|---|---|
-| `incoming/<id>/report.json` | A staged model is scanned from the console, or by `socair airlock ingest --scan` | An unsigned scan result |
+| `incoming/<id>/report.json` | A staged model is scanned from the console (`airlock ingest --scan` does not stage, so it writes none) | An unsigned scan result |
 | `incoming/<id>/report.dsse.json` | The operator uploads a signed attestation (`socair sign` output) | Kept only if it verifies against `trusted-keys/` and its subject is this model's hash |
 
 `<id>` is the artifact sha256 for a file, or the manifest digest for a model
@@ -82,7 +82,7 @@ existing airlock endpoints do.
 |---|---|---|
 | `GET /api/airlock/models` | read | `{"models":[Model...]}`, every staged and clean entry |
 | `GET /api/airlock/models/{id}` | read | `{"model":Model,"report":Document,"events":[Event...]}` |
-| `GET /api/airlock/models/{id}/files/{name}` | read | One evidence file, byte for byte. `name` must be one of `provenance.json`, `report.json`, `report.dsse.json`, `attestation.json`, `attestation.dsse.json`; anything else is `404` |
+| `GET /api/airlock/models/{id}/files/{name}` | read | One evidence file, byte for byte. `name` must be one of `provenance.json`, `report.json`, `report.dsse.json`, `report.acceptance.dsse.json`, `report.conditional.dsse.json`, `attestation.json`, `attestation.dsse.json`; anything else is `404` |
 | `POST /api/airlock/models/{id}/scan` | write, limited | Scans the staged artifact, writes `report.json`, returns the document |
 | `POST /api/airlock/models/{id}/attestation` | write | Body: a DSSE envelope (at most 4 MiB). Verified, subject-checked, then stored as `report.dsse.json`. `422` with the reason when it does not verify |
 | `POST /api/airlock/export` | read, limited (it writes nothing to the store) | A zip of an unsigned snapshot (see Export) |
@@ -123,7 +123,7 @@ The wizard keeps its scan page. With a store configured it adds a top nav:
    - evidence file downloads;
    - this model's log events.
 4. **Activity.** The log, newest first, filterable by action, with
-   **Verify chain**, which runs the `log --verify` check and shows the head.
+   **Verify chain**, shown as the copyable `socair airlock log --verify` command (not a button in Step 1).
 5. **Export.** Downloads the unsigned snapshot zip and shows the
    `socair airlock export --key` command for a signed one.
 
@@ -145,7 +145,7 @@ Snapshot layout (it never contains model bytes or keys):
 
 ```
 <dir>/
-  index.html                 approved list and pending summary; snapshot time and log head; "contains this site's model inventory"
+  index.html                 approved list and every other entry with its stage; snapshot time and log head; "contains this site's model inventory"
   models/<id>/report.html    existing HTML renderer
   models/<id>/attestation.dsse.json, attestation.json    byte-identical to clean/<id>/
   log.jsonl, log-head.txt    copy of the activity log and its chain head
@@ -167,7 +167,7 @@ Snapshot layout (it never contains model bytes or keys):
     "signer_key_id": "...", "attestation_sha256": "<sha256 of attestation.dsse.json>",
     "accepted_surfaces": [...], "acceptance_expires": "...", "promoted_at": "..."
   }],
-  "pending": [{"id": "...", "name": "...", "stage": "..."}]
+  "other": [{"id": "...", "name": "...", "stage": "...", "reason": "..."}]
 }
 ```
 
@@ -238,6 +238,31 @@ All hermetic: a temp store and fixtures generated in code.
   - NOT_TESTED never shown as a pass;
   - `expires-soon` labelled;
   - a failed request shows no stale data.
+
+## Refinements made while building
+
+The code differs from the text above in these places. The code is the source
+of truth.
+
+- **Staging evidence uses the CLI's own output names.** `report.json`,
+  `report.dsse.json`, `report.acceptance.dsse.json`, and
+  `report.conditional.dsse.json`, so the CLI run against `incoming/<id>/report.json`
+  produces what the console reads. Only the console's scan writes `report.json`;
+  `socair airlock ingest --scan` does not, because it does not stage. A staging
+  entry's stage comes from the newest evidence by modification time.
+- **The inventory's `pending` field is `other`.** It also covers clean entries
+  that do not verify or whose acceptance expired, each with its stage and reason.
+- **Promote and verify-chain are copyable commands, not buttons.** They are
+  shown in the console beside the step that needs them, as are sign, accept,
+  and export with a key.
+- **`inventory verify` cross-checks entries against their attestations.** Each
+  entry's promotion state, signer key id, and accepted surfaces and expiry must
+  match its attestation, and Verify returns the signer key id. It also checks the
+  statement's subjects equal its models, and a non-empty `log_head` when models
+  are listed.
+- **`export` refuses a non-empty `--out`,** and a store whose log chain is broken.
+- **A clean entry that fails the gate shows as `does-not-verify`,** whatever the
+  reason.
 
 ## Docs to update
 

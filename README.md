@@ -127,11 +127,11 @@ Defilan Technologies is building commercial offerings on top of it:
 |---|---|
 | [attestation-template.md](docs/attestation-template.md) | The attestation, section by section: the source of truth for what a report contains |
 | [report-schema/v1.json](docs/report-schema/v1.json) | The report's JSON schema |
-| [airlock.md](docs/airlock.md) | The airlock: pull, ingest, promote, the trust policy, the log |
+| [airlock.md](docs/airlock.md) | The airlock: pull, ingest, promote, the trust policy, the log, the signed inventory export |
 | [intake-host.md](docs/intake-host.md) | Running Socair as the model intake host for an on-prem GPU cluster |
 | [provenance-bundle.md](docs/provenance-bundle.md) | The inputs that move each row: mirrors, denylists, provenance, signatures, acceptances |
 | [feed.md](docs/feed.md) | Signed reference feeds: format, verification, building one |
-| [api.md](docs/api.md), [wizard.md](docs/wizard.md) | The local HTTP API and the click-through wizard |
+| [api.md](docs/api.md), [wizard.md](docs/wizard.md) | The local HTTP API, the click-through wizard, and the airlock console (wizard.md) |
 | [false-positive-baseline.md](docs/false-positive-baseline.md) | How each detector was measured against real models |
 | [dev.md](docs/dev.md), [CONTRIBUTING.md](CONTRIBUTING.md) | Building, testing, and contributing (DCO sign-off) |
 | [releasing.md](docs/releasing.md), [verify-release.md](docs/verify-release.md) | Cutting and verifying a release |
