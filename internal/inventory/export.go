@@ -58,7 +58,9 @@ func Export(s *airlock.Store, dir string, key *attest.PrivateKey, at time.Time, 
 	}
 	attestations := map[string][]byte{}
 	for _, m := range models {
-		if m.Stage != airlock.StageApproved && m.Stage != airlock.StageAcceptanceExpired {
+		// Only clean entries carry an attestation to copy; a staging entry
+		// whose staged acceptance lapsed is listed under other by Build.
+		if m.Location != "clean" || (m.Stage != airlock.StageApproved && m.Stage != airlock.StageAcceptanceExpired) {
 			continue
 		}
 		out := filepath.Join(dir, "models", m.ID)

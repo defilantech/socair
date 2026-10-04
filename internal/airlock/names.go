@@ -56,7 +56,9 @@ func validFileName(name string) error {
 // an evidence file's name: the artifact would hide among (or be overwritten
 // by) the reports and attestations written beside it.
 func notEvidenceName(name string) error {
-	if IsEvidence(name) {
+	// Evidence names are lowercase; compare folded, because on a
+	// case-insensitive filesystem REPORT.JSON and report.json are one file.
+	if IsEvidence(strings.ToLower(name)) {
 		return fmt.Errorf("artifact name %q is an airlock evidence file name and would collide with the staging entry's evidence; rename it", name)
 	}
 	return nil

@@ -166,6 +166,14 @@ func TestExportRefusesBrokenChain(t *testing.T) {
 // accepts it, and the re-issued report is signed again by the operator.
 func conditionalStore(t *testing.T) (s *airlock.Store, id string, k *attest.PrivateKey, ring attest.Keyring) {
 	t.Helper()
+	return conditionalStoreWith(t, true)
+}
+
+// conditionalStoreWith builds a conditional (authorized with conditions)
+// attestation and either promotes it, or only stages it with the envelope
+// saved as staging evidence.
+func conditionalStoreWith(t *testing.T, promote bool) (s *airlock.Store, id string, k *attest.PrivateKey, ring attest.Keyring) {
+	t.Helper()
 	_, id, k, ring, pub := authorizedEnvelopeKey(t)
 	t.Setenv("SOCAIR_PROVENANCE", "")
 	dir := t.TempDir()
@@ -222,6 +230,19 @@ func conditionalStore(t *testing.T) (s *airlock.Store, id string, k *attest.Priv
 	if _, err := s.TrustAcceptor(prefix + ".pub"); err != nil {
 		t.Fatal(err)
 	}
+	if !promote {
+		staged := s.StagingPath(id)
+		if err := os.MkdirAll(staged, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(staged, "fixture.safetensors"), safetensorstest.Clean(), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := s.SaveAttestation(id, env, time.Now()); err != nil {
+			t.Fatalf("SaveAttestation: %v", err)
+		}
+		return s, id, k, ring
+	}
 	envPath := filepath.Join(dir, "attestation.dsse.json")
 	if err := os.WriteFile(envPath, env, 0o600); err != nil {
 		t.Fatal(err)
@@ -230,6 +251,32 @@ func conditionalStore(t *testing.T) (s *airlock.Store, id string, k *attest.Priv
 		t.Fatalf("Promote: %v", err)
 	}
 	return s, id, k, ring
+}
+
+// A staged conditional attestation whose acceptance has lapsed is
+// acceptance-expired in staging, with no attestation.dsse.json in clean.
+// Export must list it under other and still succeed: only clean entries are
+// copied. Falsification: drop the location check in Export and it fails
+// looking for the clean attestation.
+func TestExportSkipsStagingOnlyExpiredEntry(t *testing.T) {
+	s, id, _, _ := conditionalStoreWith(t, false)
+	at := time.Now().Add(50 * 24 * time.Hour)
+	st, err := Export(s, filepath.Join(t.TempDir(), "snap"), nil, at, "test")
+	if err != nil {
+		t.Fatalf("Export: %v", err)
+	}
+	if len(st.Predicate.Models) != 0 {
+		t.Fatalf("a staging entry must not be listed as approved: %+v", st.Predicate.Models)
+	}
+	found := false
+	for _, o := range st.Predicate.Other {
+		if o.ID == id && o.Stage == airlock.StageAcceptanceExpired {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("want %s under other as acceptance-expired, got %+v", id, st.Predicate.Other)
+	}
 }
 
 // resign replaces a snapshot's statement with mutate applied, validly signed.
