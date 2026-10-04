@@ -190,6 +190,36 @@ miss: a default system prompt whose instruction reads as ordinary guidance,
 with no lead phrase, URL, obfuscation, or content condition. That class is on
 the published detection ceiling until reviewed-template diffing lands.
 
+### Code words in prose (2026-10-04, check set tier1/0.3)
+
+The structural FAIL used to come from a regex over the raw template text
+(`subprocess`, `eval(`, `exec(`, `os.system(`, and three dunder names), so a
+benign default system prompt that mentions them, such as coding advice,
+FAILed as "positive evidence" (#130). Process execution is now judged from the
+parsed template like dunder reach: a command-running module (`os`,
+`subprocess`, `sys`, ...) referenced in an expression, a call to `eval`,
+`exec`, `compile` or `__import__`, or a process function (`system`, `popen`,
+`check_output`, ...) called as an attribute or reached through `attr` with a
+folded name. Text the template outputs and Jinja comments are not code.
+
+Measured against the 70 templates in llama.cpp's `models/templates` (a
+broader set than the 49 above, including DeepSeek V3.1 to V4, Gemma 4, GLM 4.6
+and 4.7, Kimi K2/K3, MiniMax M1 to M3, Nemotron, Granite 4.x, Qwen 3.5, and
+gpt-oss), under the old and the new rules:
+
+| Rule version | PASS | LEAD | FAIL |
+|---|---|---|---|
+| tier1/0.2 (raw-text regex) | 69 | 1 | 0 |
+| tier1/0.3 (parsed template) | 69 | 1 | 0 |
+
+No real template mentions those words in prose, so the corpus result is
+unchanged; the fix is pinned by `TestCodeWordsInTextAreNotCode` and the
+`benign-code-words-in-prompt.jinja` fixture. The one LEAD is unrelated and
+predates this change: `fireworks-ai-llama-3-firefunction-v2.jinja` does not
+parse ("line 4: unexpected trim"), which the check reports as an unreadable
+template. The evasion corpus gains `attr-concat-popen.jinja` (a process
+function reached through `attr` with a concatenated name), which FAILs.
+
 ## Pickle opcode walker (2026-10-02)
 
 The pickle check matched one byte pattern, the text GLOBAL of protocols 0 to 3,

@@ -34,5 +34,6 @@ in `scope.reference_data`.
 
 | Version | Rule fingerprint | Date | Changes |
 |---|---|---|---|
+| `tier1/0.3` | `3cae86387201e2303e8dfe9d04383d6f43a15ee4824fdcc363232aad75a5247c` | 2026-10-04 | Chat template: process execution is judged from the parsed template (a module, builtin, or process function referenced in an expression), not from a regex over the raw text, so code words in prose no longer FAIL. Dunder reach was already tree-based; its raw-text regex is removed too (#130). |
 | `tier1/0.2` | `23be10362de6e20be2eaf179e3d3910be6491ce71ebd37eec654ccef1f43b22c` | 2026-10-04 | First fingerprinted version. Covers every detector retune recorded in `docs/false-positive-baseline.md` up to this date. |
 | `tier1/0.1` | (not fingerprinted) | before 2026-10-04 | The original Tier 1 set. Reports carrying it may come from different rules, because it was not bumped across retunes. |
