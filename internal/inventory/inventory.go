@@ -126,7 +126,8 @@ func sameSet(a, b []string) bool {
 // Verify checks a snapshot directory:
 //  1. the envelope verifies against trusted, and its predicate type is inventory/v1;
 //  2. every listed attestation file is present and hashes to its recorded value;
-//  3. every attestation verifies against trusted, for the listed id;
+//  3. every attestation verifies against trusted, for the listed id, and a
+//     readable attestation.json beside it says exactly what it signs;
 //  4. log.jsonl verifies as a hash chain whose head is the recorded log_head.
 func Verify(dir string, trusted attest.Keyring, opts VerifyOptions) (*Verified, error) {
 	var payload []byte
@@ -189,6 +190,9 @@ func Verify(dir string, trusted attest.Keyring, opts VerifyOptions) (*Verified, 
 		if v.SHA256 != e.ID {
 			return nil, fmt.Errorf("%s: the attestation is for %s", e.ID, v.SHA256)
 		}
+		if err := sameDocument(filepath.Join(dir, "models", e.ID, "attestation.json"), &v.Document); err != nil {
+			return nil, fmt.Errorf("%s: %w", e.ID, err)
+		}
 		pa := v.Document.PromotionAuthorization
 		switch {
 		case e.PromotionState != string(pa.State):
@@ -211,6 +215,37 @@ func Verify(dir string, trusted attest.Keyring, opts VerifyOptions) (*Verified, 
 		return nil, fmt.Errorf("the activity log does not verify to the recorded head: %s", r.Reason)
 	}
 	return &Verified{Statement: st, SignerKeyID: signer}, nil
+}
+
+// sameDocument checks the readable attestation.json beside an envelope, when
+// present: it must strictly decode as a report and say exactly what the
+// verified envelope says, so a reader of the plain file reads the signed claim.
+func sameDocument(p string, signed *report.Document) error {
+	b, err := os.ReadFile(p)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	var d report.Document
+	dec := json.NewDecoder(bytes.NewReader(b))
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(&d); err != nil || dec.Decode(&struct{}{}) != io.EOF {
+		return errors.New("attestation.json is not a Socair report")
+	}
+	got, err := json.Marshal(d)
+	if err != nil {
+		return err
+	}
+	want, err := json.Marshal(signed)
+	if err != nil {
+		return err
+	}
+	if !bytes.Equal(got, want) {
+		return errors.New("attestation.json differs from the signed attestation")
+	}
+	return nil
 }
 
 func jsonIndent(st Statement) ([]byte, error) { return json.MarshalIndent(st, "", "  ") }

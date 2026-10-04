@@ -1,6 +1,7 @@
 package inventory
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -10,6 +11,8 @@ import (
 
 	"github.com/defilantech/socair/internal/airlock"
 	"github.com/defilantech/socair/internal/attest"
+	"github.com/defilantech/socair/internal/engine"
+	"github.com/defilantech/socair/internal/report"
 	"github.com/defilantech/socair/internal/safetensors/safetensorstest"
 )
 
@@ -154,5 +157,164 @@ func TestExportRefusesBrokenChain(t *testing.T) {
 	f.Close()
 	if _, err := Export(s, filepath.Join(t.TempDir(), "snap"), k, time.Now(), "socair test"); err == nil {
 		t.Fatal("export must refuse a broken log chain")
+	}
+}
+
+// conditionalStore promotes the fixture on a conditional attestation, the way
+// the CLI does it: a withheld scan (no provenance manifest, so provenance is
+// NOT_TESTED) is signed by the operator, an acceptor trusted by the store
+// accepts it, and the re-issued report is signed again by the operator.
+func conditionalStore(t *testing.T) (s *airlock.Store, id string, k *attest.PrivateKey, ring attest.Keyring) {
+	t.Helper()
+	_, id, k, ring, pub := authorizedEnvelopeKey(t)
+	t.Setenv("SOCAIR_PROVENANCE", "")
+	dir := t.TempDir()
+	artifact := filepath.Join(dir, "fixture.safetensors")
+	if err := os.WriteFile(artifact, safetensorstest.Clean(), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	d, err := engine.Scan(artifact)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if d.PromotionAuthorization.State != report.StateWithheld || len(d.Findings.NotTested) == 0 ||
+		len(d.Findings.Fails)+len(d.Findings.Leads) != 0 {
+		t.Fatalf("want withheld on gaps only: %s %+v", d.PromotionAuthorization.State, d.Findings)
+	}
+	reviewed, err := attest.Sign(*d, k)
+	if err != nil {
+		t.Fatal(err)
+	}
+	v, err := attest.Verify(reviewed, ring)
+	if err != nil {
+		t.Fatal(err)
+	}
+	prefix := filepath.Join(dir, "acceptor")
+	if _, err := attest.GenerateKey(prefix); err != nil {
+		t.Fatal(err)
+	}
+	ak, err := attest.LoadPrivateKey(prefix + ".key")
+	if err != nil {
+		t.Fatal(err)
+	}
+	acc, err := attest.Accept(v, ak, "Jane Doe, CISO", time.Now().Add(40*24*time.Hour), "reviewed in change 4411", time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	acceptors, err := attest.LoadKeyring(prefix + ".pub")
+	if err != nil {
+		t.Fatal(err)
+	}
+	final, err := attest.Conditional(v, acc, acceptors, time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	env, err := attest.Sign(final, k)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if s, err = airlock.Init(t.TempDir()); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.Trust(pub); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.TrustAcceptor(prefix + ".pub"); err != nil {
+		t.Fatal(err)
+	}
+	envPath := filepath.Join(dir, "attestation.dsse.json")
+	if err := os.WriteFile(envPath, env, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := airlock.Promote(s, artifact, envPath); err != nil {
+		t.Fatalf("Promote: %v", err)
+	}
+	return s, id, k, ring
+}
+
+// resign replaces a snapshot's statement with mutate applied, validly signed.
+func resign(t *testing.T, dir string, k *attest.PrivateKey, mutate func(*Statement)) {
+	t.Helper()
+	b, err := os.ReadFile(filepath.Join(dir, "inventory.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var st Statement
+	if err := json.Unmarshal(b, &st); err != nil {
+		t.Fatal(err)
+	}
+	mutate(&st)
+	payload, signed, err := Sign(st, k)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = os.WriteFile(filepath.Join(dir, "inventory.json"), payload, 0o644)
+	_ = os.WriteFile(filepath.Join(dir, "inventory.dsse.json"), signed, 0o644)
+}
+
+// The Model to Verify seam for a conditional entry: an unedited export
+// verifies, with the acceptance carried in the entry, and re-signed edits to
+// accepted_surfaces or acceptance_expires are refused against the
+// attestation. Falsification: drop either conditional comparison in Verify
+// and its case verifies.
+func TestConditionalExportVerifiesAndTamperIsRefused(t *testing.T) {
+	s, id, k, ring := conditionalStore(t)
+	export := func() string {
+		dir := filepath.Join(t.TempDir(), "snap")
+		if _, err := Export(s, dir, k, time.Now(), "socair test"); err != nil {
+			t.Fatal(err)
+		}
+		return dir
+	}
+	v, err := Verify(export(), ring, VerifyOptions{})
+	if err != nil {
+		t.Fatalf("an unedited conditional export must verify: %v", err)
+	}
+	if len(v.Predicate.Models) != 1 || v.Predicate.Models[0].ID != id ||
+		v.Predicate.Models[0].PromotionState != string(report.StateAuthorizedWithConditions) ||
+		len(v.Predicate.Models[0].AcceptedSurfaces) == 0 || v.Predicate.Models[0].AcceptanceExpires == "" {
+		t.Fatalf("%+v", v.Predicate.Models)
+	}
+	for name, mutate := range map[string]func(*Statement){
+		"accepted_surfaces dropped": func(st *Statement) { st.Predicate.Models[0].AcceptedSurfaces = nil },
+		"accepted_surfaces changed": func(st *Statement) { st.Predicate.Models[0].AcceptedSurfaces = []string{"Chat template"} },
+		"acceptance_expires":        func(st *Statement) { st.Predicate.Models[0].AcceptanceExpires = "2099-01-01T00:00:00Z" },
+	} {
+		dir := export()
+		resign(t, dir, k, mutate)
+		if _, err := Verify(dir, ring, VerifyOptions{}); err == nil {
+			t.Errorf("%s: verified", name)
+		}
+	}
+}
+
+// The readable attestation.json must say what the envelope signs.
+// Falsification: drop sameDocument from Verify and both cases verify.
+func TestTamperedAttestationJSONIsRefused(t *testing.T) {
+	s, id, k, ring := promotedStore(t)
+	for name, edit := range map[string]func([]byte) []byte{
+		"edited field": func(b []byte) []byte {
+			return []byte(strings.Replace(string(b), `"state": "authorized"`, `"state": "authorized_with_conditions"`, 1))
+		},
+		"not a report": func([]byte) []byte { return []byte(`{"hello":"world"}`) },
+	} {
+		dir := filepath.Join(t.TempDir(), "snap")
+		if _, err := Export(s, dir, k, time.Now(), "socair test"); err != nil {
+			t.Fatal(err)
+		}
+		p := filepath.Join(dir, "models", id, "attestation.json")
+		b, err := os.ReadFile(p)
+		if err != nil {
+			t.Fatal(err)
+		}
+		changed := edit(b)
+		if string(changed) == string(b) {
+			t.Fatalf("%s: the edit changed nothing", name)
+		}
+		_ = os.WriteFile(p, changed, 0o644)
+		_, err = Verify(dir, ring, VerifyOptions{})
+		if err == nil || !strings.Contains(err.Error(), id) {
+			t.Errorf("%s: want a refusal naming %s, got %v", name, id, err)
+		}
 	}
 }

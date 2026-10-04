@@ -63,13 +63,17 @@ type Model struct {
 
 // Models lists every clean and staging entry, clean first, each by id. It
 // reads only evidence files (envelopes and small JSON), never artifact bytes.
-// Stray names that are not 64-hex directories are skipped.
+// Stray names that are not 64-hex directories are skipped. Promote leaves the
+// staged copy in place, so a staging entry whose id is approved in clean is
+// omitted: it has crossed. One whose clean entry is acceptance-expired or does
+// not verify stays listed, as the way to re-scan or re-accept.
 func (s *Store) Models(at time.Time) ([]Model, error) {
 	promoted, err := s.promotedAt()
 	if err != nil {
 		return nil, err
 	}
 	var out []Model
+	approved := map[string]bool{}
 	for _, loc := range []string{cleanDir, stagingDir} {
 		entries, err := os.ReadDir(filepath.Join(s.Root, loc))
 		if err != nil {
@@ -83,9 +87,13 @@ func (s *Store) Models(at time.Time) ([]Model, error) {
 		}
 		sort.Strings(ids)
 		for _, id := range ids {
+			if loc == stagingDir && approved[id] {
+				continue
+			}
 			m, _ := s.derive(loc, id, at)
 			if loc == cleanDir {
 				m.PromotedAt = promoted[id]
+				approved[id] = m.Stage == StageApproved
 			}
 			out = append(out, m)
 		}
@@ -113,6 +121,20 @@ func (s *Store) Model(id string, at time.Time) (Model, *report.Document, error) 
 		}
 	}
 	return Model{}, nil, ErrNoModel
+}
+
+// StagedModel returns the staging entry for id, never the clean one, with the
+// report it carries. The console's scan and upload act on the staged copy,
+// which can exist beside a clean entry of the same id.
+func (s *Store) StagedModel(id string, at time.Time) (Model, *report.Document, error) {
+	if !hexSHA256.MatchString(id) {
+		return Model{}, nil, ErrNoModel
+	}
+	if fi, err := os.Stat(s.StagingPath(id)); err != nil || !fi.IsDir() {
+		return Model{}, nil, ErrNoModel
+	}
+	m, d := s.derive(stagingDir, id, at)
+	return m, d, nil
 }
 
 // derive works out one entry's stage from its files.
@@ -186,6 +208,7 @@ func (s *Store) derive(loc, id string, at time.Time) (Model, *report.Document) {
 			switch {
 			case a != nil && a.SHA256 != id:
 				m.Stage, m.StageReason = StageDoesNotVerify, fmt.Sprintf("%s is for %s, not this entry", name, a.SHA256)
+				m.Next = Next{Action: "scan", Command: s.scanCommand(dir, art)}
 				return m, nil
 			case errors.Is(err, ErrAcceptanceExpired):
 				fill(&m, a, at)
@@ -193,7 +216,10 @@ func (s *Store) derive(loc, id string, at time.Time) (Model, *report.Document) {
 				m.Next = Next{Action: "scan", Command: s.scanCommand(dir, art)}
 				return m, &a.Verified.Document
 			case err != nil:
+				// A rescan writes a report newer than this envelope, which
+				// then supersedes it: that is the way out.
 				m.Stage, m.StageReason = StageDoesNotVerify, name+": "+err.Error()
+				m.Next = Next{Action: "scan", Command: s.scanCommand(dir, art)}
 				return m, nil
 			}
 			fill(&m, a, at)

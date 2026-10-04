@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 // TestStagingFileRejectsTraversal: the pull destination was built from the
@@ -111,5 +112,32 @@ func TestResolveCacheStaysInTheCache(t *testing.T) {
 		if p, err := ResolveCache(cache, c[0], c[1], c[2]); err == nil {
 			t.Errorf("ResolveCache(%q, %q, %q) = %q, want an error", c[0], c[1], c[2], p)
 		}
+	}
+}
+
+// TestStagingRefusesEvidenceNames: a single-file pull is staged flat, as
+// incoming/<sha>/<file>, beside report.json and the attestations. An artifact
+// named like evidence would be hidden from stagedArtifact and overwritten by
+// the next scan or upload. Falsification: drop notEvidenceName and each name
+// resolves and reaches the network.
+func TestStagingRefusesEvidenceNames(t *testing.T) {
+	s, err := Init(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	sha := strings.Repeat("a", 64)
+	for _, name := range []string{StagedReport, StagedAttestation, StagedAcceptance, StagedConditional, ProvenanceFile, "attestation.json", "attestation.dsse.json"} {
+		if p, err := s.StagingFile(sha, name); err == nil || !strings.Contains(err.Error(), name) {
+			t.Errorf("StagingFile(%q) = %q, %v; want an error naming it", name, p, err)
+		}
+	}
+	// Pull checks the name itself, before any request: the endpoint is closed.
+	_, err = Pull(context.Background(), s, filepath.Join(s.StagingPath(sha), StagedReport), "org/name", "main", sha,
+		EgressPolicy{Endpoint: "http://127.0.0.1:1", Allow: []string{"127.0.0.1"}, Timeout: time.Second})
+	if err == nil || !strings.Contains(err.Error(), StagedReport) || !strings.Contains(err.Error(), "evidence") {
+		t.Fatalf("a pull of report.json must be refused by name: %v", err)
+	}
+	if _, err := os.Stat(s.StagingPath(sha)); !os.IsNotExist(err) {
+		t.Error("a refused pull must stage nothing")
 	}
 }

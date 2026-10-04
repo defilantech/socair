@@ -310,3 +310,100 @@ func TestCleanArtifactNeedsExactlyOne(t *testing.T) {
 		t.Fatalf("ambiguous artifact must be empty: %q", m.ArtifactPath)
 	}
 }
+
+// Promote leaves the staged copy in place, so after promotion the id is in
+// both incoming and clean. The list shows the clean, approved entry only.
+// Falsification: drop the approved-id skip in Models and the staged copy is
+// listed too (as ready).
+func TestPromotedModelLeavesStaging(t *testing.T) {
+	s := trustedStore(t)
+	id := stage(t, s)
+	_, d := authorizedArtifact(t)
+	name, err := s.SaveAttestation(id, envelopeFor(t, d), time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	art, err := s.stagedArtifact(id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Promote(s, art, filepath.Join(s.StagingPath(id), name)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(art); err != nil {
+		t.Fatalf("promote must not delete the staged copy: %v", err)
+	}
+	ms, err := s.Models(time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(ms) != 1 || ms[0].ID != id || ms[0].Location != "clean" || ms[0].Stage != StageApproved {
+		t.Fatalf("want only the clean approved entry: %+v", ms)
+	}
+	// The staged copy is still reachable for the console's actions.
+	if m, _, err := s.StagedModel(id, time.Now()); err != nil || m.Location != "staging" || m.Stage != StageReady {
+		t.Fatalf("staged model: %+v %v", m, err)
+	}
+}
+
+// A clean entry whose acceptance has expired keeps its staged copy listed: it
+// is the way to re-scan and re-accept.
+func TestExpiredCleanKeepsItsStagedCopy(t *testing.T) {
+	s := trustedStore(t)
+	id := stage(t, s)
+	artifact, d := authorizedArtifact(t)
+	withholdForGap(d)
+	if _, err := Promote(s, artifact, acceptedTicket(t, s, d, 24*time.Hour)); err != nil {
+		t.Fatal(err)
+	}
+	later := time.Now().Add(48 * time.Hour)
+	ms, err := s.Models(later)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var clean, staged bool
+	for _, m := range ms {
+		if m.ID != id {
+			continue
+		}
+		clean = clean || (m.Location == "clean" && m.Stage == StageAcceptanceExpired)
+		staged = staged || m.Location == "staging"
+	}
+	if !clean || !staged || len(ms) != 2 {
+		t.Fatalf("want the expired clean entry and its staged copy: %+v", ms)
+	}
+	// Approved now, so the staged copy is hidden again.
+	if ms, _ := s.Models(time.Now()); len(ms) != 1 || ms[0].Location != "clean" {
+		t.Fatalf("%+v", ms)
+	}
+}
+
+// A staged envelope that does not verify offers a rescan: a newer report.json
+// supersedes it. Falsification: leave Next as none and this fails.
+func TestStagedDoesNotVerifyOffersAScan(t *testing.T) {
+	s := trustedStore(t)
+	id := stage(t, s)
+	_, d := authorizedArtifact(t)
+	if _, err := s.SaveAttestation(id, envelopeFor(t, d), time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Remove(filepath.Join(s.TrustPath(), "test.pub")); err != nil {
+		t.Fatal(err)
+	}
+	m := modelByID(t, s, id, time.Now())
+	if m.Stage != StageDoesNotVerify || m.Next.Action != "scan" || !strings.Contains(m.Next.Command, "socair scan") ||
+		!strings.Contains(m.Next.Command, StagedReport) {
+		t.Fatalf("%+v", m)
+	}
+	// The way out works: a newer scan report supersedes the envelope.
+	later := time.Now().Add(time.Minute)
+	if err := s.SaveReport(id, d); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chtimes(filepath.Join(s.StagingPath(id), StagedReport), later, later); err != nil {
+		t.Fatal(err)
+	}
+	if m := modelByID(t, s, id, time.Now()); m.Stage != StageScanned {
+		t.Fatalf("after a rescan: %+v", m)
+	}
+}

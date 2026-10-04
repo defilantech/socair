@@ -97,8 +97,10 @@ func (o Options) consoleScan(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	id := r.PathValue("id")
-	m, _, err := s.Model(id, time.Now())
-	if errors.Is(err, airlock.ErrNoModel) || (err == nil && m.Location != "staging") {
+	// The staged copy, never the clean entry: an id can be in both (Promote
+	// leaves the staged copy), and a rescan acts on what is staged.
+	m, _, err := s.StagedModel(id, time.Now())
+	if errors.Is(err, airlock.ErrNoModel) {
 		writeError(w, http.StatusNotFound, "no staged model "+id)
 		return
 	}
@@ -120,7 +122,7 @@ func (o Options) consoleScan(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusUnprocessableEntity, err.Error())
 		return
 	}
-	m, _, _ = s.Model(id, time.Now())
+	m, _, _ = s.StagedModel(id, time.Now())
 	writeJSON(w, http.StatusOK, map[string]any{"report": d, "model": m})
 }
 
@@ -153,7 +155,7 @@ func (o Options) consoleAttestation(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusUnprocessableEntity, err.Error())
 		return
 	}
-	m, _, _ := s.Model(id, time.Now())
+	m, _, _ := s.StagedModel(id, time.Now())
 	writeJSON(w, http.StatusOK, map[string]any{"file": name, "model": m})
 }
 

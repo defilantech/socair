@@ -89,6 +89,8 @@ Request `{"local":"/path"}` or `{"repo":"org/name","file":"name","revision":"mai
 Request `{"repo":"org/name","file":"name","sha256":"<64-hex>","revision":"main"}`.
 `200` `{"path":"<staging path>","event":{...}}`, or `422` when egress is denied,
 the source is unreachable, or the bytes do not hash to the requested hash.
+`400` for a `file` that is not a plain name or is a staging evidence name
+(`report.json`, `provenance.json`, and the rest listed under the files route).
 
 ### `POST /api/airlock/promote`
 
@@ -111,7 +113,9 @@ sha256, or a model directory's manifest digest. An entry is `staging`
 ### `GET /api/airlock/models`
 
 `200` `{"models":[ ... ]}`, clean entries first, then staging, each sorted by
-id. It reads evidence files only, never artifact bytes. Each model:
+id. It reads evidence files only, never artifact bytes. A staging entry whose
+id is approved in clean is omitted (promote leaves the staged copy); it is kept
+when the clean entry's acceptance expired or it does not verify. Each model:
 
 ```json
 {"id":"<64-hex>","name":"...","format":"gguf","size_bytes":123,
@@ -148,8 +152,9 @@ entry does not have, is `404`. Artifact bytes are never served.
 
 No request fields are read (send `{}`). Scans a staged model, with the
 provenance manifest beside it if there is one, and saves the result as
-`incoming/<id>/report.json`. `200` `{"report": {...}, "model": {...}}`. `404`
-when the id is not a staged model; `422` when the scan fails or the entry has
+`incoming/<id>/report.json`. `200` `{"report": {...}, "model": {...}}`, where
+`model` is the staging entry. It acts on the staged copy even when the id is
+also in clean. `404` when nothing is staged under the id; `422` when the scan fails or the entry has
 no single artifact. It counts against the two-at-a-time load limit.
 
 ### `POST /api/airlock/models/{id}/attestation`
@@ -158,8 +163,9 @@ The body is the raw DSSE envelope (`application/json`), at most 4 MiB. It is
 kept only if it verifies against `trusted-keys/` and its subject is this
 model's id. `200` `{"file":"<evidence file name>","model": {...}}`. A conditional
 attestation is filed as `report.conditional.dsse.json`, any other as
-`report.dsse.json`. `413` over 4 MiB, `400` for a body that is not JSON, `404`
-for an id that is not staged, `422` when the envelope is refused.
+`report.dsse.json`; `model` is the staging entry, even when the id is also in
+clean. `413` over 4 MiB, `400` for a body that is not JSON, `404`
+for an id with nothing staged, `422` when the envelope is refused.
 
 ### `POST /api/airlock/export`
 

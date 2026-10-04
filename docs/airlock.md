@@ -158,7 +158,19 @@ A model's stage (`staged`, `scanned`, `ready`, `needs-acceptance`, `blocked`,
 `approved`, `acceptance-expired`, `does-not-verify`) is derived from these
 files by `Store.Assess`, the verification `promote` itself uses. A staging
 entry's stage comes from the newest evidence file by modification time. A
-clean entry whose attestation no longer verifies is `does-not-verify`.
+clean entry whose attestation no longer verifies is `does-not-verify`. A staged
+envelope that does not verify offers a rescan: the newer `report.json`
+supersedes it.
+
+`promote` leaves the staged copy in `incoming/`; nothing on the gate path
+deletes. The list omits a staging entry whose id is approved in clean, and keeps
+it when the clean entry's acceptance expired or it does not verify, so it can be
+re-scanned and re-accepted.
+
+Because a single-file pull is staged flat beside these files, `pull` refuses
+an artifact file named like one of them (`provenance.json`, the four `report*`
+names, `attestation.json`, `attestation.dsse.json`). A whole repo is staged
+under its own name, so only the repo name is checked.
 
 The console reads attestations and does not re-hash model bytes when it shows
 them. Re-running `socair airlock promote` re-verifies the bytes.
@@ -202,7 +214,9 @@ snapshot is unsigned and `index.html` says so.
    file is present and hashes to `attestation_sha256`.
 3. Every attestation verifies against `--trusted` for its listed id, and its
    `promotion_state`, `signer_key_id`, and (for a conditional entry)
-   accepted surfaces and expiry match the entry.
+   accepted surfaces and expiry match the entry. A readable
+   `attestation.json` beside it, when present, must decode as a report equal
+   to the envelope's document.
 4. `log.jsonl` verifies as a hash chain to `log_head`, which must be set when
    models are listed.
 
