@@ -135,10 +135,12 @@ key.
 
 ### `GET /api/airlock/models/{id}`
 
-`200` `{"model": {...}, "report": {...}|null, "events": [ ... ]}`. `report` is
-the verified attestation's document when there is one, else the unsigned scan
-report, else `null`. `events` are the log entries for this id. `404` for an
-unknown id.
+`200` `{"model": {...}, "report": {...}|null, "events": [ ... ], "evidence": [ ... ]}`.
+`report` is the verified attestation's document when there is one, else the
+unsigned scan report, else `null`. `events` are the log entries for this id.
+`evidence` names the evidence files this entry holds, sorted (always an array,
+possibly empty); each one is served by the `files/{name}` route below. `404`
+for an unknown id.
 
 ### `GET /api/airlock/models/{id}/files/{name}`
 

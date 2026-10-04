@@ -67,6 +67,26 @@ func (s *Store) EvidencePath(id, name string) (string, error) {
 	return p, nil
 }
 
+// Evidence lists the evidence files an entry holds (names IsEvidence
+// accepts), sorted, so a client offers only files EvidencePath will serve.
+func (s *Store) Evidence(id string) ([]string, error) {
+	dir, err := s.entryDir(id)
+	if err != nil {
+		return nil, err
+	}
+	des, err := os.ReadDir(dir)
+	if err != nil {
+		return nil, err
+	}
+	names := []string{}
+	for _, d := range des {
+		if IsEvidence(d.Name()) && !d.IsDir() {
+			names = append(names, d.Name())
+		}
+	}
+	return names, nil
+}
+
 // stagedArtifact returns the one artifact (a file or a model directory) in
 // incoming/<id>/, ignoring evidence files.
 func (s *Store) stagedArtifact(id string) (string, error) {

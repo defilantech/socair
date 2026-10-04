@@ -61,7 +61,12 @@ func (o Options) consoleModel(w http.ResponseWriter, r *http.Request) {
 			events = append(events, e)
 		}
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"model": m, "report": d, "events": events})
+	evidence, err := s.Evidence(id)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"model": m, "report": d, "events": events, "evidence": evidence})
 }
 
 func (o Options) consoleFile(w http.ResponseWriter, r *http.Request) {

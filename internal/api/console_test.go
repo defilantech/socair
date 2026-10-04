@@ -368,3 +368,40 @@ func TestConsoleScanActsOnTheStagedCopy(t *testing.T) {
 		t.Fatalf("scan of an unknown id: %d", code)
 	}
 }
+
+// The detail names only the evidence files the entry holds, so the console
+// never links a file that answers 404, and never names the artifact itself.
+func TestConsoleDetailListsEvidencePresent(t *testing.T) {
+	root, id := consoleStore(t)
+	ts := server(t, Options{StoreRoot: root})
+	evidence := func() []string {
+		t.Helper()
+		code, _, body := get(t, ts, "/api/airlock/models/"+id)
+		var out struct {
+			Evidence []string `json:"evidence"`
+		}
+		if code != http.StatusOK || json.Unmarshal(body, &out) != nil {
+			t.Fatalf("%d %s", code, body)
+		}
+		return out.Evidence
+	}
+	if got := evidence(); len(got) != 1 || got[0] != airlock.ProvenanceFile {
+		t.Fatalf("evidence = %v, want only %s", got, airlock.ProvenanceFile)
+	}
+	s, err := airlock.Open(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(s.StagingPath(id), airlock.StagedReport), []byte(`{}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	got := evidence()
+	if strings.Join(got, ",") != airlock.ProvenanceFile+","+airlock.StagedReport {
+		t.Fatalf("evidence = %v", got)
+	}
+	for _, name := range got {
+		if code, _, _ := get(t, ts, "/api/airlock/models/"+id+"/files/"+name); code != http.StatusOK {
+			t.Fatalf("listed %s answers %d", name, code)
+		}
+	}
+}
