@@ -19,3 +19,13 @@ updates:
     directory: /web
     schedule:
       interval: weekly
+    ignore:
+      # SvelteKit 2.x declares typescript ^5.3.3 || ^6.0.0 as its peer, so
+      # TypeScript 7 does not install (#98). Lift this when SvelteKit does.
+      - dependency-name: typescript
+        update-types: ["version-update:semver-major"]
+      # @types/node tracks the Node runtime, Node 22 LTS in CI and the build;
+      # newer majors type APIs the runtime lacks (#99). Move it with the
+      # runtime, by hand.
+      - dependency-name: "@types/node"
+        update-types: ["version-update:semver-major"]
