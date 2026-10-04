@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Socair">
+  <title>Socair</title>
+  <rect width="64" height="64" rx="14" fill="#12283A"/>
+  <g transform="translate(32 33) scale(0.74) translate(-32.5 -35.5)"><path d="M10 52 C 9 45.5, 17 41.5, 31 41.5 C 46 41.5, 55 44.5, 55 51 C 55 57, 45 59.5, 31 59.5 C 18 59.5, 10.5 57.5, 10 52 Z" fill="#F4F7F8"/><path d="M15 34.5 C 15 30, 22 27.5, 31 27.5 C 40.5 27.5, 47.5 29.5, 47.5 33.8 C 47.5 37.8, 40.5 39.5, 31 39.5 C 21.5 39.5, 15 38.3, 15 34.5 Z" fill="#F4F7F8" transform="rotate(3 31 33.5)"/><path d="M25 21.2 C 25 17.6, 30.5 15.6, 36.5 15.6 C 42.5 15.6, 46.5 17.4, 46.5 20.6 C 46.5 23.6, 42 25, 36 25 C 29.8 25, 25 24.2, 25 21.2 Z" fill="#4CD3AE" transform="rotate(-7 36 20.3)"/></g>
+</svg>

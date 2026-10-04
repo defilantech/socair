@@ -20,10 +20,10 @@ in section 2.
   headers). Signing uses the operator's own key from `socair key gen`, and the
   README says Defilan-signed issuance is the paid tier and has not shipped.
   Re-check after the last merge before the reveal.
-- [ ] **Public docs claim only what ships (#62).** One known miss: the README
-  calls `docs/detection-ceiling.json` "the source for socair.ai/ceiling", and
-  `https://socair.ai/ceiling` did not respond on 2026-10-03. Either publish the
-  page or reword the README. *Owner.*
+- [x] **Public docs claim only what ships (#62).** The README and docs were
+  rewritten for release (#121). The report's ceiling link now points at
+  `docs/detection-ceiling.json` in the repository (it resolves once the
+  repository is public); `socair.ai` is not linked until it serves a page.
 - [ ] **The Tier 1 tool installs and runs from a clean machine.** See section 4.
 
 ## 2. Merge what is in flight

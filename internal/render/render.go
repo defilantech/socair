@@ -32,9 +32,9 @@ type Counts struct {
 	NotTested int
 }
 
-// CeilingURL is the published detection ceiling page. The report links it so a
-// reader can see the same list outside the document.
-const CeilingURL = "https://socair.ai/ceiling"
+// CeilingURL is where the published detection ceiling lives: the file in the
+// repository that the report's ceiling list comes from.
+const CeilingURL = "https://github.com/defilantech/socair/blob/main/docs/detection-ceiling.json"
 
 // View is what the template renders.
 type View struct {
