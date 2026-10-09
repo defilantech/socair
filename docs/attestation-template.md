@@ -71,18 +71,21 @@ Each row returns PASS, FAIL, LEAD, or NOT_TESTED. FAIL is positive evidence. LEA
 
 Every row also carries a fixed **PASS means** line (`pass_means`): what that check's PASS establishes and where it stops, for example that the tokenizer check tests internal consistency and does not compare against a canonical copy. The wording is fixed per check (`report.PassMeaning`), never per artifact.
 
+The rows that run depend on the format: every report carries structure, inventory, provenance, and the known-bad hash; a GGUF adds the chat template, tokenizer, and quant rows; a model directory adds the chat template, tokenizer, and remote code rows; a pickle checkpoint adds the pickle row.
+
 | Check | Looks for | Result | Evidence | Notes |
 |---|---|---|---|---|
-| Format and structure | Malformed GGUF/safetensors structure, unexpected tensors | `[result]` | `[evidence]` | `[notes]` |
-| Chat template (hero) | Code reach, hidden or obfuscated text, and override or content-triggered instructions in the chat template | `[result]` | `[evidence]` | `[notes]` |
-| Tokenizer config | Tokenizer metadata anomalies | `[result]` | `[evidence]` | `[notes]` |
-| Safetensors header and opcodes | Serialized code gadgets in headers or pickle opcodes | `[result]` | `[evidence]` | `[notes]` |
+| Format and structure | Malformed container structure, unexpected tensors | `[result]` | `[evidence]` | `[notes]` |
+| File inventory and payloads | Hidden files, embedded payloads, unexpected executables | `[result]` | `[evidence]` | `[notes]` |
 | Hash, provenance, lineage | Traceable origin: a manifest bound to this hash, from an immutable upstream commit | `[result]` | `[evidence]` | `[notes]` |
 | Known-bad hash match | Match against the known-bad artifact denylist | `[result]` | `[evidence]` | `[notes]` |
+| Chat template (hero) | Code reach, hidden or obfuscated text, and override or content-triggered instructions in the chat template | `[result]` | `[evidence]` | `[notes]` |
+| Tokenizer config | Tampered tokenizer tables: special-token ids, token types, control tokens | `[result]` | `[evidence]` | `[notes]` |
+| Quant match (GGUF) | Declared quantization (file name) against the tensor types in the file | `[result]` | `[evidence]` | `[notes]` |
 | Remote code (model directory) | Code a loader would run: auto_map entries and Python files (trust_remote_code) | `[result]` | `[evidence]` | `[notes]` |
-| Quant match | Declared quantization against observed weight layout | `[result]` | `[evidence]` | `[notes]` |
-| Forward-pass trigger probes (Tier 2) | Behavior under the production serving stack | `[result / not run]` | `[evidence]` | `[notes]` |
-| Serving-stack differential (Tier 2) | Same artifact behaving differently across stacks | `[result / not run]` | `[evidence]` | `[notes]` |
+| Pickle opcode scan (pickle) | Imports in pickle-based model files that reach code execution | `[result]` | `[evidence]` | `[notes]` |
+
+Tier 2 checks (forward-pass trigger probes, a serving-stack differential) are not part of this release. A Tier 1 report lists them in Section 8 as not run, never as rows.
 
 ### Severity and framework mapping
 
