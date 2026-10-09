@@ -23,6 +23,7 @@ import (
 	"github.com/defilantech/socair/internal/gguf"
 	"github.com/defilantech/socair/internal/report"
 	"github.com/defilantech/socair/internal/safetensors"
+	"github.com/defilantech/socair/internal/tier2"
 )
 
 // CheckSetVersion names the set of checks this engine runs.
@@ -78,11 +79,19 @@ func ScanWith(path string, mode Mode, in Inputs) (*report.Document, error) {
 	if err != nil {
 		return nil, err
 	}
+	// Tier 2 is opt-in, and only an attestation runs it. A configuration
+	// error stops the scan here, before any snapshot is copied.
+	var t2 *tier2.Config
+	if mode == ModeFull {
+		if t2, err = tier2.FromEnv(); err != nil {
+			return nil, err
+		}
+	}
 	if fi, err := os.Stat(path); err == nil && fi.IsDir() {
 		if mode != ModeFull {
 			return nil, fmt.Errorf("%s is a directory; a directory scan always reads every file in full", path)
 		}
-		return scanDir(path, start, refs, in)
+		return scanDir(path, start, refs, in, t2)
 	}
 
 	// A full scan is an attestation, so it checks a private snapshot whose
@@ -226,6 +235,7 @@ func ScanWith(path string, mode Mode, in Inputs) (*report.Document, error) {
 	if id.Format != "GGUF" && id.Format != "safetensors" {
 		results = append(results, pickle.Inspect(path))
 	}
+	measureTier2(d, t2, path)
 	return finish(d, results, unparsedFormats(id), expires), nil
 }
 
@@ -282,10 +292,13 @@ func begin(start time.Time, id report.Identity, original string, sig *provenance
 }
 
 // finish records the check rows, picks the bounded statement they support,
-// and computes the promotion state.
+// and computes the promotion state. The Tier 2 rows follow the Tier 1 rows;
+// only a LEAD or FAIL measurement has one, so a measurement reaches promotion
+// only to withhold it.
 func finish(d *report.Document, results []checks.Result, unparsed []string, expires string) *report.Document {
 	applyResults(d, results)
-	d.BoundedStatement = report.BoundedStatementFor(d.Checks)
+	d.Checks = append(d.Checks, report.Tier2Rows(d.Tier2)...)
+	d.BoundedStatement = report.BoundedStatementOf(d)
 	d.OutOfScope.UnparsedFormats = unparsed
 	d.Scope.ScanEndUTC = time.Now().UTC().Format(time.RFC3339)
 	finalizeFindings(d)

@@ -7,6 +7,12 @@
 # Go
 *.test
 *.out
+
+# Python (tools/socair-probe)
+__pycache__/
+*.pyc
+*.egg-info/
+/tools/socair-probe/build/
 # vendor/ is committed on purpose: air-gapped builds must fetch nothing.
 
 # Build and scratch

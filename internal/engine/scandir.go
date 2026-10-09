@@ -23,6 +23,7 @@ import (
 	"github.com/defilantech/socair/internal/diskfree"
 	"github.com/defilantech/socair/internal/modeldir"
 	"github.com/defilantech/socair/internal/report"
+	"github.com/defilantech/socair/internal/tier2"
 )
 
 // pickleExt are weight files that are pickle streams or zip/tar containers of
@@ -33,7 +34,7 @@ var pickleExt = map[string]bool{".bin": true, ".pt": true, ".pth": true, ".ckpt"
 // Every file is snapshotted and hashed; the subject is the manifest digest.
 // Each per-file check runs on every file it applies to and reports one merged
 // row, so one bad shard withholds the whole directory.
-func scanDir(dir string, start time.Time, refs *references, in Inputs) (*report.Document, error) {
+func scanDir(dir string, start time.Time, refs *references, in Inputs, t2 *tier2.Config) (*report.Document, error) {
 	root, files, excluded, cleanup, err := modeldir.Snapshot(dir, strings.TrimSpace(os.Getenv("SOCAIR_SCAN_TMP")))
 	var short *diskfree.ShortError
 	if errors.As(err, &short) {
@@ -154,6 +155,7 @@ func scanDir(dir string, start time.Time, refs *references, in Inputs) (*report.
 	if len(pickleParts) > 0 {
 		results = append(results, checks.Merge(pickleParts[0].Result.Name, pickleParts[0].Result.LooksFor, pickleParts))
 	}
+	measureTier2(d, t2, root)
 	return finish(d, results, unparsed, expires), nil
 }
 

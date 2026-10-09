@@ -1,0 +1,118 @@
+{
+  "helper": {
+    "name": "socair-probe",
+    "version": "0.1.0"
+  },
+  "measurements": [
+    {
+      "check": "Greedy continuation agreement (Tier 2)",
+      "ci95": [
+        0.675592,
+        1.0
+      ],
+      "dataset_digest": "sha256:7a540d67ab9c6398198ca4ecee949942ea951755c66d2e30589b98235edabfa3",
+      "decoding": {
+        "max_tokens": 16,
+        "seed": 0,
+        "temperature": 0.0,
+        "top_p": 1.0
+      },
+      "ended_utc": "2026-10-09T10:00:02Z",
+      "engine": "vllm",
+      "metrics": {
+        "exact_match_rate": 1.0,
+        "mean_abs_logprob_delta": 0.0,
+        "mean_prefix_agreement": 1.0
+      },
+      "n": 8,
+      "node_class": "endpoint",
+      "notes": "Greedy continuations on the endpoint compared with the reference endpoint; 8 of 8 identical. An uncalibrated plumbing measurement: it raises no LEAD, and agreement is not a PASS.",
+      "outcome": "measured",
+      "reference_node_class": "reference",
+      "score": 1.0,
+      "scorer": "deterministic",
+      "started_utc": "2026-10-09T10:00:00Z",
+      "suite": "socair-probe/greedy-agreement",
+      "suite_version": "0.1.0"
+    }
+  ],
+  "node_classes": [
+    {
+      "facts": {
+        "attention_backend": "",
+        "batch_invariant": null,
+        "cc_mode": "",
+        "chunked_prefill": null,
+        "compute_capability": "",
+        "container_image_digest": "",
+        "cublas": "",
+        "cuda": "",
+        "cuda_graphs": true,
+        "cudnn": "",
+        "driver": "",
+        "dtype": "",
+        "eager": null,
+        "ecc": null,
+        "engine_commit": "",
+        "engine_name": "vllm",
+        "engine_version": "",
+        "env": {},
+        "expert_parallel_size": 0,
+        "gpu_count": 8,
+        "gpu_model": "NVIDIA H100",
+        "interconnect": "",
+        "kv_cache_quantization": "",
+        "mig": "",
+        "nccl": "",
+        "pipeline_parallel_size": 0,
+        "prefix_caching": null,
+        "schema": "socair.nodeclass/v1",
+        "speculative_decoding": "",
+        "tensor_parallel_size": 0,
+        "torch_compile": null,
+        "vbios": "",
+        "weight_quantization": ""
+      },
+      "id": "endpoint"
+    },
+    {
+      "facts": {
+        "attention_backend": "",
+        "batch_invariant": null,
+        "cc_mode": "",
+        "chunked_prefill": null,
+        "compute_capability": "",
+        "container_image_digest": "",
+        "cublas": "",
+        "cuda": "",
+        "cuda_graphs": null,
+        "cudnn": "",
+        "driver": "",
+        "dtype": "",
+        "eager": null,
+        "ecc": null,
+        "engine_commit": "",
+        "engine_name": "sglang",
+        "engine_version": "",
+        "env": {},
+        "expert_parallel_size": 0,
+        "gpu_count": 0,
+        "gpu_model": "",
+        "interconnect": "",
+        "kv_cache_quantization": "",
+        "mig": "",
+        "nccl": "",
+        "pipeline_parallel_size": 0,
+        "prefix_caching": null,
+        "schema": "socair.nodeclass/v1",
+        "speculative_decoding": "",
+        "tensor_parallel_size": 0,
+        "torch_compile": null,
+        "vbios": "",
+        "weight_quantization": ""
+      },
+      "id": "reference"
+    }
+  ],
+  "protocol": "socair.tier2/v1"
+}

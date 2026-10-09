@@ -1,0 +1,16 @@
+#!/usr/bin/env python3
+"""Run socair-probe from a checkout, without installing it:
+
+    export SOCAIR_TIER2_HELPER=$PWD/tools/socair-probe/socair-probe
+"""
+
+import os
+import sys
+
+# A probe runs on a read-only root filesystem; it writes no bytecode.
+sys.dont_write_bytecode = True
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
+from socair_probe.__main__ import main  # noqa: E402
+
+sys.exit(main())

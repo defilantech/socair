@@ -311,6 +311,11 @@ nav.console a[aria-current='page'] {
 	color: var(--mist-faint);
 	border-style: dashed;
 }
+/* A Tier 2 measurement that found nothing: plain mist with a solid edge. It
+   is not a pass (never sea) and not a gap (never dashed). */
+.pill.measured {
+	color: var(--mist);
+}
 .status.solid {
 	border-style: solid;
 	border-color: var(--rule);

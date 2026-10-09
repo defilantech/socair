@@ -1,6 +1,17 @@
 <script lang="ts">
 	import type { Document } from '$lib/api';
-	import { statusPill, promotionLabel, promotionPill, acceptedSurfaces, counts, countOrder } from '$lib/report';
+	import {
+		statusPill,
+		promotionLabel,
+		promotionPill,
+		acceptedSurfaces,
+		counts,
+		countOrder,
+		measurementPill,
+		measurementSummary,
+		nodeClassFacts,
+		shortHash
+	} from '$lib/report';
 
 	// The engine's report, read-only. Section numbers follow the attestation
 	// template (docs/attestation-template.md), and the bounded statement's
@@ -19,16 +30,17 @@
 	const countPill = { fail: 'fail', lead: 'lead', notTested: 'not-tested', pass: 'pass' } as const;
 	const pa = $derived(report.promotion_authorization);
 	const accepted = $derived(acceptedSurfaces(report));
+	const level = $derived(report.tier2 ? 'Tier 1 (static), with Tier 2 measurements' : 'Tier 1 (static)');
 </script>
 
 <div class="report">
 	{#if status}
 		<p class="report-status">
 			<span class="pill {promotionPill(report)}">{promotionLabel(report)}</span>
-			<span class="meta">Tier 1 (static) · {signed ? 'signed' : 'unsigned until signed (socair sign)'}</span>
+			<span class="meta">{level} · {signed ? 'signed' : 'unsigned until signed (socair sign)'}</span>
 		</p>
 	{:else}
-		<p class="meta">Tier 1 (static) · {signed ? 'signed' : 'unsigned until signed (socair sign)'}</p>
+		<p class="meta">{level} · {signed ? 'signed' : 'unsigned until signed (socair sign)'}</p>
 	{/if}
 
 	<ul class="tally" aria-label="Check results">
@@ -86,6 +98,55 @@
 			</tbody>
 		</table>
 	</section>
+
+	{#if report.tier2}
+		<!-- Measurements, never verdicts: a LEAD or FAIL one also has its row
+		     above, which is what the tally and the promotion state count. -->
+		<section aria-labelledby="sec-4-tier2">
+			<h2 id="sec-4-tier2">Tier 2 measurements</h2>
+			<p class="prose">{report.tier2.statement}</p>
+			<table class="stack checks">
+				<thead>
+					<tr><th scope="col">Check</th><th scope="col">Measured</th><th scope="col">Outcome</th><th scope="col">Result</th></tr>
+				</thead>
+				<tbody>
+					{#each report.tier2.measurements as m, i (i)}
+						<tr>
+							<th scope="row" class="check" data-label="Check">{m.check}</th>
+							<td class="evidence" data-label="Measured">
+								{m.suite} {m.suite_version} · scorer {m.scorer}
+								<div class="maps">
+									{m.engine} on node class {shortHash(m.node_class)}{m.reference_node_class
+										? `, against ${shortHash(m.reference_node_class)}`
+										: ''}
+								</div>
+							</td>
+							<td data-label="Outcome">
+								<span class="pill {measurementPill(m.outcome)}">{m.outcome}</span>
+								{#if m.outcome === 'measured'}<span class="severity">not a pass</span>{/if}
+							</td>
+							<td class="notes" data-label="Result">
+								{measurementSummary(m)}
+								{#if m.evidence}<div>{m.evidence}</div>{/if}
+								{#if m.notes}<div>{m.notes}</div>{/if}
+							</td>
+						</tr>
+					{/each}
+				</tbody>
+			</table>
+			<h3>Node classes</h3>
+			<ul>
+				{#each report.tier2.node_classes as nc (nc.hash)}
+					{@const f = nodeClassFacts(nc.facts)}
+					<li>
+						<span class="hash">{nc.hash}</span>, {nc.reported_by}: {f.reported.join('; ')}{#if f.unreported.length}.
+							Not reported: {f.unreported.join(', ')}{/if}
+					</li>
+				{/each}
+			</ul>
+			<p class="meta">Probe helper: {report.tier2.helper}</p>
+		</section>
+	{/if}
 
 	<section aria-labelledby="sec-7">
 		<h2 id="sec-7">7. Bounded statement</h2>

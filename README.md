@@ -56,6 +56,14 @@ what it cannot see in its
 [detection ceiling](docs/detection-ceiling.json). It never claims a model is
 free of backdoors.
 
+**Tier 2** ([docs/tier2.md](docs/tier2.md)) is opt-in and runs the model on your
+own GPUs, through a probe helper, recording what ran, on which node class, and
+what it measured. A measurement can raise a LEAD, or a FAIL on deterministic
+evidence, which withholds promotion like any other; it can never authorize one,
+and finding nothing is not a PASS. This is the foundation: the report section,
+the node-class record, and the helper protocol, with a skeleton helper. The
+Tier 2 checks themselves are on the roadmap.
+
 ## Quickstart
 
 ### Install a release
@@ -169,6 +177,7 @@ checks that run the model on your own GPUs, is built here in the open.
 |---|---|
 | [attestation-template.md](docs/attestation-template.md) | The attestation, section by section: the source of truth for what a report contains |
 | [report-schema/v1.json](docs/report-schema/v1.json) | The report's JSON schema |
+| [tier2.md](docs/tier2.md) | Tier 2, opt-in: measurements made by running the model, the node-class record, the probe-helper protocol, isolation, and the roadmap |
 | [airlock.md](docs/airlock.md) | The airlock: pull, ingest, promote, the trust policy, the log, the signed inventory export |
 | [intake-host.md](docs/intake-host.md) | Running Socair as the model intake host for an on-prem GPU cluster |
 | [provenance-bundle.md](docs/provenance-bundle.md) | The inputs that move each row: mirrors, denylists, provenance, signatures, acceptances |

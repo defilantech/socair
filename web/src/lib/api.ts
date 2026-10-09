@@ -67,12 +67,107 @@ export interface Scope {
 	reference_data?: string;
 }
 
+// MEASUREMENT_OUTCOMES is the Tier 2 outcome enum of the report contract. A
+// test holds it to docs/report-schema/v1.json. There is no pass: "measured"
+// means the measurement completed and raised nothing.
+export const MEASUREMENT_OUTCOMES = ['measured', 'lead', 'fail', 'error'] as const;
+export type MeasurementOutcome = (typeof MEASUREMENT_OUTCOMES)[number];
+
+/** How the model was sampled for a measurement. */
+export interface Decoding {
+	temperature: number;
+	top_p: number;
+	max_tokens: number;
+	seed?: number;
+}
+
+/** One Tier 2 measurement: what ran, how it was scored, where, and what came out. */
+export interface Measurement {
+	/** The Tier 2 check measured; ends in " (Tier 2)". */
+	check: string;
+	suite: string;
+	suite_version: string;
+	dataset_digest: string;
+	/** "deterministic" or "llm-judge:sha256:<hex>". */
+	scorer: string;
+	n: number;
+	score?: number;
+	metrics?: Record<string, number>;
+	/** 95% confidence interval of the score, [low, high]. */
+	ci95?: number[];
+	decoding: Decoding;
+	engine: string;
+	/** Hash of the node class it ran on (one of tier2.node_classes). */
+	node_class: string;
+	reference_node_class?: string;
+	started_utc: string;
+	ended_utc: string;
+	outcome: MeasurementOutcome;
+	evidence?: string;
+	notes?: string;
+}
+
+/** What decides a model's numerics on a node; unreported text is "", counts 0, switches null. */
+export interface NodeClass {
+	schema: string;
+	gpu_model: string;
+	compute_capability: string;
+	gpu_count: number;
+	interconnect: string;
+	driver: string;
+	vbios: string;
+	ecc: boolean | null;
+	mig: string;
+	cc_mode: string;
+	cuda: string;
+	cublas: string;
+	cudnn: string;
+	nccl: string;
+	container_image_digest: string;
+	engine_name: string;
+	engine_version: string;
+	engine_commit: string;
+	dtype: string;
+	weight_quantization: string;
+	kv_cache_quantization: string;
+	tensor_parallel_size: number;
+	pipeline_parallel_size: number;
+	expert_parallel_size: number;
+	attention_backend: string;
+	cuda_graphs: boolean | null;
+	torch_compile: boolean | null;
+	eager: boolean | null;
+	batch_invariant: boolean | null;
+	prefix_caching: boolean | null;
+	chunked_prefill: boolean | null;
+	speculative_decoding: string;
+	env: Record<string, string> | null;
+}
+
+export interface NodeClassRecord {
+	/** sha256 over the canonical JSON of facts. */
+	hash: string;
+	/** Who stated the facts; Socair does not observe the hardware. */
+	reported_by: string;
+	facts: NodeClass;
+}
+
+/** Measurements made by running the model. Absent when Tier 2 did not run. */
+export interface Tier2 {
+	statement: string;
+	helper: string;
+	node_classes: NodeClassRecord[];
+	measurements: Measurement[];
+}
+
 export interface Document {
 	schema_version: string;
 	artifact: Artifact;
 	/** Always sent by the engine; optional here so hand-built fixtures stay small. */
 	scope?: Scope;
 	checks: CheckResult[];
+	/** Tier 2 measurements; present only when Tier 2 ran. */
+	tier2?: Tier2;
 	findings: { fails: string[]; leads?: string[]; not_tested: string[] };
 	promotion_authorization: PromotionAuthorization;
 	bounded_statement: string;

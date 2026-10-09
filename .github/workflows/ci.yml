@@ -142,6 +142,29 @@ jobs:
       - name: staticcheck
         run: GOTOOLCHAIN=go1.27.1 go run honnef.co/go/tools/cmd/staticcheck@v0.8.1 ./...
 
+  # The Tier 2 probe helper (tools/socair-probe) is Python, standard library
+  # only, and kept out of the Go build. Its tests are offline, against a local
+  # fake engine, and the runner's own Python is enough. Then Socair's engine
+  # runs it end to end against an httptest engine.
+  probe-helper:
+    runs-on: ubuntu-latest
+    env:
+      GOFLAGS: -mod=vendor
+      PYTHONDONTWRITEBYTECODE: "1"
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: helper tests
+        working-directory: tools/socair-probe
+        run: python3 -m unittest discover -s tests -t . -v
+      - name: the engine against the helper
+        run: |
+          SOCAIR_TEST_PROBE_HELPER="$GITHUB_WORKSPACE/tools/socair-probe/socair-probe" \
+            go test ./internal/engine -run RealProbeHelper -v
+
   # Every parser that reads untrusted bytes, for a short budget each. A crasher
   # found here is committed under testdata/fuzz as a regression seed, and the
   # seeds already committed run in the test job on every push.

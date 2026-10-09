@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/defilantech/socair/internal/report"
+	"github.com/defilantech/socair/internal/tier2/tier2test"
 )
 
 // TestMain lets the test binary stand in for the socair-sigstore helper:
@@ -17,6 +18,8 @@ import (
 // the engine's side of the protocol is tested without building the helper.
 // The helper's own cryptography is tested in tools/socair-sigstore.
 func TestMain(m *testing.M) {
+	// It also stands in for the Tier 2 probe helper (internal/tier2/tier2test).
+	tier2test.Serve()
 	if verdict := os.Getenv("SOCAIR_FAKE_SIGSTORE"); verdict != "" {
 		in, _ := io.ReadAll(os.Stdin)
 		var req struct {
