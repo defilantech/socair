@@ -34,6 +34,7 @@ in `scope.reference_data`.
 
 | Version | Rule fingerprint | Date | Changes |
 |---|---|---|---|
+| `tier1/0.6` | `da2aa793e9863b5b430a85ec3db8313a6f4e546ed4071af1e409ae10d3fa1c41` | 2026-10-09 | No rule change: the provenance row's notes say when a pulled model directory is a selection of the repo at its commit, with the patterns and the files left out (`airlock pull --include/--exclude`). The status is unchanged. |
 | `tier1/0.6` | `dc0aeeb796c93da346493228ae2600a654f114d9a8d5afbc660871f668203689` | 2026-10-04 | Tokenizer: with a canonical reference table (feed `tokenizers/<name>.json` or `SOCAIR_TOKENIZER_REFERENCE`), every token is compared with the best-matching family table; a changed ordinary token or a shortened vocabulary is a LEAD (#135). |
 | `tier1/0.5` | `074eb82595b7eea04d367c17ba31def45e653e8fde3da1ff6180d1f64a4d3fa2` | 2026-10-04 | Jinja parser: `{% filter name %}` takes its first filter without a pipe, as Jinja writes it, so real filter blocks parse and are analysed instead of being reported as unreadable (#137). |
 | `tier1/0.4` | `69baef5e476c3b0c39f3c60e85af83dffaec5096d323e9df25fb705b52fe6b78` | 2026-10-04 | File inventory: string-array elements of 64+ bytes in GGUF metadata are scanned for payloads (they were skipped), and an inventory cut off at its cap is NOT_TESTED instead of PASS (#135). |

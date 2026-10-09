@@ -11,6 +11,7 @@ import (
 	"hash"
 	"io"
 	"io/fs"
+	"math"
 	"net/http"
 	"net/url"
 	"os"
@@ -62,20 +63,6 @@ type treeEntry struct {
 // Every request goes through the egress policy.
 func PullRepo(ctx context.Context, s *Store, repo, revision, wantDigest string, pol EgressPolicy) (Event, string, error) {
 	return PullRepoSelected(ctx, s, repo, revision, wantDigest, Selection{}, pol)
-}
-
-// pullManifest is the provenance manifest a repo pull writes: the origin
-// facts the provenance check reads, and, for a selected pull, the patterns
-// and every file they left out, so the record says the staged tree is part of
-// the repo, not all of it.
-type pullManifest struct {
-	provenance.Manifest
-	Selection *pulledSelection `json:"selection,omitempty"`
-}
-
-type pulledSelection struct {
-	Selection
-	LeftOut []string `json:"left_out"`
 }
 
 // PullRepoSelected is PullRepo carrying only the files sel keeps. The left-out
@@ -173,6 +160,12 @@ func PullRepoSelected(ctx context.Context, s *Store, repo, revision, wantDigest 
 	// before the first byte, not hundreds of gigabytes in.
 	var need int64
 	for _, e := range entries {
+		// A hostile listing could add past int64; saturate, so the total
+		// cannot wrap negative and pass.
+		if e.Size > math.MaxInt64-need {
+			need = math.MaxInt64
+			break
+		}
 		need += e.Size
 	}
 	if err := diskfree.Need(tmp, need); err != nil {
@@ -215,15 +208,17 @@ func PullRepoSelected(ctx context.Context, s *Store, repo, revision, wantDigest 
 	if err := replaceDir(tree, filepath.Join(stage, name), tmp); err != nil {
 		return fail("stage: " + err.Error())
 	}
-	manifest := pullManifest{Manifest: provenance.Manifest{
+	manifest := provenance.Manifest{
 		ArtifactSHA256: digest,
 		RepoURL:        endpoint + "/" + repo,
 		CommitOrTag:    revision,
 		CommitSHA:      commit,
 		Source:         "airlock pull",
-	}}
+	}
+	// A selected pull says so in the manifest, and so in the signed report's
+	// provenance row: the tree is part of the repo at that commit.
 	if !sel.empty() {
-		manifest.Selection = &pulledSelection{Selection: sel, LeftOut: leftOut}
+		manifest.Selection = &provenance.Selection{Include: sel.Include, Exclude: sel.Exclude, LeftOut: append([]string{}, leftOut...)}
 	}
 	b, err := json.MarshalIndent(manifest, "", "  ")
 	if err != nil {
@@ -271,7 +266,7 @@ func getJSONPage(ctx context.Context, client *http.Client, pol EgressPolicy, u s
 	}
 	resp, err := client.Do(req)
 	if err != nil {
-		return "", fmt.Errorf("request failed within the %s budget: %w", pol.Timeout, err)
+		return "", fmt.Errorf("request failed within the %s budget: %w", pol.Timeout, redactURL(err))
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
@@ -431,7 +426,7 @@ func fetchVerified(ctx context.Context, client *http.Client, pol EgressPolicy, s
 	}
 	resp, err := client.Do(req)
 	if err != nil {
-		return "", fmt.Errorf("fetch failed within the %s stall budget: %w", pol.Timeout, err)
+		return "", fmt.Errorf("fetch failed within the %s stall budget: %w", pol.Timeout, redactURL(err))
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {

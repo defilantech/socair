@@ -14,7 +14,7 @@ func available(dir string) (uint64, bool) {
 	for {
 		var st syscall.Statfs_t
 		if err := syscall.Statfs(dir, &st); err == nil {
-			return uint64(st.Bavail) * uint64(st.Bsize), true
+			return bytesOf(uint64(st.Bavail), blockSize(&st)), true
 		} else if err != syscall.ENOENT && err != syscall.ENOTDIR {
 			return 0, false
 		}

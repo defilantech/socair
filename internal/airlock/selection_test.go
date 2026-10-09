@@ -37,6 +37,12 @@ func TestSelectionMatchesLikeTheHubClient(t *testing.T) {
 		{"config.jso?", "config.json", true},
 		{"a+b.json", "a+b.json", true},
 		{"a+b.json", "aab.json", false},
+		{"x[]]y", "x]y", true},
+		{"x[^a]y", "x^y", true},
+		{"x[^a]y", "xby", false},
+		{"x[!^a]y", "xby", true},
+		{"x[!^a]y", "x^y", false},
+		{`x[\]y`, `x\y`, true},
 	} {
 		sel := Selection{Include: []string{c.pattern}}
 		m, err := sel.compile()
@@ -162,6 +168,9 @@ func TestPullRepoSelectedLeavesOutExcludedFiles(t *testing.T) {
 	for _, c := range d.Checks {
 		if (c.Name == "Remote code" || c.Name == "Hash, provenance, lineage") && c.Status != "PASS" {
 			t.Errorf("%s: %s (%s)", c.Name, c.Status, c.Notes)
+		}
+		if c.Name == "Hash, provenance, lineage" && !strings.Contains(c.Notes, "2 left out: inference/model.py, sub/notes.txt") {
+			t.Errorf("the signed report must say the tree is a selection: %s", c.Notes)
 		}
 	}
 }
