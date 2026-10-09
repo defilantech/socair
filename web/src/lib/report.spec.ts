@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import type { Document } from './api';
+import { MEASUREMENT_OUTCOMES, type Document, type Measurement } from './api';
 import {
 	statusPill,
 	promotionLabel,
@@ -7,7 +7,11 @@ import {
 	acceptedSurfaces,
 	counts,
 	countOrder,
-	availableLevels
+	availableLevels,
+	measurementPill,
+	measurementSummary,
+	nodeClassFacts,
+	shortHash
 } from './report';
 
 function doc(state: string, statuses: string[]): Document {
@@ -101,6 +105,69 @@ describe('counts', () => {
 describe('count order', () => {
 	it('puts what needs action first and PASS last', () => {
 		expect([...countOrder]).toEqual(['fail', 'lead', 'notTested', 'pass']);
+	});
+});
+
+const measurement = (outcome: Measurement['outcome']): Measurement => ({
+	check: 'Serving-stack differential (Tier 2)',
+	suite: 's',
+	suite_version: '1',
+	dataset_digest: 'sha256:' + 'a'.repeat(64),
+	scorer: 'deterministic',
+	n: 8,
+	score: 0.75,
+	ci95: [0.4, 0.93],
+	metrics: { kl: 0.02, agreement: 0.75 },
+	decoding: { temperature: 0, top_p: 1, max_tokens: 32, seed: 0 },
+	engine: 'vllm 0.11.0',
+	node_class: 'sha256:' + 'b'.repeat(64),
+	started_utc: '2026-10-09T10:00:00Z',
+	ended_utc: '2026-10-09T10:01:00Z',
+	outcome
+});
+
+describe('Tier 2 measurements', () => {
+	it('never renders a measurement as a pass', () => {
+		for (const o of MEASUREMENT_OUTCOMES) expect(measurementPill(o), o).not.toBe('pass');
+	});
+	it('keeps a measurement that found nothing apart from a gap', () => {
+		expect(measurementPill('measured')).toBe('measured');
+		expect(measurementPill('measured')).not.toBe('not-tested');
+		expect(measurementPill('error')).toBe('not-tested');
+	});
+	it('gives LEAD and FAIL their own treatments', () => {
+		expect(measurementPill('lead')).toBe('lead');
+		expect(measurementPill('fail')).toBe('fail');
+	});
+	it('states the numbers the engine sent', () => {
+		expect(measurementSummary(measurement('measured'))).toBe(
+			'score 0.75 (95% CI 0.4 to 0.93), n=8, agreement 0.75, kl 0.02'
+		);
+	});
+	// A measurement is not a check row; only the rows it raised are counted.
+	it('adds nothing to the tally', () => {
+		const d = doc('authorized', ['PASS']);
+		d.tier2 = { statement: 's', helper: 'h', node_classes: [], measurements: [measurement('measured')] };
+		expect(counts(d)).toEqual({ pass: 1, fail: 0, lead: 0, notTested: 0 });
+	});
+	it('names the node-class fields that were not reported, and unknown is not false', () => {
+		const f = nodeClassFacts({
+			schema: 'socair.nodeclass/v1', gpu_model: 'NVIDIA H100', compute_capability: '', gpu_count: 8,
+			interconnect: '', driver: '', vbios: '', ecc: null, mig: '', cc_mode: '', cuda: '', cublas: '',
+			cudnn: '', nccl: '', container_image_digest: '', engine_name: 'vllm', engine_version: '',
+			engine_commit: '', dtype: '', weight_quantization: '', kv_cache_quantization: '',
+			tensor_parallel_size: 0, pipeline_parallel_size: 0, expert_parallel_size: 0, attention_backend: '',
+			cuda_graphs: false, torch_compile: null, eager: null, batch_invariant: null, prefix_caching: null,
+			chunked_prefill: null, speculative_decoding: '', env: { B: '2', A: '1' }
+		});
+		expect(f.reported).toEqual(['gpu_model NVIDIA H100', 'gpu_count 8', 'engine_name vllm', 'cuda_graphs false', 'env A=1, B=2']);
+		expect(f.unreported).toContain('ecc');
+		expect(f.unreported).not.toContain('cuda_graphs');
+		expect(f.unreported).not.toContain('schema');
+	});
+	it('abbreviates a digest', () => {
+		expect(shortHash('sha256:' + 'c'.repeat(64))).toBe('sha256:' + 'c'.repeat(12));
+		expect(shortHash('abc')).toBe('abc');
 	});
 });
 

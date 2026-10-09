@@ -5,13 +5,14 @@
 // render with the pass treatment. LEAD is a suspicious signal that needs review,
 // with its own treatment, never pass and never the neutral gap look.
 
-import type { CheckStatus, Document } from './api';
+import type { CheckStatus, Document, Measurement, MeasurementOutcome, NodeClass } from './api';
 
 // Pill is the visual treatment for a status or a promotion state. 'conditions'
 // is the amber caution of an authorization with conditions: never the pass
 // look and never the neutral gap look. Conditions and needs-acceptance are
-// amber.
-export type Pill = 'pass' | 'fail' | 'lead' | 'not-tested' | 'conditions';
+// amber. 'measured' is a Tier 2 measurement that found nothing: plain, never
+// the pass look, because it is not evidence of absence.
+export type Pill = 'pass' | 'fail' | 'lead' | 'not-tested' | 'conditions' | 'measured';
 
 // statusPill maps a check status to its treatment. NOT_TESTED is never pass.
 export function statusPill(status: CheckStatus): Pill {
@@ -90,6 +91,65 @@ export function acceptedSurfaces(d: Document): string[] {
 	return pa.accepted_surfaces ?? [];
 }
 
+// measurementPill maps a Tier 2 outcome to its treatment. A measurement is
+// never a pass: one that found nothing is 'measured', and one that did not
+// complete takes the gap look. A LEAD or FAIL measurement also has its check
+// row, which is what the tally and the promotion state count.
+export function measurementPill(outcome: MeasurementOutcome): Pill {
+	switch (outcome) {
+		case 'lead':
+			return 'lead';
+		case 'fail':
+			return 'fail';
+		case 'measured':
+			return 'measured';
+		default:
+			return 'not-tested';
+	}
+}
+
+// measurementSummary states a measurement's numbers as the engine sent them.
+export function measurementSummary(m: Measurement): string {
+	const parts: string[] = [];
+	if (m.score !== undefined) {
+		let s = `score ${m.score}`;
+		if (m.ci95?.length === 2) s += ` (95% CI ${m.ci95[0]} to ${m.ci95[1]})`;
+		parts.push(s);
+	}
+	parts.push(`n=${m.n}`);
+	const metrics = m.metrics ?? {};
+	for (const k of Object.keys(metrics).sort()) parts.push(`${k} ${metrics[k]}`);
+	return parts.join(', ');
+}
+
+// nodeClassFacts lists a node class's reported fields and names the ones not
+// reported, so a reader sees how complete the class is. An unreported switch
+// is null (unknown), which is not the same as false.
+export function nodeClassFacts(facts: NodeClass): { reported: string[]; unreported: string[] } {
+	const reported: string[] = [];
+	const unreported: string[] = [];
+	for (const [k, v] of Object.entries(facts)) {
+		if (k === 'schema') continue;
+		let text = '';
+		if (typeof v === 'boolean') text = String(v);
+		else if (typeof v === 'number') text = v === 0 ? '' : String(v);
+		else if (typeof v === 'string') text = v;
+		else if (v && typeof v === 'object')
+			text = Object.entries(v as Record<string, string>)
+				.map(([ek, ev]) => `${ek}=${ev}`)
+				.sort()
+				.join(', ');
+		if (text === '') unreported.push(k);
+		else reported.push(`${k} ${text}`);
+	}
+	return { reported, unreported };
+}
+
+// shortHash abbreviates a "sha256:<hex>" digest for display.
+export function shortHash(h: string): string {
+	return h.startsWith('sha256:') && h.length > 19 ? h.slice(0, 19) : h;
+}
+
 export interface Level {
 	id: string;
 	label: string;
@@ -97,8 +157,9 @@ export interface Level {
 }
 
 // availableLevels lists the assurance levels the wizard offers. Only Tier 1 is
-// runnable; Tier 2 (forward-pass testing) is not part of this release and has
-// no checks, so it must not be selectable.
+// selectable. Tier 2 is configured on the engine (SOCAIR_TIER2_HELPER,
+// docs/tier2.md), not chosen per scan, and has no checks of its own yet; a
+// report from an engine where it ran shows its measurements.
 export function availableLevels(): Level[] {
 	return [
 		{ id: 'tier1', label: 'Tier 1 (static)', available: true },

@@ -83,6 +83,8 @@ func RenderPDF(w io.Writer, d *report.Document) error {
 	checksTable(pdf, d)
 	pdf.Ln(4)
 
+	tier2Section(pdf, d)
+
 	if al := d.AssuranceLevel; al.Definition != "" {
 		heading(pdf, "Assurance level: "+al.Awarded)
 		for _, row := range [][2]string{
@@ -357,6 +359,69 @@ func checksTable(pdf *fpdf.Fpdf, d *report.Document) {
 		}, true, resultFill{bg, txt})
 	}
 	pdf.Ln(2)
+}
+
+// tier2Section draws the Tier 2 measurements, when the report has them. A
+// measurement is a measurement, not a result: its outcome is never in the
+// pass ink.
+func tier2Section(pdf *fpdf.Fpdf, d *report.Document) {
+	t := d.Tier2
+	if t == nil {
+		return
+	}
+	heading(pdf, "Tier 2 measurements")
+	pdf.SetFont("Helvetica", "", 9)
+	pdf.SetTextColor(muted.r, muted.g, muted.b)
+	pdf.MultiCell(contentW, lineH, t.Statement, "", "L", false)
+	for _, m := range t.Measurements {
+		pdf.Ln(2)
+		ink := outcomeInk(m.Outcome)
+		pdf.SetFont("Helvetica", "B", 9)
+		pdf.SetTextColor(ink.r, ink.g, ink.b)
+		outcome := m.Outcome
+		if outcome == report.OutcomeMeasured {
+			outcome += " (not a pass)"
+		}
+		pdf.MultiCell(contentW, lineH, m.Check+": "+outcome, "", "L", false)
+		pdf.SetFont("Helvetica", "", 8)
+		pdf.SetTextColor(muted.r, muted.g, muted.b)
+		against := ""
+		if m.ReferenceNodeClass != "" {
+			against = ", against " + report.ShortHash(m.ReferenceNodeClass)
+		}
+		for _, line := range []string{
+			m.Suite + " " + m.SuiteVersion + "  ·  scorer " + m.Scorer + "  ·  dataset " + m.DatasetDigest,
+			m.Engine + " on node class " + report.ShortHash(m.NodeClass) + against + "  ·  " + m.Decoding.String(),
+			m.StartedUTC + " to " + m.EndedUTC + "  ·  " + m.Summary(),
+			m.Evidence,
+			m.Notes,
+		} {
+			if line != "" {
+				pdf.MultiCell(contentW, lineH, line, "", "L", false)
+			}
+		}
+	}
+	pdf.Ln(2)
+	pdf.SetFont("Helvetica", "", 8)
+	pdf.SetTextColor(muted.r, muted.g, muted.b)
+	for _, nc := range t.NodeClasses {
+		pdf.MultiCell(contentW, lineH, "Node class "+nc.Hash+", "+nc.ReportedBy+": "+nc.Facts.Describe(), "", "L", false)
+	}
+	pdf.MultiCell(contentW, lineH, "Probe helper: "+t.Helper, "", "L", false)
+	pdf.Ln(4)
+}
+
+// outcomeInk colors a measurement's outcome: amber for a LEAD, red for a
+// FAIL, and the muted gap ink otherwise, never the pass green.
+func outcomeInk(outcome string) rgb {
+	switch outcome {
+	case report.OutcomeLead:
+		return leadInk
+	case report.OutcomeFail:
+		return failInk
+	default:
+		return untestedInk
+	}
 }
 
 type resultFill struct {

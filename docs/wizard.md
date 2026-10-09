@@ -35,7 +35,7 @@ Display rules. Every label comes from what the engine returned (`stage`,
 - Only an approved model with an unconditional authorization is green.
 - Authorized with conditions, and needs-acceptance, are amber.
 - Blocked, does-not-verify, and acceptance-expired are red.
-- NOT_TESTED is never shown as a pass.
+- NOT_TESTED is never shown as a pass, and neither is a Tier 2 measurement.
 - A report is labelled "signed" only when its attestation verified.
 
 Every step that needs a key is a copyable CLI command, not a button: promote,
@@ -94,7 +94,15 @@ hands it back for a download. The engine keeps no session.
 - Show a promotion state the document does not carry. `promotionLabel` and
   `promotionPill` read `promotion_authorization.state`.
 - Offer a level the engine cannot run. Only Tier 1 is selectable; Tier 2
-  (forward-pass testing) appears disabled because Socair has no Tier 2 checks.
+  (forward-pass testing) appears disabled. It is configured on the engine
+  (`SOCAIR_TIER2_HELPER`, `docs/tier2.md`), not chosen per scan, and has no
+  checks of its own yet.
+- Render a Tier 2 measurement as a pass. A report's Tier 2 section is shown
+  only when the document carries one, as measurements: `measurementPill` maps
+  an outcome of `measured` (found nothing) to its own plain treatment, marked
+  "not a pass", `error` to the neutral gap treatment, and `lead` and `fail` to
+  theirs. A LEAD or FAIL measurement also has its own check row, and only the
+  rows are tallied or decide the promotion label.
 - Present a failed scan as anything but failed. `runScan` resolves to a `failed`
   state with the engine's own message, and `canDownload` is false, so no download
   is offered.

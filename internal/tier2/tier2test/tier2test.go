@@ -139,6 +139,45 @@ func Engine(t testing.TB, name string, complete func(prompt string) string) *Fak
 // Echo is a continuation that depends only on the prompt.
 func Echo(prompt string) string { return " continuation of " + prompt }
 
+// NodeClass is a sample node class, partly reported.
+func NodeClass() report.NodeClass {
+	graphs := true
+	return report.NodeClass{
+		Schema: report.NodeClassSchema, GPUModel: "NVIDIA H100 80GB HBM3", ComputeCapability: "9.0", GPUCount: 8,
+		Driver: "570.86.15", CUDA: "12.8", EngineName: "vllm", EngineVersion: "0.11.0", DType: "bfloat16",
+		TensorParallelSize: 8, CUDAGraphs: &graphs, Env: map[string]string{"CUBLAS_WORKSPACE_CONFIG": ":4096:8"},
+	}
+}
+
+// AddSection gives d a Tier 2 section with one measurement per outcome, and
+// the rows and bounded statement that follow from it, the way the engine
+// fills them. Promotion is left to the caller.
+func AddSection(d *report.Document, outcomes ...string) {
+	nc := NodeClass()
+	sec := &report.Tier2{
+		Statement:   report.Tier2Statement,
+		Helper:      "tier2test 1",
+		NodeClasses: []report.NodeClassRecord{{Hash: nc.Hash(), ReportedBy: report.NodeClassReportedByHelper, Facts: nc}},
+	}
+	for i, o := range outcomes {
+		score := 0.75
+		m := report.Measurement{
+			Check: fmt.Sprintf("Sample probe %d (Tier 2)", i+1), Suite: "tier2test/sample", SuiteVersion: "1",
+			DatasetDigest: DatasetDigest(), Scorer: report.ScorerDeterministic, N: len(Prompts), Score: &score,
+			CI95: []float64{0.3, 0.95}, Metrics: map[string]float64{"agreement": 0.75}, Decoding: tier2.DefaultDecoding(),
+			Engine: "vllm 0.11.0", NodeClass: nc.Hash(), StartedUTC: "2026-10-09T10:00:00Z", EndedUTC: "2026-10-09T10:01:00Z",
+			Outcome: o, Notes: "sample measurement " + o,
+		}
+		if o == report.OutcomeFail {
+			m.Evidence = "probe 2 continued " + CanaryText
+		}
+		sec.Measurements = append(sec.Measurements, m)
+	}
+	d.RecordTier2(sec)
+	d.Checks = append(d.Checks, report.Tier2Rows(sec)...)
+	d.BoundedStatement = report.BoundedStatementOf(d)
+}
+
 func answer(mode string, in io.Reader, out, errOut io.Writer) int {
 	// The request is read as strictly as Socair reads the answer.
 	dec := json.NewDecoder(in)

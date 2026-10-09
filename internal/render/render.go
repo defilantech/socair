@@ -22,6 +22,8 @@ var tmpl = template.Must(template.New("report").Funcs(template.FuncMap{
 	"isLead":         isLead,
 	"promotionClass": promotionClass,
 	"promotionLabel": promotionLabel,
+	"outcomeClass":   outcomeClass,
+	"shortHash":      report.ShortHash,
 }).Parse(templateHTML))
 
 // Counts tallies check results for the cover block.
@@ -104,6 +106,22 @@ func isNotTested(s report.Status) bool {
 
 func isLead(s report.Status) bool {
 	return s == report.StatusLead
+}
+
+// outcomeClass maps a Tier 2 measurement outcome to its pill class. A
+// measurement that found nothing is neutral, never the pass class: it is not
+// evidence of absence. One that did not complete takes the gap look.
+func outcomeClass(outcome string) string {
+	switch outcome {
+	case report.OutcomeLead:
+		return "lead"
+	case report.OutcomeFail:
+		return "fail"
+	case report.OutcomeMeasured:
+		return "measured"
+	default:
+		return "not-tested"
+	}
 }
 
 // promotionClass maps a promotion state to its badge class. The condition

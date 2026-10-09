@@ -217,6 +217,24 @@ func (n NodeClass) Facts() (reported []Fact, unreported []string) {
 	return reported, unreported
 }
 
+// Describe states a node class in one paragraph for renderers: the reported
+// fields, then the names of the ones not reported.
+func (n NodeClass) Describe() string {
+	reported, unreported := n.Facts()
+	parts := make([]string, 0, len(reported))
+	for _, f := range reported {
+		parts = append(parts, f.Name+" "+f.Value)
+	}
+	s := strings.Join(parts, "; ")
+	if len(unreported) > 0 {
+		if s != "" {
+			s += ". "
+		}
+		s += "Not reported: " + strings.Join(unreported, ", ")
+	}
+	return s
+}
+
 // Measurement is one Tier 2 measurement: what was run, how it was scored,
 // where it ran, and what came out. It is never a pass or fail of the model.
 type Measurement struct {
