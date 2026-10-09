@@ -95,8 +95,11 @@ jobs:
           git diff --exit-code -- vendor go.mod go.sum
       - name: govulncheck
         run: go run golang.org/x/vuln/cmd/govulncheck@v1.8.0 ./...
+      # staticcheck 0.8.1 (the latest) cannot read go1.27.2's export data
+      # ("export data version 5"), so it analyses under go1.27.1. Tests and
+      # govulncheck still run on the current 1.27 release.
       - name: staticcheck
-        run: go run honnef.co/go/tools/cmd/staticcheck@v0.8.1 ./...
+        run: GOTOOLCHAIN=go1.27.1 go run honnef.co/go/tools/cmd/staticcheck@v0.8.1 ./...
 
   # The optional keyless verifier (tools/socair-sigstore) is its own module
   # with its own vendor/: its ~70 dependencies stay out of socair's build. It
@@ -133,8 +136,11 @@ jobs:
           git diff --exit-code -- vendor go.mod go.sum
       - name: govulncheck
         run: go run golang.org/x/vuln/cmd/govulncheck@v1.8.0 ./...
+      # staticcheck 0.8.1 (the latest) cannot read go1.27.2's export data
+      # ("export data version 5"), so it analyses under go1.27.1. Tests and
+      # govulncheck still run on the current 1.27 release.
       - name: staticcheck
-        run: go run honnef.co/go/tools/cmd/staticcheck@v0.8.1 ./...
+        run: GOTOOLCHAIN=go1.27.1 go run honnef.co/go/tools/cmd/staticcheck@v0.8.1 ./...
 
   # Every parser that reads untrusted bytes, for a short budget each. A crasher
   # found here is committed under testdata/fuzz as a regression seed, and the
