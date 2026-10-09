@@ -1,14 +1,21 @@
-# Chat-template false-positive baseline
+# False-positive baseline
 
-Run with `socair corpus <dir>`, header-only mode, over 52 real GGUF files across
-three model directories (`~/models`, `~/llmkube-models`, `~/llmkube-calib`).
+This is a chronological log of how each detector was measured against real
+models; the current rules are in [check-set.md](check-set.md). Each section
+records the rules as they stood on its date.
 
-This is the run that de-risks the thing Chris named as a veto: false positives.
+## Chat templates: the first run
+
+Run with `socair corpus <dir>`, header-only mode, over 52 real GGUF files in
+three local model directories; the first of them held 26.
+
+This run measured false positives: a scanner that flags known-good models is
+one a security team stops trusting.
 
 ## Before the retune
 
-15 of 26 models in `~/llmkube-models` FAILED the hero check. They were all
-known-good Qwen and Gemma and Qwopus templates.
+15 of the 26 models in the first directory FAILED the hero check. They were
+all known-good Qwen and Gemma and Qwopus templates.
 
 Root cause, found with `socair template <path>`:
 
@@ -35,15 +42,16 @@ and similar. A phrase match is not positive evidence, so it cannot be a FAIL.
   template: Python object escape (`__globals__`, `__subclasses__`, `__class__`)
   and process execution (`os.system(`, `subprocess`, `eval(`, `exec(`).
 - Instruction-language phrases and external-access constructs are a **lead**.
-  They return NOT_TESTED with the matched phrase recorded, which is what
-  escalates to a human. A lead never fails an artifact on its own.
+  At the time a lead returned NOT_TESTED with the matched phrase recorded, for
+  a person to review; LEAD is now its own status, which no acceptance clears.
+  A lead never fails an artifact on its own.
 - The filename quantization parser is now a strict regex. It accepts `Q4_0`,
   `Q5_K_M`, `IQ3_S`, `BF16`, and rejects a model name that merely starts with
   `Q`.
 
 ## After the retune
 
-Zero FAILs across all 52 files. Per-check tally on `~/llmkube-models`
+Zero FAILs across all 52 files. Per-check tally on the first directory
 (26 files), PASS / FAIL / NOT_TESTED:
 
 ```
@@ -57,14 +65,16 @@ Quant match                    2 / 0 / 24
 
 - The hero check clears 8 of 26 real templates, flags 18 as instruction-language
   leads, and fails none. The 18 leads are not defects in those models; they are
-  the honest state: we cannot clear that language automatically, so it escalates.
-- The quant check passes on only 2 of 26, because the GGML file-type mapping is
-  provisional and most real file types are outside it. That is a coverage gap,
-  not a finding.
+  the honest state: we cannot clear that language automatically, so a person
+  has to review it.
+- The quant check passes on only 2 of 26, because the GGML file-type mapping
+  was provisional then and most real file types were outside it. That was a
+  coverage gap, not a finding. The mapping now follows llama.cpp's
+  `llama_ftype` enum (see "GGUF tensor-table validation" below).
 - A clean hero result still means "no structural indicator and no lead matched",
   not "no backdoor".
 
-## Second refinement (trust-coverage slice)
+## Second refinement
 
 The first retune left 18 of 26 real templates as instruction-language leads. A
 tally of the lead notes showed two causes, both substring false positives:
@@ -84,7 +94,7 @@ Both patterns were narrowed to require context:
   `requests.get(`, `urllib.request`, `curl -`), so a word that merely contains
   "requests" cannot match.
 
-Result on `~/llmkube-models` (26 files), PASS / FAIL / NOT_TESTED:
+Result on the first directory (26 files), PASS / FAIL / NOT_TESTED:
 
 ```
 Chat template (hero)   24 / 0 / 2
@@ -106,8 +116,8 @@ code-execution evidence: the allowlist clears language, never code, and
 
 ## Audit false positives (2026-10-02)
 
-The pre-reveal audit found two FAILs that broke the rule that a FAIL needs
-positive evidence. Both are now regression tests.
+An internal audit found FAILs that broke the rule that a FAIL needs positive
+evidence. Each is now a regression test.
 
 - **Two-byte magics in metadata text.** `general.license = "Licensed by AMZ
   Corp"` FAILed as an embedded PE, because the inventory matched `MZ` (and
@@ -222,8 +232,8 @@ template. Check set tier1/0.5 fixes it: the parser demanded a pipe
 before a filter block's first filter (`{% filter |trim %}`), which is not how
 Jinja writes it (`{% filter trim %}`). With filter blocks parsing, and their
 filter and body analysed like any other code, the corpus is **70 PASS, 0 LEAD,
-0 FAIL**. CI now runs this corpus on every push (`real-template-corpus` job,
-llama.cpp pinned at `7fe450e1`, 2026-09-23). The evasion corpus gains `attr-concat-popen.jinja` (a process
+0 FAIL**. CI now runs this corpus on every pull request and push to `main`
+(`real-template-corpus` job, llama.cpp pinned at `7fe450e1`, 2026-09-23). The evasion corpus gains `attr-concat-popen.jinja` (a process
 function reached through `attr` with a concatenated name), which FAILs.
 
 ## File inventory: string arrays and truncation (2026-10-04, check set tier1/0.4)
@@ -433,11 +443,12 @@ fired. Identical tokenizer hashes group shared tokenizers (the three Qwen 2.5
 variants; the Llama 3.x copies; Zephyr and SOLAR), which a canonical-tokenizer
 comparison can build on.
 
-## Follow-ups
+## Follow-ups from the first run, since done
 
-1. Verify the GGML file-type mapping against the current llama.cpp enum so the
-   quant row stops withholding on real models.
-2. Add this corpus as a regression fixture in CI, so a future pattern cannot
-   reintroduce a false positive on real templates.
-3. The structural FAIL patterns should be exercised against a corpus of known
-   template-injection payloads, not only unit fixtures.
+1. The GGML file-type mapping follows llama.cpp's `llama_ftype` enum, and the
+   quant row reads the tensor types (see "GGUF tensor-table validation").
+2. CI runs the chat-template check over llama.cpp's real templates on every
+   pull request and every push to `main` (the `real-template-corpus` job).
+3. The structural FAIL rules are exercised against the evasion corpus
+   (`internal/checks/chattemplate/testdata/evasions`) and the template cases
+   of the [detection benchmark](detection-benchmark.md).

@@ -23,7 +23,16 @@ builds, proves the build reproduces, attests provenance, and creates a
    - attaches a GitHub build-provenance attestation (SLSA) to every binary;
    - creates a draft release holding the binaries and `SHA256SUMS`, with
      generated notes.
-4. Review the draft (notes, assets, attestations), then publish it.
+4. Review the draft (notes, assets, attestations), then publish it. The
+   workflow creates the draft without `--prerelease`, so for an `-rc` or other
+   pre-release tag, mark it as a pre-release before publishing
+   (`gh release edit <tag> --prerelease`, or the checkbox on the release
+   page).
+
+GitHub artifact attestations need the repository to be public, or a GitHub
+plan that supports them on private repositories. On a private repository
+without one, the publish job fails at the attest step, before the draft is
+created.
 
 Keep `GO_VERSION` in the workflow pinned to an exact Go release. It is part of
 what makes a release reproducible, and `go version -m <binary>` reports it to

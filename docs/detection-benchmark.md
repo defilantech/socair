@@ -3,9 +3,11 @@
 What Socair catches, measured on reproductions of published attacks, with the
 misses pinned and other scanners run over the same files.
 
-Every number here comes from `internal/benchmark`. The benchmark runs in
-`go test ./...` on every push. Each case's outcome is pinned, so a regression
-fails the build, and so does an improvement until the case is updated.
+Socair's numbers come from `internal/benchmark`, which runs in `go test ./...`
+in CI. Each case's outcome is pinned, so a regression fails the build, and so
+does an improvement until the case is updated. The other scanners' numbers
+come from one manual run of `scripts/benchmark-compare.py` over the same
+generated corpus, on 2026-10-04; CI does not re-run them.
 
 ## Read this first
 
@@ -16,6 +18,13 @@ fails the build, and so does an improvement until the case is updated.
   Socair supports. Read the results as a reproducible floor and a regression
   gate, not as an independent evaluation. New cases are welcome, especially
   ones Socair misses.
+- **Two cases need an input only Socair takes.** `gguf-tokenizer-remapped` is
+  scanned with a canonical tokenizer table (`SOCAIR_TOKENIZER_REFERENCE`), and
+  `dir-known-bad-hash` with a denylist that names the file (`SOCAIR_DENYLIST`).
+  No other scanner here was given either. With Socair's defaults (neither
+  input), the remapped tokenizer passes and the known-bad file is withheld as
+  a gap, so Socair detects 35 of 38. Scores with both cases left out follow
+  the comparison table.
 - **The attacks are defanged.** Each case keeps the attack's structure (the
   gadget, the opcodes, the archive trick, the template construct) and swaps its
   payload for `echo socair-benchmark`. Every scanner here, Socair included,
@@ -44,6 +53,9 @@ fails the build, and so does an improvement until the case is updated.
 | **All** | **38** | **37** | **0** | **1** |
 
 Benign controls flagged (FAIL or LEAD on any row): 0 of 5.
+
+Two of these detections depend on a reference input (see "Read this first");
+with Socair's defaults it detects 35 of 38.
 
 | Case | Format | Technique | Row | Result | Severity |
 |---|---|---|---|---|---|
@@ -121,12 +133,12 @@ the tool skipped the file, could not parse it, or does not support the format.
 | gguf | socair | 12 of 13 | 0 | 0 of 1 scanned |
 | gguf | modelaudit | 1 of 13 | 0 | 0 of 1 scanned |
 | gguf | picklescan | 0 of 13 | 0 | 0 of 1 scanned |
-| gguf | fickling | 13 of 13 | 0 | 1 of 1 scanned |
+| gguf | fickling | 13 of 13 (not a pickle) | 0 | 1 of 1 scanned (not a pickle) |
 | gguf | modelscan | 0 of 13 | 13 | 0 of 0 scanned |
 | safetensors | socair | 2 of 2 | 0 | 0 of 1 scanned |
 | safetensors | modelaudit | 0 of 2 | 1 | 0 of 1 scanned |
 | safetensors | picklescan | 0 of 2 | 0 | 0 of 1 scanned |
-| safetensors | fickling | 1 of 2 | 1 | 0 of 0 scanned |
+| safetensors | fickling | 1 of 2 (not a pickle) | 1 | 0 of 0 scanned |
 | safetensors | modelscan | 0 of 2 | 2 | 0 of 0 scanned |
 | model directory | socair | 6 of 6 | 0 | 0 of 1 scanned |
 | model directory | modelaudit | 2 of 6 | 0 | 0 of 1 scanned |
@@ -138,12 +150,19 @@ How to read it:
 
 - **Pickle is the common ground.** All five tools scan pickles, and the main
   differences are:
-  - **ModelScan** routes by file extension, so it skipped the `.bin`,
-    `.ckpt` and `.tar` reproductions. It also missed the gadgets outside its
-    denylist: `pip`, `asyncio`, `importlib`, `numpy.load`, and an unknown
-    module.
+  - **ModelScan** routes by file extension. It read the plain PyTorch zip
+    checkpoint (`pytorch_model.bin`) and found its gadget, but could not scan
+    the raw pickles named `.bin` or `.ckpt`, or the `.tar` checkpoint. The
+    harness counts any ModelScan run without a finding whose output mentions a
+    skipped file as could not scan, even when it scanned other files in the
+    same artifact; that is how both altered zip checkpoints are counted. It
+    also missed the gadgets outside its denylist: `pip`, `asyncio`,
+    `importlib`, `numpy.load`, and an unknown module.
   - **picklescan** missed the legacy tar checkpoint, and flagged both benign
-    pickles as suspicious.
+    pickles as suspicious. Both controls hold a Python set
+    (`__builtin__.set`), which a typical state dict does not, so that flag may
+    come from the control rather than from anything a real checkpoint
+    carries.
   - **ModelAudit** missed the gadget placed in an archive entry not named
     `data.pkl`.
   - **Fickling** could not read the zip checkpoints, and flagged the benign
@@ -155,14 +174,34 @@ How to read it:
 - **Fickling's GGUF and safetensors "findings" are not detections.** Fickling
   is a pickle analyzer. It reports any file that is not a pickle as "invalid
   opcodes, likely unsafe", the benign GGUF included.
-- **Model directories:** only Socair reads the whole repository. That covers
-  remote code, executables, tokenizer normalizers, and the known-bad hash.
+- **Model directories:** ModelAudit read the directories and found the pickle
+  weights and the template SSTI; picklescan and ModelScan found the pickle
+  weights. Only Socair flagged the remote code, the native executable, and the
+  tokenizer normalizer; the known-bad hash case needs a denylist, which only
+  Socair was given.
+
+With the two cases that need a Socair-only input left out
+(`gguf-tokenizer-remapped` and `dir-known-bad-hash`), Socair detects 34 of 35
+attacks, and the two formats they belong to read:
+
+| Format | Scanner | Attacks detected | Attacks not scanned |
+|---|---|---|---|
+| gguf | socair | 11 of 12 | 0 |
+| gguf | modelaudit | 1 of 12 | 0 |
+| gguf | picklescan | 0 of 12 | 0 |
+| gguf | fickling | 12 of 12 (not a pickle) | 0 |
+| gguf | modelscan | 0 of 12 | 12 |
+| model directory | socair | 5 of 5 | 0 |
+| model directory | modelaudit | 2 of 5 | 0 |
+| model directory | picklescan | 1 of 5 | 4 |
+| model directory | fickling | 0 of 5 | 5 |
+| model directory | modelscan | 1 of 5 | 4 |
 
 ## Per case
 
 | Case | Socair | ModelAudit | picklescan | Fickling | ModelScan |
 |---|---|---|---|---|---|
-| `control-gguf` | clean | clean | clean | finding | could not scan |
+| `control-gguf` | clean | clean | clean | finding (not a pickle) | could not scan |
 | `control-model-directory` | clean | clean | could not scan | could not scan | could not scan |
 | `control-pickle` | clean | clean | finding (suspicious) | finding | clean |
 | `control-safetensors` | clean | clean | clean | could not scan | could not scan |
@@ -174,19 +213,19 @@ How to read it:
 | `dir-pickle-weights` | finding | finding | finding | could not scan | finding |
 | `dir-remote-code` | finding | clean | could not scan | could not scan | could not scan |
 | `dir-template-ssti` | finding | finding | could not scan | could not scan | could not scan |
-| `gguf-control-token-instruction` | finding | clean | clean | finding | could not scan |
-| `gguf-hidden-tensor-bytes` | finding | finding | clean | finding | could not scan |
-| `gguf-metadata-array-payload` | finding | clean | clean | finding | could not scan |
-| `gguf-metadata-base64` | finding | clean | clean | finding | could not scan |
-| `gguf-metadata-elf` | finding | clean | clean | finding | could not scan |
-| `gguf-ssti-attr-hex` | finding | clean | clean | finding | could not scan |
-| `gguf-ssti-filter-block` | finding | clean | clean | finding | could not scan |
-| `gguf-ssti-globals` | finding | clean | clean | finding | could not scan |
-| `gguf-ssti-subclasses` | finding | clean | clean | finding | could not scan |
-| `gguf-template-conditional-backdoor` | finding | clean | clean | finding | could not scan |
-| `gguf-template-hidden-instruction` | finding | clean | clean | finding | could not scan |
-| `gguf-template-plain-guidance` | clean | clean | clean | finding | could not scan |
-| `gguf-tokenizer-remapped` | finding | clean | clean | finding | could not scan |
+| `gguf-control-token-instruction` | finding | clean | clean | finding (not a pickle) | could not scan |
+| `gguf-hidden-tensor-bytes` | finding | finding | clean | finding (not a pickle) | could not scan |
+| `gguf-metadata-array-payload` | finding | clean | clean | finding (not a pickle) | could not scan |
+| `gguf-metadata-base64` | finding | clean | clean | finding (not a pickle) | could not scan |
+| `gguf-metadata-elf` | finding | clean | clean | finding (not a pickle) | could not scan |
+| `gguf-ssti-attr-hex` | finding | clean | clean | finding (not a pickle) | could not scan |
+| `gguf-ssti-filter-block` | finding | clean | clean | finding (not a pickle) | could not scan |
+| `gguf-ssti-globals` | finding | clean | clean | finding (not a pickle) | could not scan |
+| `gguf-ssti-subclasses` | finding | clean | clean | finding (not a pickle) | could not scan |
+| `gguf-template-conditional-backdoor` | finding | clean | clean | finding (not a pickle) | could not scan |
+| `gguf-template-hidden-instruction` | finding | clean | clean | finding (not a pickle) | could not scan |
+| `gguf-template-plain-guidance` | clean | clean | clean | finding (not a pickle) | could not scan |
+| `gguf-tokenizer-remapped` | finding | clean | clean | finding (not a pickle) | could not scan |
 | `pickle-asyncio-subprocess` | finding | finding | finding | finding | clean |
 | `pickle-builtins-eval` | finding | finding | finding | finding | could not scan |
 | `pickle-builtins-exec` | finding | finding | finding | finding | could not scan |
@@ -204,7 +243,7 @@ How to read it:
 | `pickle-torch-zip-other-entry` | finding | clean | finding | could not scan | could not scan |
 | `pickle-unlisted-gadget` | finding | finding | finding (suspicious) | finding | clean |
 | `safetensors-appended-bytes` | finding | could not scan | clean | could not scan | could not scan |
-| `safetensors-metadata-script` | finding | clean | clean | finding | could not scan |
+| `safetensors-metadata-script` | finding | clean | clean | finding (not a pickle) | could not scan |
 
 ## Reproduce
 

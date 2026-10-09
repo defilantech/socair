@@ -6,14 +6,14 @@ hashes, reviewed known-good chat templates, and canonical tokenizers. A
 import it and know who vouched for it and until when.
 
 The format is open. Anyone can build and sign a feed with the `socair` CLI.
-Defilan Technologies publishes a curated, maintained feed as a commercial
-subscription.
+Defilan Technologies is building a curated, maintained feed as a commercial
+offering.
 
 ## Using a feed
 
 ```
-SOCAIR_FEED=/opt/socair/feed            # the feed directory
-SOCAIR_FEED_KEYS=/opt/socair/feed-keys  # public key(s) the feed must be signed by
+export SOCAIR_FEED=/opt/socair/feed            # the feed directory
+export SOCAIR_FEED_KEYS=/opt/socair/feed-keys  # public key(s) the feed must be signed by
 socair scan model.gguf
 ```
 
@@ -73,8 +73,12 @@ the feed.
 c038…f2  qwen2.5
 ```
 
-Template hashes are the SHA-256 of the template text (`socair template <path>`
-prints it). Tokenizer hashes are what the report's `artifact.tokenizer_hash`
+Template hashes are the full SHA-256 (64 hex characters) of the template text.
+For a GGUF's default template, the report's `artifact.chat_template_hash`
+holds it. `socair template <path>` prints only the first 16 hex characters, so
+do not copy a feed line from it. For a template in its own file, such as
+`chat_template.jinja`, the file's SHA-256 (`sha256sum chat_template.jinja`) is
+the hash. Tokenizer hashes are what the report's `artifact.tokenizer_hash`
 holds: the SHA-256 of `tokenizer.json` for a model directory, or of the
 vocabulary for a GGUF.
 
@@ -111,9 +115,12 @@ The feed verifies when all of these hold:
 ```
 socair key gen --out feed-signer
 socair feed sign ./feed --key feed-signer.key --issuer "Example Intel" \
-  --version 2026.10.1 --expires 2026-11-01T00:00:00Z
+  --version 2026.10.1 --expires <RFC 3339 time>
 socair feed verify ./feed --keys feed-signer.pub
 ```
+
+`--expires` is when importing sites stop accepting the feed, in RFC 3339
+(`YYYY-MM-DDTHH:MM:SSZ`); a feed past it stops every scan that uses it.
 
 `feed sign` lists every data file present in the directory and signs it. Keep
 the signing key off the machines that import the feed. Those machines only need
