@@ -85,7 +85,9 @@ browser is quarantined, so after verifying it, clear that with
 
 The release binaries do not include the wizard or the airlock console. Those
 are the static web app in `web/`, built with npm from a checkout; see
-[docs/wizard.md](docs/wizard.md).
+[docs/wizard.md](docs/wizard.md). To try the console on real models,
+`scripts/demo-console.sh` builds it and fills a demo store with one model in
+each state.
 
 ### Build from source
 

@@ -69,6 +69,13 @@ socair serve --web web/build
 The Go server hands the static files to the browser and keeps `/api` as JSON:
 an unknown `/api/` route is a JSON `404`, never the wizard's page.
 
+To see the console with a model in every state, `scripts/demo-console.sh`
+builds both from the checkout, pulls four small public models from Hugging
+Face (about 1.6 GB), and takes each to a different stage: approved, approved
+with a signed acceptance, blocked on remote code, and staged for a scan. It
+makes its own demo keys and store under `~/socair-demo` and prints the `serve`
+command.
+
 ## The engine contract
 
 - `POST /api/scan` returns the report document. The wizard renders that document.
