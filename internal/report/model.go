@@ -21,8 +21,9 @@ import (
 // SchemaVersion is the contract version this model emits.
 const SchemaVersion = "socair.report/v1"
 
-// The bounded statement is one of two fixed sentences, picked from the check
-// rows by BoundedStatementFor. Neither may be edited per artifact.
+// The bounded statement is one of four fixed sentences: a pair for a Tier 1
+// report and a pair for one with Tier 2 measurements, each picked from the
+// check rows by BoundedStatementOf. None may be edited per artifact.
 const (
 	// BoundedStatementNoIndicators is the statement of a report with no FAIL
 	// and no LEAD row.
@@ -421,7 +422,7 @@ func NewFromIdentity(id Identity) *Document {
 			InputPath:        "local path",
 		},
 		// No check has run, so no row is a FAIL or a LEAD yet; the engine
-		// picks the statement again once the rows are in (BoundedStatementFor).
+		// picks the statement again once the rows are in (BoundedStatementOf).
 		BoundedStatement: BoundedStatementFor(nil),
 		OutOfScope: OutOfScope{
 			DoesNotCertify:      DoesNotCertify,

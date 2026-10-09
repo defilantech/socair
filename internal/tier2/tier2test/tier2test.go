@@ -256,6 +256,9 @@ func measure(mode string, req tier2.Request, start string) (map[string]any, erro
 		}
 		m["score"] = float64(agree) / float64(len(a))
 		m["metrics"] = map[string]float64{"agreement": float64(agree) / float64(len(a))}
+		// What the helper was told about the artifact, so a test can see it.
+		_, statErr := os.Stat(req.Artifact.Path)
+		m["notes"] = fmt.Sprintf("artifact %s %s at %s readable=%v", req.Artifact.SHA256, req.Artifact.Format, req.Artifact.Path, statErr == nil)
 		if agree < len(a) {
 			m["outcome"] = report.OutcomeLead
 			m["notes"] = fmt.Sprintf("%d of %d greedy continuations differ between %s and %s", len(a)-agree, len(a), name, refName)
