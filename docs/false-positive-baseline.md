@@ -682,6 +682,80 @@ SOCAIR_TEMPLATE_CORPUS=/path/to/templates go test ./internal/checks/chattemplate
 The test logs, per template, the probes rendered and refused and the text it
 adds.
 
+## Pickle grammar socair-wo/1 (2026-10-09, check set tier1/0.8)
+
+The pickle row was an import allowlist: a safe-listed callable passed with any
+arguments, so an `OrderedDict` handed a command string (the ShadowPickle
+shape) PASSed. It is now a typed grammar (`socair-wo/1`, see
+[check-set.md](check-set.md)): every call's arguments must match a signature,
+every storage a pickle references must match a record of exactly its size,
+and a stream that claims protocol 2 or 3 must be encoded as CPython's pickler
+writes it. Its new statuses were measured on real files before they were
+fixed, because the grammar FAILs on layout contradictions and code-like
+arguments and LEADs on many shapes the allowlist accepted.
+
+36 benign files from 26 public repositories (25 on Hugging Face, one on
+GitHub), each fetched at a pinned commit. Five larger checkpoints were
+measured as sparse copies: the zip's central
+directory and every `.pkl` entry fetched by range request, the storage
+records left as zeros. The check reads `data.pkl` and takes record sizes from
+the directory, so a sparse copy is checked exactly as the full file would be.
+
+| Files | Shape | tier1/0.7 | tier1/0.8 |
+|---|---|---|---|
+| `pytorch_model.bin` of hf-internal-testing tiny-random gpt2, GPT2LMHeadModel, bert, BertModel, t5, T5ForConditionalGeneration, MistralForCausalLM, WhisperForConditionalGeneration; trl-internal-testing and HuggingFaceM4 tiny-random-LlamaForCausalLM; prajjwal1/bert-tiny | torch zip state dicts (float32, float16, int64, uint8 buffers; tied storages) | 11 PASS | 11 PASS |
+| lvwerra/distilbert-imdb and huggingface-course/bert-finetuned-ner `pytorch_model.bin` (268 and 431 MB, sparse) | real fine-tunes | 2 PASS | 2 PASS |
+| sshleifer/tiny-gpt2 `pytorch_model.bin` | legacy torch stream (5 pickles, then 32 storage records) | PASS | PASS |
+| JackFram/llama-68m `optimizer.pt` (544 MB, sparse), `scheduler.pt`, `rng_state.pth` | Trainer state: AdamW state, LR scheduler, RNG state with a NumPy array (modelled numpy `_reconstruct`, `dtype`) | 3 PASS | 3 PASS |
+| speechbrain vad-crdnn-libriparty `model.ckpt`, `normalizer.ckpt`; lang-id-voxlingua107-ecapa `classifier.ckpt`; asr-crdnn-rnnlm-librispeech `normalizer.ckpt` | torch zips named `.ckpt` | 4 PASS | 4 PASS |
+| hexgrad/Kokoro-82M `voices/af_heart.pt` | `torch.save(tensor)`: a tensor as the root | PASS | PASS |
+| speechbrain asr-crdnn-rnnlm-librispeech `tokenizer.ckpt` | a SentencePiece model named `.ckpt` | NOT_TESTED | NOT_TESTED |
+| suno/bark three `speaker_embeddings/*.npy`; openai/whisper `mel_filters.npz`; facebook/fastspeech2-en-ljspeech `fbank_mfa_gcmvn_stats.npz` | NumPy, no object dtype | 5 NOT_TESTED (not read) | 5 PASS |
+| JackFram/llama-68m, lvwerra/distilbert-imdb, huggingface-course/bert-finetuned-ner `training_args.bin` | `TrainingArguments` | 3 LEAD | 3 LEAD |
+| Ultralytics/YOLOv8 `yolov8n.pt`, Ultralytics/YOLOv5 `yolov5n.pt` | full-model pickles | 2 LEAD | 2 LEAD |
+| stable-diffusion-v1-5 `v1-5-pruned-emaonly.ckpt` (4.3 GB, sparse) | Lightning checkpoint | LEAD | LEAD |
+| facebook/fastspeech2-en-ljspeech `pytorch_model.pt` (495 MB, sparse) | fairseq checkpoint | LEAD | LEAD |
+| julien-c/wine-quality `sklearn_model.joblib` | joblib, arrays inline | LEAD | LEAD |
+
+No benign file FAILed, and the grammar added no finding to any of them: every
+LEAD is the unreviewed import it was before (`TrainingArguments` and its
+enums, `accelerate.state.PartialState`; YOLO's and torch.nn's module classes;
+`pytorch_lightning.callbacks.model_checkpoint.ModelCheckpoint`;
+`argparse.Namespace`; scikit-learn and joblib classes). These are the known
+false-positive sources the issue named, and they LEAD rather than FAIL. A
+`training_args.bin` can conform through the reviewed-class tier once a feed
+reviews `TrainingArguments`; the hook exists, and nothing is on it.
+
+Two things the measurement found and fixed before the rules were set. torch's
+writer sets the zip data-descriptor flag, so a CRC check reads the 16 bytes
+after `data.pkl`; the first sparse copies left them out and read as a CRC
+mismatch, which the check reports. And a shared-structure stream (60 levels of
+`t = (t, t)` through the memo, a few hundred bytes) made the value walks
+exponential; every walk now has a visit budget.
+
+What the measurement does not cover: no real file here is a pickle in
+protocol 0, 1, 4, or 5 that the old check passed. Those are now NOT_TESTED
+(outside the grammar), so a plain-data pickle written by `pickle.dump` at its
+default protocol, which used to PASS on its imports, is a gap an acceptance
+must clear. torch.save writes protocol 2, so no checkpoint above moved. No
+legacy tar checkpoint was found to measure; the grammar runs on its pickles,
+and its storage records are not matched, so a clean one is NOT_TESTED.
+
+Commits: hf-internal-testing tiny-random-gpt2 `71034c5d`, -bert `f171d7ba`,
+-t5 `2f582cd7`, -MistralForCausalLM `75171769`, -WhisperForConditionalGeneration
+`598101b8`, -GPT2LMHeadModel `af80da83`, -BertModel `fc08ad9c`,
+-T5ForConditionalGeneration `b12e4190`; trl-internal-testing
+tiny-random-LlamaForCausalLM `2c542e47`; HuggingFaceM4
+tiny-random-LlamaForCausalLM `d3040b7c`; prajjwal1/bert-tiny `6f75de8b`;
+sshleifer/tiny-gpt2 `5f91d94b`; JackFram/llama-68m `9de84537`;
+lvwerra/distilbert-imdb `0fc02cd6`; huggingface-course/bert-finetuned-ner
+`eeb27847`; speechbrain vad-crdnn-libriparty `c5d5ae4f`,
+lang-id-voxlingua107-ecapa `0253049a`, asr-crdnn-rnnlm-librispeech `979a53a7`;
+Ultralytics/YOLOv8 `27f858f2`, YOLOv5 `5bca7970`; hexgrad/Kokoro-82M
+`f3ff3571`; suno/bark `70a8a7d3`; stable-diffusion-v1-5 `451f4fe1`;
+facebook/fastspeech2-en-ljspeech `a3e3e5e2`; julien-c/wine-quality `90ef3b74`;
+openai/whisper (GitHub) `86098128`.
+
 ## Follow-ups from the first run, since done
 
 1. The GGML file-type mapping follows llama.cpp's `llama_ftype` enum, and the
