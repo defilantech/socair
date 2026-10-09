@@ -69,12 +69,17 @@ func TestSystemFailsAtEveryProtocol(t *testing.T) {
 	}
 }
 
-func TestBenignPassesAtEveryProtocol(t *testing.T) {
+// TestBenignPicklesByProtocol: grammar socair-wo/1 covers protocols 2 (what
+// torch.save writes) and 3, so a benign pickle there PASSes; in any other
+// protocol it is outside the grammar, a gap rather than a pass on its
+// imports alone.
+func TestBenignPicklesByProtocol(t *testing.T) {
+	want := map[int]checks.Status{0: checks.NotTested, 1: checks.NotTested, 2: checks.Pass, 3: checks.Pass, 4: checks.NotTested, 5: checks.NotTested}
 	for p := 0; p <= 5; p++ {
 		name := "benign_p" + string(rune('0'+p))
 		r := Inspect(writeFixture(t, "model.pt", real[name]))
-		if r.Status != checks.Pass {
-			t.Errorf("%s: status %s (%s), want PASS", name, r.Status, r.Notes)
+		if r.Status != want[p] {
+			t.Errorf("%s: status %s (%s), want %s", name, r.Status, r.Notes, want[p])
 		}
 	}
 }
@@ -108,7 +113,9 @@ func TestOpcodeForms(t *testing.T) {
 		{"unreviewed global", "\x80\x02cjson\nloads\n.", checks.Lead, "json.loads"},
 		{"non-constant STACK_GLOBAL", "\x80\x04K\x01K\x02\x93.", checks.Lead, ""},
 		{"extension registry", "\x80\x02\x82\x01.", checks.Lead, ""},
-		{"torch tensor rebuild", "\x80\x02ctorch._utils\n_rebuild_tensor_v2\nq\x00(ctorch\nFloatStorage\nq\x01tR.", checks.Pass, ""},
+		// A safe-listed callable with arguments that match no signature: the
+		// import allowlist passed it; the grammar does not.
+		{"torch tensor rebuild given a storage class", "\x80\x02ctorch._utils\n_rebuild_tensor_v2\nq\x00(ctorch\nFloatStorage\nq\x01tR.", checks.Lead, ""},
 	}
 	for _, c := range cases {
 		r := Inspect(writeFixture(t, "x.pkl", []byte(c.stream)))
@@ -122,14 +129,15 @@ func TestOpcodeForms(t *testing.T) {
 	}
 }
 
-// TestLegacyTrailingDataIsNotMisread: a legacy torch.save file is pickles
-// followed by raw storage bytes. Trailing bytes that happen to start with
-// PROTO must not be reported as imports.
-func TestLegacyTrailingDataIsNotMisread(t *testing.T) {
+// TestTrailingDataIsNotMisread: bytes after the last pickle that happen to
+// start with PROTO are not imports. In a raw pickle no loader reads them, so
+// they are unaccounted bytes; a legacy torch stream's storage records are
+// matched instead (TestLegacyStream).
+func TestTrailingDataIsNotMisread(t *testing.T) {
 	stream := append(append(append([]byte{}, real["benign_p2"]...), real["benign_p2"]...), []byte("\x80\x02cfake\nmodule\n\x00\x01\x02")...)
 	r := Inspect(writeFixture(t, "legacy.pt", stream))
-	if r.Status != checks.Pass {
-		t.Fatalf("status %s (%s), want PASS: trailing data is not a pickle", r.Status, r.Notes)
+	if r.Status != checks.Lead || !hasPattern(r, "pickle-unaccounted-bytes") || hasSpan(r, "fake.module") {
+		t.Fatalf("status %s, findings %+v; want LEAD on unaccounted bytes and no fake.module import", r.Status, r.Findings)
 	}
 }
 
@@ -164,7 +172,8 @@ func TestZipCheckpoints(t *testing.T) {
 	}{
 		{"data.pkl gadget", map[string][]byte{"archive/data.pkl": real["system_p2"], "archive/version": []byte("3\n")}, checks.Fail},
 		{"gadget under a tensor name", map[string][]byte{"archive/data.pkl": real["benign_p2"], "archive/data/0": real["system_p4"]}, checks.Fail},
-		{"benign checkpoint", map[string][]byte{"archive/data.pkl": real["benign_p2"], "archive/data/0": {0x00, 0x00, 0x80, 0x3f}}, checks.Pass},
+		{"benign checkpoint", map[string][]byte{"archive/data.pkl": stateDict(), "archive/data/0": floats(4)}, checks.Pass},
+		{"a record no tensor references", map[string][]byte{"archive/data.pkl": real["benign_p2"], "archive/data/0": {0x00, 0x00, 0x80, 0x3f}}, checks.Lead},
 		{"no pickle at all", map[string][]byte{"README": []byte("hello")}, checks.NotTested},
 	}
 	for _, c := range cases {

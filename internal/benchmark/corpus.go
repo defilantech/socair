@@ -105,6 +105,45 @@ var benignPickle = []byte("\x80\x02ccollections\nOrderedDict\nq\x00)Rq\x01.")
 // as in the pickle check's tests.
 var cpythonBenign = []byte("\x80\x02\x63\x63\x6f\x6c\x6c\x65\x63\x74\x69\x6f\x6e\x73\x0a\x4f\x72\x64\x65\x72\x65\x64\x44\x69\x63\x74\x0a\x71\x00\x29\x52\x71\x01\x28\x58\x01\x00\x00\x00\x77\x71\x02\x5d\x71\x03\x28\x47\x3f\xf8\x00\x00\x00\x00\x00\x00\x4b\x02\x65\x58\x01\x00\x00\x00\x62\x71\x04\x63\x5f\x5f\x62\x75\x69\x6c\x74\x69\x6e\x5f\x5f\x0a\x73\x65\x74\x0a\x71\x05\x5d\x71\x06\x28\x4b\x03\x4b\x04\x65\x85\x71\x07\x52\x71\x08\x58\x04\x00\x00\x00\x6e\x61\x6d\x65\x71\x09\x58\x05\x00\x00\x00\x6c\x61\x79\x65\x72\x71\x0a\x75\x2e")
 
+// cpythonStateDict is the data.pkl torch.save writes for {"w": a float32
+// tensor of 4 elements}, as CPython's pickler wrote it at protocol 2 (vector
+// torch-one-tensor-dict of the pickle check's testdata): one tensor whose
+// storage is the record data/0, 16 bytes.
+var cpythonStateDict = []byte("\x80\x02\x7d\x71\x00\x58\x01\x00\x00\x00\x77\x71\x01\x63\x74\x6f\x72\x63\x68\x2e\x5f\x75\x74\x69\x6c\x73\x0a\x5f\x72\x65\x62\x75\x69\x6c\x64\x5f\x74\x65\x6e\x73\x6f\x72\x5f\x76\x32\x0a\x71\x02\x28\x28\x58\x07\x00\x00\x00\x73\x74\x6f\x72\x61\x67\x65\x71\x03\x63\x74\x6f\x72\x63\x68\x0a\x46\x6c\x6f\x61\x74\x53\x74\x6f\x72\x61\x67\x65\x0a\x71\x04\x58\x01\x00\x00\x00\x30\x71\x05\x58\x03\x00\x00\x00\x63\x70\x75\x71\x06\x4b\x04\x74\x71\x07\x51\x4b\x00\x4b\x04\x85\x71\x08\x4b\x01\x85\x71\x09\x89\x63\x63\x6f\x6c\x6c\x65\x63\x74\x69\x6f\x6e\x73\x0a\x4f\x72\x64\x65\x72\x65\x64\x44\x69\x63\x74\x0a\x71\x0a\x29\x52\x71\x0b\x74\x71\x0c\x52\x71\x0d\x73\x2e")
+
+// nestedLoad is torch.storage._load_from_bytes(inner) at protocol 2, the
+// bytes written as _codecs.encode(<latin1 string>, "latin1") as protocol 2
+// writes bytes: a loader that unpickles a second pickle the scan cannot see.
+func nestedLoad(inner []byte) []byte {
+	var latin1 []rune
+	for _, c := range inner {
+		latin1 = append(latin1, rune(c))
+	}
+	s := string(latin1)
+	var b bytes.Buffer
+	b.WriteString("\x80\x02ctorch.storage\n_load_from_bytes\nc_codecs\nencode\n")
+	for _, part := range []string{s, "latin1"} {
+		b.WriteByte('X')
+		_ = binary.Write(&b, binary.LittleEndian, uint32(len(part)))
+		b.WriteString(part)
+	}
+	b.WriteString("\x86R\x85R.")
+	return b.Bytes()
+}
+
+// memoReput is os.system at protocol 4 where the module string is read from a
+// memo slot written twice: "collections", then "posix". CPython reads the
+// last value; a reader that keeps the first sees collections.system.
+func memoReput(arg string) []byte {
+	var b bytes.Buffer
+	b.WriteString("\x80\x04\x8c\x0bcollectionsq\x00\x8c\x05posixq\x00h\x00\x8c\x06system\x93")
+	b.WriteByte(0x8c)
+	b.WriteByte(byte(len(arg)))
+	b.WriteString(arg)
+	b.WriteString("\x85R.")
+	return b.Bytes()
+}
+
 func zipOf(entries map[string][]byte, order []string) []byte {
 	var b bytes.Buffer
 	w := zip.NewWriter(&b)
@@ -216,6 +255,8 @@ const (
 	srcRemoteCode  = "Hugging Face trust_remote_code: repository code a loader executes"
 	srcPayloadMeta = "Model metadata used to carry encoded payloads and executables (JFrog and Protect AI model threat reports)"
 	srcTokenizer   = "Tokenizer tampering: remapped tokens and instruction-bearing special tokens"
+	srcShadow      = "ShadowPickle (arXiv 2607.17503): OrderedDict handed a code string passes torch.load(weights_only=True), which checks the callable and not its arguments"
+	srcDifferent   = "PickleFuzzer (arXiv 2605.15084): streams scanners and CPython parse differently"
 )
 
 // Cases is the corpus, in report order: benign controls, then attacks.
@@ -225,8 +266,8 @@ func Cases() []Case {
 		// Benign controls: a scanner that flags these has false positives.
 		{"control-pickle", "pickle", "benign state-dict-shaped pickle written by CPython", "control", "", Clean,
 			file("model.pkl", cpythonBenign)},
-		{"control-torch-zip", "pickle", "benign PyTorch zip checkpoint", "control", "", Clean,
-			file("pytorch_model.bin", torchZip(cpythonBenign))},
+		{"control-torch-zip", "pickle", "benign PyTorch zip checkpoint: one float32 tensor and its storage record", "control", "", Clean,
+			file("pytorch_model.bin", torchZip(cpythonStateDict))},
 		{"control-gguf", "gguf", "benign GGUF with a plain chat template", "control", "", Clean,
 			file("clean-Q5_K_M.gguf", gguftest.BuildGGUF(gguftest.Clean()))},
 		{"control-safetensors", "safetensors", "benign safetensors", "control", "", Clean,
@@ -268,6 +309,12 @@ func Cases() []Case {
 			file("model.tar", tarOf(map[string][]byte{"sys_info": benignPickle, "pickle": global2("posix", "system", Payload)}, []string{"sys_info", "pickle"}))},
 		{"pickle-numpy-load", "pickle", "numpy.load on attacker data (allow_pickle chain)", srcPicklescan, "Pickle opcode scan", Detect,
 			file("model.pkl", global4("numpy", "load", "/tmp/socair-benchmark.npy"))},
+		{"pickle-ordereddict-code-string", "pickle", "collections.OrderedDict, a safe-listed callable, handed a command string", srcShadow, "Pickle opcode scan", Detect,
+			file("pytorch_model.bin", torchZip(global2("collections", "OrderedDict", Payload)))},
+		{"pickle-nested-loader", "pickle", "torch.storage._load_from_bytes unpickling a second pickle carried as bytes", srcPicklescan, "Pickle opcode scan", Detect,
+			file("model.pkl", nestedLoad(global2("posix", "system", Payload)))},
+		{"pickle-memo-reput", "pickle", "STACK_GLOBAL module read from a memo slot written twice", srcDifferent, "Pickle opcode scan", Detect,
+			file("model.pkl", memoReput(Payload))},
 
 		// GGUF: the chat template runs in the serving stack's Jinja engine.
 		{"gguf-ssti-globals", "gguf", "SSTI through self.__init__.__globals__ to os.popen", srcGGUFSSTI, "Chat template (hero)", Detect,

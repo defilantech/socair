@@ -10,9 +10,10 @@ import (
 )
 
 // emitted finds the finding patterns the checks emit, from their sources:
-// Finding{Pattern: "..."}, signal{pattern: "..."}, fail("..."), and the
-// named pattern tables ({name: "...", re: ...}).
-var emitted = regexp.MustCompile(`(?:Pattern|pattern):\s*"([a-z0-9_-]+)"|\bfail\("([a-z0-9_-]+)"|\bname:\s*"([a-z0-9_-]+)",\s*\n\s*re:`)
+// Finding{Pattern: "..."}, signal{pattern: "..."}, fail("..."), the named
+// pattern tables ({name: "...", re: ...}), and the pickle grammar's
+// violate(status, "...") and finding(status, "...").
+var emitted = regexp.MustCompile(`(?:Pattern|pattern):\s*"([a-z0-9_-]+)"|\bfail\("([a-z0-9_-]+)"|\bname:\s*"([a-z0-9_-]+)",\s*\n\s*re:|\b(?:violate|finding)\(checks\.(?:Fail|Lead),\s*"([a-z0-9_-]+)"`)
 
 // TestEveryPatternHasASeverity: a new finding pattern without a severity
 // would grade by fallback, silently. Falsification: delete an entry from
