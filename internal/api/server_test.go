@@ -2,6 +2,8 @@ package api
 
 import (
 	"bytes"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -9,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/defilantech/socair/internal/airlock"
@@ -346,5 +349,41 @@ func TestRenderCycloneDX(t *testing.T) {
 	d.Verification.ArtifactSHA256 = ""
 	if code, _ := post(t, ts, "/api/render", map[string]any{"report": d, "format": "cyclonedx"}); code != http.StatusUnprocessableEntity && code != http.StatusBadRequest {
 		t.Errorf("a report naming no exact bytes must be refused as input, got %d", code)
+	}
+}
+
+// The API has no auth, so a pull through it must not spend the operator's
+// HF_TOKEN: anyone who reaches it could probe private repos with it.
+// Falsification: pass DefaultEgressPolicy through unchanged and the hub
+// records the token.
+func TestAirlockPullThroughTheAPISendsNoToken(t *testing.T) {
+	var mu sync.Mutex
+	var auth []string
+	hub := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		auth = append(auth, r.Header.Get("Authorization"))
+		mu.Unlock()
+		w.Write([]byte("bytes"))
+	}))
+	defer hub.Close()
+	t.Setenv("SOCAIR_EGRESS", "")
+	t.Setenv("SOCAIR_HF_ENDPOINT", hub.URL)
+	t.Setenv("HF_TOKEN", "hf_operatorsecret")
+	root := t.TempDir()
+	if _, err := airlock.Init(root); err != nil {
+		t.Fatal(err)
+	}
+	ts := server(t, Options{StoreRoot: root})
+	sum := sha256.Sum256([]byte("bytes"))
+	post(t, ts, "/api/airlock/pull", map[string]any{"repo": "org/name", "file": "m.safetensors", "sha256": hex.EncodeToString(sum[:])})
+	mu.Lock()
+	defer mu.Unlock()
+	if len(auth) == 0 {
+		t.Fatal("the pull never reached the hub")
+	}
+	for _, a := range auth {
+		if a != "" {
+			t.Fatalf("an API pull sent Authorization %q", a)
+		}
 	}
 }

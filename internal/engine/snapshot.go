@@ -9,6 +9,8 @@ import (
 	"path/filepath"
 	"strings"
 	"sync/atomic"
+
+	"github.com/defilantech/socair/internal/diskfree"
 )
 
 // snapshots counts artifacts read into a snapshot, so a test can hold a full
@@ -36,13 +38,22 @@ func snapshot(path string) (string, string, func(), error) {
 		return "", "", nil, err
 	}
 	defer src.Close()
-	if fi, err := src.Stat(); err != nil {
+	fi, err := src.Stat()
+	if err != nil {
 		return "", "", nil, err
-	} else if !fi.Mode().IsRegular() {
+	}
+	if !fi.Mode().IsRegular() {
 		return "", "", nil, fmt.Errorf("%s is not a regular file", path)
 	}
 
 	dir := strings.TrimSpace(os.Getenv("SOCAIR_SCAN_TMP"))
+	room := dir
+	if room == "" {
+		room = os.TempDir()
+	}
+	if err := diskfree.Need(room, fi.Size()); err != nil {
+		return "", "", nil, fmt.Errorf("snapshot %s (set SOCAIR_SCAN_TMP to a volume with room): %w", path, err)
+	}
 	tmp, err := os.MkdirTemp(dir, "socair-scan-")
 	if err != nil {
 		return "", "", nil, fmt.Errorf("create scan snapshot directory (set SOCAIR_SCAN_TMP to a volume with room): %w", err)

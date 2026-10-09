@@ -2,6 +2,8 @@ package engine
 
 import (
 	"encoding/json"
+	"errors"
+	"fmt"
 	"os"
 	"path"
 	"path/filepath"
@@ -17,6 +19,7 @@ import (
 	"github.com/defilantech/socair/internal/checks/remotecode"
 	"github.com/defilantech/socair/internal/checks/structure"
 	"github.com/defilantech/socair/internal/checks/tokenizer"
+	"github.com/defilantech/socair/internal/diskfree"
 	"github.com/defilantech/socair/internal/modeldir"
 	"github.com/defilantech/socair/internal/report"
 )
@@ -31,6 +34,10 @@ var pickleExt = map[string]bool{".bin": true, ".pt": true, ".pth": true, ".ckpt"
 // row, so one bad shard withholds the whole directory.
 func scanDir(dir string, start time.Time, refs *references, in Inputs) (*report.Document, error) {
 	root, files, excluded, cleanup, err := modeldir.Snapshot(dir, strings.TrimSpace(os.Getenv("SOCAIR_SCAN_TMP")))
+	var short *diskfree.ShortError
+	if errors.As(err, &short) {
+		return nil, fmt.Errorf("%w (set SOCAIR_SCAN_TMP to a volume with room)", err)
+	}
 	if err != nil {
 		return nil, err
 	}

@@ -6,10 +6,12 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"hash"
 	"io"
 	"io/fs"
+	"math"
 	"net/http"
 	"net/url"
 	"os"
@@ -22,6 +24,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/defilantech/socair/internal/checks/provenance"
+	"github.com/defilantech/socair/internal/diskfree"
 	"github.com/defilantech/socair/internal/modeldir"
 )
 
@@ -59,13 +62,22 @@ type treeEntry struct {
 // verify, and any path that would leave the directory, refuses the pull.
 // Every request goes through the egress policy.
 func PullRepo(ctx context.Context, s *Store, repo, revision, wantDigest string, pol EgressPolicy) (Event, string, error) {
-	fail := func(detail string) (Event, string, error) {
-		e := Event{Action: ActionPull, Outcome: OutcomeRefused, Repo: repo, SHA256: normalizeSHA(wantDigest), Detail: detail}
+	return PullRepoSelected(ctx, s, repo, revision, wantDigest, Selection{}, pol)
+}
+
+// PullRepoSelected is PullRepo carrying only the files sel keeps. The left-out
+// files are never fetched; the staged tree, its manifest digest, and so the
+// attestation subject are the kept files alone, and the provenance manifest
+// and the log name every file left out.
+func PullRepoSelected(ctx context.Context, s *Store, repo, revision, wantDigest string, sel Selection, pol EgressPolicy) (Event, string, error) {
+	refuse := func(err error) (Event, string, error) {
+		e := Event{Action: ActionPull, Outcome: OutcomeRefused, Repo: repo, SHA256: normalizeSHA(wantDigest), Detail: err.Error()}
 		if s != nil {
 			_ = s.Record(e)
 		}
-		return e, "", fmt.Errorf("airlock pull %s: %s", repo, detail)
+		return e, "", fmt.Errorf("airlock pull %s: %w", repo, err)
 	}
+	fail := func(detail string) (Event, string, error) { return refuse(errors.New(detail)) }
 	if err := validRepo(repo); err != nil {
 		return fail(err.Error())
 	}
@@ -96,6 +108,10 @@ func PullRepo(ctx context.Context, s *Store, repo, revision, wantDigest string, 
 	if err := notEvidenceName(name); err != nil {
 		return fail(err.Error())
 	}
+	keep, err := sel.compile()
+	if err != nil {
+		return fail(err.Error())
+	}
 	client := pol.client()
 
 	// Resolve the revision to the commit every later request is pinned to.
@@ -120,10 +136,40 @@ func PullRepo(ctx context.Context, s *Store, repo, revision, wantDigest string, 
 	if len(entries) == 0 {
 		return fail("the repo has no files at commit " + commit)
 	}
+	var leftOut []string
+	if !sel.empty() {
+		kept := make([]treeEntry, 0, len(entries))
+		for _, e := range entries {
+			if keep.keeps(e.Path) {
+				kept = append(kept, e)
+			} else {
+				leftOut = append(leftOut, e.Path)
+			}
+		}
+		if len(kept) == 0 {
+			return fail(fmt.Sprintf("the selection (%s) keeps none of the %d files at commit %s", sel, len(entries), commit))
+		}
+		entries = kept
+	}
 
 	tmp, err := s.tmpRoot()
 	if err != nil {
 		return fail(err.Error())
+	}
+	// The listing names every size, so a repo that cannot fit is refused
+	// before the first byte, not hundreds of gigabytes in.
+	var need int64
+	for _, e := range entries {
+		// A hostile listing could add past int64; saturate, so the total
+		// cannot wrap negative and pass.
+		if e.Size > math.MaxInt64-need {
+			need = math.MaxInt64
+			break
+		}
+		need += e.Size
+	}
+	if err := diskfree.Need(tmp, need); err != nil {
+		return refuse(err)
 	}
 	work, err := os.MkdirTemp(tmp, "pull-")
 	if err != nil {
@@ -169,6 +215,11 @@ func PullRepo(ctx context.Context, s *Store, repo, revision, wantDigest string, 
 		CommitSHA:      commit,
 		Source:         "airlock pull",
 	}
+	// A selected pull says so in the manifest, and so in the signed report's
+	// provenance row: the tree is part of the repo at that commit.
+	if !sel.empty() {
+		manifest.Selection = &provenance.Selection{Include: sel.Include, Exclude: sel.Exclude, LeftOut: append([]string{}, leftOut...)}
+	}
 	b, err := json.MarshalIndent(manifest, "", "  ")
 	if err != nil {
 		return fail(err.Error())
@@ -180,6 +231,12 @@ func PullRepo(ctx context.Context, s *Store, repo, revision, wantDigest string, 
 	detail := fmt.Sprintf("model directory, revision %s at commit %s, %d files, %d bytes, each verified against the hub's hash", revision, commit, len(files), total)
 	if len(skipped) > 0 {
 		detail += "; not fetched: " + strings.Join(skipped, ", ")
+	}
+	if !sel.empty() {
+		detail += fmt.Sprintf("; selected with %s, left out %d files", sel, len(leftOut))
+		if len(leftOut) > 0 {
+			detail += ": " + strings.Join(leftOut, ", ")
+		}
 	}
 	e := Event{Action: ActionPull, Outcome: OutcomeOK, Repo: repo, SHA256: digest, Detail: detail}
 	if s != nil {
@@ -203,17 +260,17 @@ func getJSONPage(ctx context.Context, client *http.Client, pol EgressPolicy, u s
 	}
 	cctx, cancel := context.WithTimeout(ctx, 4*pol.Timeout)
 	defer cancel()
-	req, err := http.NewRequestWithContext(cctx, http.MethodGet, u, nil)
+	req, err := pol.newRequest(cctx, u)
 	if err != nil {
 		return "", err
 	}
 	resp, err := client.Do(req)
 	if err != nil {
-		return "", fmt.Errorf("request failed within the %s budget: %w", pol.Timeout, err)
+		return "", fmt.Errorf("request failed within the %s budget: %w", pol.Timeout, redactURL(err))
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("the hub returned HTTP %d for %s", resp.StatusCode, u)
+		return "", pol.statusError("the hub", resp.StatusCode, u)
 	}
 	b, err := io.ReadAll(io.LimitReader(resp.Body, maxAPIResponse+1))
 	if err != nil {
@@ -284,6 +341,9 @@ func listTree(ctx context.Context, client *http.Client, pol EgressPolicy, u stri
 				return nil, nil, fmt.Errorf("%q and %q differ only in case", prev, e.Path)
 			}
 			folded[strings.ToLower(e.Path)] = e.Path
+			if e.LFS != nil && e.LFS.OID != "" && strings.Trim(e.LFS.OID, "*") == "" {
+				return nil, nil, fmt.Errorf("%q has no hash the hub vouches for: the hub masks a gated repo's file hashes from a caller without access (set HF_TOKEN to a token that has accepted the repo's terms)", e.Path)
+			}
 			if e.Size < 0 || (e.LFS == nil && !gitOID.MatchString(e.OID)) || (e.LFS != nil && !hexSHA256.MatchString(e.LFS.OID)) {
 				return nil, nil, fmt.Errorf("%q has no hash the hub vouches for", e.Path)
 			}
@@ -360,17 +420,17 @@ func fetchVerified(ctx context.Context, client *http.Client, pol EgressPolicy, s
 	}
 	cctx, cancel := context.WithCancel(ctx)
 	defer cancel()
-	req, err := http.NewRequestWithContext(cctx, http.MethodGet, src, nil)
+	req, err := pol.newRequest(cctx, src)
 	if err != nil {
 		return "", err
 	}
 	resp, err := client.Do(req)
 	if err != nil {
-		return "", fmt.Errorf("fetch failed within the %s stall budget: %w", pol.Timeout, err)
+		return "", fmt.Errorf("fetch failed within the %s stall budget: %w", pol.Timeout, redactURL(err))
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("the hub returned HTTP %d", resp.StatusCode)
+		return "", pol.statusError("the hub", resp.StatusCode, src)
 	}
 	body := newStallReader(io.LimitReader(resp.Body, e.Size+1), pol.Timeout, cancel)
 	defer body.stop()

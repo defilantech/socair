@@ -34,6 +34,8 @@ import (
 	"sort"
 	"strings"
 	"unicode/utf8"
+
+	"github.com/defilantech/socair/internal/diskfree"
 )
 
 // MaxFiles bounds a directory scan. Real model repos hold tens to a few
@@ -119,6 +121,9 @@ func Snapshot(dir, tmpRoot string) (string, []File, []Excluded, func(), error) {
 	if err := isDir(dir); err != nil {
 		return "", nil, nil, nil, err
 	}
+	if err := room(dir, tmpRoot); err != nil {
+		return "", nil, nil, nil, err
+	}
 	snap, err := os.MkdirTemp(tmpRoot, "socair-dir-")
 	if err != nil {
 		return "", nil, nil, nil, fmt.Errorf("create scan snapshot directory (set SOCAIR_SCAN_TMP to a volume with room): %w", err)
@@ -136,6 +141,33 @@ func Snapshot(dir, tmpRoot string) (string, []File, []Excluded, func(), error) {
 		return "", nil, nil, nil, err
 	}
 	return snap, files, excluded, cleanup, nil
+}
+
+// room sizes the files a snapshot of dir would copy, under the same walk
+// rules, and returns a *diskfree.ShortError when tmpRoot's volume cannot hold
+// them, before anything is copied.
+func room(dir, tmpRoot string) error {
+	files, _, err := walk(dir, func(src, _ string) (string, int64, error) {
+		st, err := os.Stat(src)
+		if err != nil {
+			return "", 0, err
+		}
+		return "", st.Size(), nil
+	})
+	if err != nil {
+		return err
+	}
+	var need int64
+	for _, f := range files {
+		need += f.Size
+	}
+	if tmpRoot == "" {
+		tmpRoot = os.TempDir()
+	}
+	if err := diskfree.Need(tmpRoot, need); err != nil {
+		return fmt.Errorf("snapshot %s: %w", dir, err)
+	}
+	return nil
 }
 
 // Hash walks dir and returns its manifest digest and files, hashing in place,

@@ -146,3 +146,25 @@ func TestMalformedManifestNotTested(t *testing.T) {
 		t.Fatalf("a malformed manifest must be NOT_TESTED, got %s", got)
 	}
 }
+
+// A selected pull stages part of the repo at that commit. The origin still
+// binds, so the row PASSes, but it must say the artifact is a selection and
+// name what was left out, since the signed report is what a reader keeps.
+// Falsification: drop the selection branch and the notes read as the whole
+// repo.
+func TestSelectedPullIsNamedPartial(t *testing.T) {
+	dir := t.TempDir()
+	art := writeFile(t, filepath.Join(dir, "model.gguf"), "x")
+	m := writeFile(t, filepath.Join(dir, "m.json"),
+		`{"artifact_sha256":"`+artSHA+`","repo_url":"https://huggingface.co/a/b","commit_or_tag":"`+commit+`","commit_sha":"`+commit+`",`+
+			`"selection":{"exclude":["inference/","*.pdf"],"left_out":["inference/model.py","paper.pdf"]}}`)
+	r := Inspect(Options{ArtifactPath: art, ArtifactSHA256: artSHA, ManifestPath: m})
+	if r.Status != checks.Pass {
+		t.Fatalf("status %s (%s): a selection still binds its origin", r.Status, r.Notes)
+	}
+	for _, want := range []string{"selection of the repo's files", "2 left out", "--exclude inference/", "inference/model.py", "paper.pdf"} {
+		if !strings.Contains(r.Notes, want) {
+			t.Errorf("the notes must say %q: %s", want, r.Notes)
+		}
+	}
+}

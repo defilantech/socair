@@ -46,6 +46,17 @@ type Manifest struct {
 	// Source says how the artifact arrived, such as "airlock pull".
 	Source string `json:"source,omitempty"`
 	AIBOM  string `json:"aibom"`
+	// Selection, written by a selected repo pull, records that the artifact
+	// is part of the repo at that commit, not all of it.
+	Selection *Selection `json:"selection,omitempty"`
+}
+
+// Selection is the patterns a repo pull kept files by, and every file of the
+// commit it left out.
+type Selection struct {
+	Include []string `json:"include,omitempty"`
+	Exclude []string `json:"exclude,omitempty"`
+	LeftOut []string `json:"left_out"`
 }
 
 // Options configures the provenance check.
@@ -177,6 +188,20 @@ func Inspect(opts Options) checks.Result {
 		}
 		if m.CommitSHA != "" {
 			parts = append(parts, "commit "+m.CommitSHA)
+		}
+		if sel := m.Selection; sel != nil {
+			var flags []string
+			for _, p := range sel.Include {
+				flags = append(flags, "--include "+p)
+			}
+			for _, p := range sel.Exclude {
+				flags = append(flags, "--exclude "+p)
+			}
+			part := fmt.Sprintf("a selection of the repo's files at that commit (%s), %d left out", strings.Join(flags, " "), len(sel.LeftOut))
+			if len(sel.LeftOut) > 0 {
+				part += ": " + strings.Join(firstN(sel.LeftOut, 8), ", ")
+			}
+			parts = append(parts, part)
 		}
 		if m.Source != "" {
 			parts = append(parts, "via "+m.Source)

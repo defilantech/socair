@@ -60,16 +60,28 @@ func airlockInit(args []string) error {
 func airlockPull(args []string) error {
 	fs := parseFlags(args)
 	repo, sha, file := fs.val("repo"), fs.val("sha256"), fs.val("file")
+	include, err := fs.patterns("include")
+	if err != nil {
+		return err
+	}
+	exclude, err := fs.patterns("exclude")
+	if err != nil {
+		return err
+	}
+	sel := airlock.Selection{Include: include, Exclude: exclude}
 	if repo == "" || (file != "" && sha == "") {
 		return errors.New("usage: socair airlock pull --repo <org/name> --file <name> --sha256 <hash> [--revision main] [--store <path>]\n" +
-			"       socair airlock pull --repo <org/name> (--revision <commit> | --sha256 <manifest digest>) [--store <path>]   whole repo, as a model directory")
+			"       socair airlock pull --repo <org/name> (--revision <commit> | --sha256 <manifest digest>) [--include <glob>]... [--exclude <glob>]... [--store <path>]   whole repo, as a model directory")
+	}
+	if file != "" && (len(sel.Include) > 0 || len(sel.Exclude) > 0) {
+		return errors.New("--include and --exclude select files from a whole-repo pull; a single-file pull names its file with --file")
 	}
 	s, err := airlock.Open(storeRoot(fs))
 	if err != nil {
 		return err
 	}
 	if file == "" {
-		ev, staged, err := airlock.PullRepo(context.Background(), s, repo, fs.val("revision"), sha, airlock.DefaultEgressPolicy())
+		ev, staged, err := airlock.PullRepoSelected(context.Background(), s, repo, fs.val("revision"), sha, sel, airlock.DefaultEgressPolicy())
 		if err != nil {
 			return err
 		}
@@ -271,11 +283,15 @@ func shortHash(sha string) string {
 // convention of flags before or after positionals.
 type flagSet struct {
 	vals map[string]string
+	// all keeps every value a repeated flag was given, in order.
+	all map[string][]string
+	// bare marks flags given with no value.
+	bare map[string]bool
 	pos  []string
 }
 
 func parseFlags(args []string) *flagSet {
-	fs := &flagSet{vals: map[string]string{}}
+	fs := &flagSet{vals: map[string]string{}, all: map[string][]string{}, bare: map[string]bool{}}
 	for i := 0; i < len(args); i++ {
 		a := args[i]
 		if !strings.HasPrefix(a, "--") {
@@ -284,17 +300,60 @@ func parseFlags(args []string) *flagSet {
 		}
 		key := strings.TrimPrefix(a, "--")
 		if eq := strings.IndexByte(key, '='); eq >= 0 {
-			fs.vals[key[:eq]] = key[eq+1:]
+			fs.set(key[:eq], key[eq+1:])
 			continue
 		}
 		if i+1 >= len(args) || strings.HasPrefix(args[i+1], "--") {
 			fs.vals[key] = "true"
+			fs.bare[key] = true
 			continue
 		}
 		i++
-		fs.vals[key] = args[i]
+		fs.set(key, args[i])
 	}
 	return fs
+}
+
+func (f *flagSet) set(key, v string) {
+	f.vals[key] = v
+	f.all[key] = append(f.all[key], v)
+}
+
+// patterns returns every value of a repeatable pattern flag, each split on
+// the commas outside [...]. A pattern narrows what a command does, so a bare
+// flag or an empty pattern is refused rather than dropped, which would widen
+// it.
+func (f *flagSet) patterns(key string) ([]string, error) {
+	if f.bare[key] {
+		return nil, fmt.Errorf("--%s needs a pattern", key)
+	}
+	var out []string
+	for _, v := range f.all[key] {
+		for _, part := range splitOutsideBrackets(v) {
+			if part = strings.TrimSpace(part); part == "" {
+				return nil, fmt.Errorf("--%s has an empty pattern in %q", key, v)
+			}
+			out = append(out, part)
+		}
+	}
+	return out, nil
+}
+
+func splitOutsideBrackets(s string) []string {
+	var parts []string
+	depth, start := 0, 0
+	for i, r := range s {
+		switch {
+		case r == '[':
+			depth++
+		case r == ']' && depth > 0:
+			depth--
+		case r == ',' && depth == 0:
+			parts = append(parts, s[start:i])
+			start = i + 1
+		}
+	}
+	return append(parts, s[start:])
 }
 
 func (f *flagSet) val(key string) string { return f.vals[key] }

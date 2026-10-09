@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/defilantech/socair/internal/checks/provenance"
+	"github.com/defilantech/socair/internal/diskfree"
 )
 
 // EgressPolicy controls what the airlock is allowed to reach and how long a
@@ -34,6 +35,10 @@ type EgressPolicy struct {
 	// Endpoint is the base URL, overridable so tests can point at a local
 	// server instead of the public hub.
 	Endpoint string
+	// Token is a Hugging Face access token for gated and private repos. It is
+	// sent only to the endpoint's own host, never across a redirect to another
+	// host such as the CDN, and never written to a log or an error.
+	Token string
 }
 
 // DefaultEgressPolicy is the shipped policy: the Hugging Face hub and its CDN
@@ -45,6 +50,7 @@ type EgressPolicy struct {
 //   - SOCAIR_EGRESS_ALLOW adds comma-separated hosts, such as a mirror's own
 //     redirect targets.
 //   - SOCAIR_PULL_TIMEOUT overrides the stall budget.
+//   - HF_TOKEN is the access token for gated and private repos.
 //   - SOCAIR_EGRESS=deny refuses all egress.
 func DefaultEgressPolicy() EgressPolicy {
 	pol := EgressPolicy{
@@ -66,6 +72,7 @@ func DefaultEgressPolicy() EgressPolicy {
 	if d, err := time.ParseDuration(strings.TrimSpace(os.Getenv("SOCAIR_PULL_TIMEOUT"))); err == nil && d > 0 {
 		pol.Timeout = d
 	}
+	pol.Token = strings.TrimSpace(os.Getenv("HF_TOKEN"))
 	return pol
 }
 
@@ -77,13 +84,14 @@ func DefaultEgressPolicy() EgressPolicy {
 // The manifest records origin facts (repo, revision); it never asserts a
 // signing status.
 func Pull(ctx context.Context, s *Store, dst, repo, revision, wantSHA string, pol EgressPolicy) (Event, error) {
-	fail := func(detail string) (Event, error) {
-		e := Event{Action: ActionPull, Outcome: OutcomeRefused, Repo: repo, SHA256: normalizeSHA(wantSHA), Detail: detail}
+	refuse := func(err error) (Event, error) {
+		e := Event{Action: ActionPull, Outcome: OutcomeRefused, Repo: repo, SHA256: normalizeSHA(wantSHA), Detail: err.Error()}
 		if s != nil {
 			_ = s.Record(e)
 		}
-		return e, fmt.Errorf("airlock pull %s: %s", repo, detail)
+		return e, fmt.Errorf("airlock pull %s: %w", repo, err)
 	}
+	fail := func(detail string) (Event, error) { return refuse(errors.New(detail)) }
 
 	if strings.TrimSpace(repo) == "" {
 		return fail("repo is required")
@@ -117,7 +125,7 @@ func Pull(ctx context.Context, s *Store, dst, repo, revision, wantSHA string, po
 
 	cctx, cancel := context.WithCancel(ctx)
 	defer cancel()
-	req, err := http.NewRequestWithContext(cctx, http.MethodGet, src, nil)
+	req, err := pol.newRequest(cctx, src)
 	if err != nil {
 		return fail(err.Error())
 	}
@@ -136,11 +144,14 @@ func Pull(ctx context.Context, s *Store, dst, repo, revision, wantSHA string, po
 	}
 	resp, err := client.Do(req)
 	if err != nil {
-		return fail(fmt.Sprintf("pull failed within the %s stall budget: %v", pol.Timeout, err))
+		return fail(fmt.Sprintf("pull failed within the %s stall budget: %v", pol.Timeout, redactURL(err)))
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		return fail(fmt.Sprintf("source returned HTTP %d for %s", resp.StatusCode, src))
+		return refuse(pol.statusError("source", resp.StatusCode, src))
+	}
+	if err := diskfree.Need(filepath.Dir(dst), resp.ContentLength); err != nil {
+		return refuse(err)
 	}
 
 	body := newStallReader(resp.Body, pol.Timeout, cancel)
@@ -251,7 +262,9 @@ func (p EgressPolicy) client() *http.Client {
 }
 
 // checkRedirect applies the allowlist to every hop. Checking only the first URL
-// let a listed host bounce the pull anywhere.
+// let a listed host bounce the pull anywhere. A hop to any other host, the
+// hub's CDN included, loses the token: net/http would keep it for the same
+// host name at another port and for any subdomain.
 func (p EgressPolicy) checkRedirect(req *http.Request, via []*http.Request) error {
 	if len(via) >= 10 {
 		return errors.New("stopped after 10 redirects")
@@ -262,7 +275,69 @@ func (p EgressPolicy) checkRedirect(req *http.Request, via []*http.Request) erro
 	if host, ok := p.allows(req.URL.String()); !ok {
 		return fmt.Errorf("redirect to %q is denied by policy (add it to SOCAIR_EGRESS_ALLOW)", host)
 	}
+	if !p.isEndpointHost(req.URL) {
+		req.Header.Del("Authorization")
+	}
 	return nil
+}
+
+// newRequest is a GET through the policy, carrying the token when, and only
+// when, it goes to the endpoint's own host, over https or to loopback: a
+// bearer token sent over plain http is readable on the wire.
+func (p EgressPolicy) newRequest(ctx context.Context, u string) (*http.Request, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
+	if err != nil {
+		return nil, err
+	}
+	if p.Token != "" && p.isEndpointHost(req.URL) && (req.URL.Scheme == "https" || isLoopback(req.URL.Hostname())) {
+		req.Header.Set("Authorization", "Bearer "+p.Token)
+	}
+	return req, nil
+}
+
+func isLoopback(host string) bool {
+	if strings.EqualFold(host, "localhost") {
+		return true
+	}
+	ip := net.ParseIP(host)
+	return ip != nil && ip.IsLoopback()
+}
+
+// redactURL drops the query and fragment from the URL a transport error
+// names. A failed or refused redirect names its target, and a CDN target is a
+// signed URL, a read capability for the file until it expires; it must not
+// reach an error, and so the log.
+func redactURL(err error) error {
+	var ue *url.Error
+	if errors.As(err, &ue) {
+		if u, perr := url.Parse(ue.URL); perr == nil {
+			u.RawQuery, u.Fragment, u.User = "", "", nil
+			ue.URL = u.String()
+		} else {
+			ue.URL = "(unparseable URL)"
+		}
+	}
+	return err
+}
+
+// isEndpointHost reports whether u is on exactly the endpoint's host and port.
+func (p EgressPolicy) isEndpointHost(u *url.URL) bool {
+	e, err := url.Parse(p.Endpoint)
+	return err == nil && e.Host != "" && strings.EqualFold(e.Host, u.Host)
+}
+
+// statusError explains a non-200 answer. A gated or private repo answers 401
+// or 403, so those name HF_TOKEN; the token itself is never repeated.
+func (p EgressPolicy) statusError(who string, code int, u string) error {
+	msg := fmt.Sprintf("%s returned HTTP %d for %s", who, code, u)
+	if code == http.StatusUnauthorized || code == http.StatusForbidden {
+		if p.Token == "" {
+			msg += " (a gated or private repo needs HF_TOKEN set to a Hugging Face access token)"
+		} else {
+			msg += " (HF_TOKEN was sent; check it has access to this repo and that the repo's terms are accepted)"
+		}
+	}
+	return errors.New(msg)
 }
 
 // stallReader cancels the transfer when no bytes arrive for the budget. The
