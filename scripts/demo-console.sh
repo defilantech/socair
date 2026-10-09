@@ -20,7 +20,10 @@
 # downloads about 1.6 GB, most of it Qwen3-0.6B. Needs go, npm, curl, and jq.
 #
 # SOCAIR_DEMO_ISSUER and SOCAIR_DEMO_ACCEPTOR rename the demo signer and
-# acceptor. The binary is stamped with `git describe` of the checkout, so a
+# acceptor. SOCAIR_DEMO_CONDITIONAL names another repo for the approved-with-
+# conditions model (one whose rows are PASS or NOT_TESTED, so a signed
+# acceptance clears it), and SOCAIR_DEMO_CONDITIONAL_EXCLUDE its --exclude
+# pattern (default onnx/; set it empty to pull the whole repo). The binary is stamped with `git describe` of the checkout, so a
 # report names the exact commit or tag that produced it.
 set -euo pipefail
 
@@ -32,6 +35,8 @@ X="$D/bin/socair"
 hub="${SOCAIR_HF_ENDPOINT:-https://huggingface.co}"
 issuer="${SOCAIR_DEMO_ISSUER:-Acme ML Platform}"
 acceptor="${SOCAIR_DEMO_ACCEPTOR:-Jane Doe, CISO}"
+conditional="${SOCAIR_DEMO_CONDITIONAL:-hf-internal-testing/tiny-random-LlamaForCausalLM}"
+conditional_exclude="${SOCAIR_DEMO_CONDITIONAL_EXCLUDE-onnx/}"
 version="$(git -C "$root" describe --tags --always --dirty 2>/dev/null || echo dev)"
 version="${version#v}"
 
@@ -88,7 +93,11 @@ scan_sign "$q" SOCAIR_DENYLIST="$D/denylist.txt"
 
 # Approved with conditions: with no known-bad list that row is NOT_TESTED, and
 # the CISO signs an acceptance of exactly that gap, until the rescan date.
-l=$(pull hf-internal-testing/tiny-random-LlamaForCausalLM --exclude onnx/)
+cond_args=()
+if [[ -n "$conditional_exclude" ]]; then
+	cond_args=(--exclude "$conditional_exclude")
+fi
+l=$(pull "$conditional" ${cond_args[@]+"${cond_args[@]}"})
 scan_sign "$l"
 e=$(dirname "$l")
 "$X" accept --attestation "$e/report.dsse.json" --key "$D/keys/ciso.key" --by "$acceptor" \
