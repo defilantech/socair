@@ -116,6 +116,12 @@ func TestTier2LeadWithholds(t *testing.T) {
 	if len(d.Tier2.NodeClasses) != 2 || d.Tier2.Measurements[0].ReferenceNodeClass == "" {
 		t.Errorf("the differential must record both node classes: %+v", d.Tier2.NodeClasses)
 	}
+	// The reference is what the endpoint was compared with; the report does
+	// not claim the measurement covers the reference's class.
+	ref := report.ShortHash(d.Tier2.Measurements[0].ReferenceNodeClass)
+	if strings.Contains(d.Scope.ExecutionContext, ref) || strings.Contains(d.OutOfScope.UntestedNodeClasses[0], d.Tier2.Measurements[0].ReferenceNodeClass) {
+		t.Errorf("the reference class is named as measured: %q / %q", d.Scope.ExecutionContext, d.OutOfScope.UntestedNodeClasses)
+	}
 
 	err = signAndVerify(t, d)
 	if !errors.Is(err, verify.ErrPolicy) || !strings.Contains(err.Error(), `state "withheld" does not authorize promotion`) {

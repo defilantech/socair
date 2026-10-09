@@ -375,16 +375,23 @@ func joinNonEmpty(a, b string) string {
 // Tier2UntestedNodeClasses is the node-class statement of a report whose
 // Tier 2 section ran: every class but the ones its measurements ran on.
 func Tier2UntestedNodeClasses(t *Tier2) string {
-	var tested []string
+	return "every node class other than " + strings.Join(t.MeasuredOn(), ", ") +
+		": Tier 1 is static, and Tier 2 measured only the node classes its measurements name; a change to any field of a node class makes a different class"
+}
+
+// MeasuredOn lists the node classes the measurements ran on, in order. A
+// differential's reference class is what a class was compared with, not one
+// the measurement covers.
+func (t *Tier2) MeasuredOn() []string {
+	var out []string
 	seen := map[string]bool{}
 	for _, m := range t.Measurements {
 		if !seen[m.NodeClass] {
 			seen[m.NodeClass] = true
-			tested = append(tested, m.NodeClass)
+			out = append(out, m.NodeClass)
 		}
 	}
-	return "every node class other than " + strings.Join(tested, ", ") +
-		": Tier 1 is static, and Tier 2 measured only the node classes its measurements name; a change to any field of a node class makes a different class"
+	return out
 }
 
 // RecordTier2 adds a Tier 2 section to a document and states what it
@@ -414,8 +421,8 @@ func (d *Document) RecordTier2(t *Tier2) {
 	}
 	d.OutOfScope.NotRun = notRun
 	var classes []string
-	for _, c := range t.NodeClasses {
-		classes = append(classes, ShortHash(c.Hash))
+	for _, h := range t.MeasuredOn() {
+		classes = append(classes, ShortHash(h))
 	}
 	d.Scope.ExecutionContext = "Tier 1 static, portable; Tier 2 on node class " + strings.Join(classes, ", ") + ", as the probe helper reported it"
 	d.Scope.InferenceBudget = fmt.Sprintf("Tier 2: %d measurement(s) over %d probe(s)", len(t.Measurements), n)
