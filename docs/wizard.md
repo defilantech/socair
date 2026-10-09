@@ -5,7 +5,9 @@ the graded result, download the report. The exec-facing surface for a security
 buyer who clicks, not curls.
 
 The wizard is a client of the engine API (`docs/api.md`). It shows only state the
-engine returned and derives nothing of its own: no status, no count, no badge.
+engine returned and derives no status or badge of its own. The counts it shows
+are tallied in the browser from the check rows the engine returned
+(`web/src/lib/report.ts`).
 
 ## Console
 
@@ -43,6 +45,8 @@ are the console's own actions.
 
 ## Building and running
 
+The release binaries do not include the wizard: build it from a checkout.
+
 ```
 cd web
 npm ci
@@ -62,7 +66,15 @@ For the shipped build, one process serves both the API and the wizard:
 socair serve --web web/build
 ```
 
-The Go server hands the static files to the browser and keeps `/api` as JSON.
+The Go server hands the static files to the browser and keeps `/api` as JSON:
+an unknown `/api/` route is a JSON `404`, never the wizard's page.
+
+To see the console with a model in every state, `scripts/demo-console.sh`
+builds both from the checkout, pulls four small public models from Hugging
+Face (about 1.6 GB), and takes each to a different stage: approved, approved
+with a signed acceptance, blocked on remote code, and staged for a scan. It
+makes its own demo keys and store under `~/socair-demo` and prints the `serve`
+command.
 
 ## The engine contract
 
@@ -70,19 +82,19 @@ The Go server hands the static files to the browser and keeps `/api` as JSON.
 - `POST /api/render` takes the document back and returns the HTML or PDF bytes.
 - `GET /api/health` tells the wizard whether the engine is usable.
 
-The API is stateless, so the wizard holds the scanned document and hands it back
-for a download. The engine keeps no session.
+Scan and render are stateless, so the wizard holds the scanned document and
+hands it back for a download. The engine keeps no session.
 
 ## What the wizard may not do
 
 - Render a `NOT_TESTED` check as a pass. `statusPill` maps it to the neutral
   treatment, and a test holds the line.
 - Render a `LEAD` as a pass or as a gap. It has its own amber treatment, because
-  it needs escalation and no acceptance clears it.
+  it needs a person's review outside Socair and no acceptance clears it.
 - Show a promotion state the document does not carry. `promotionLabel` and
   `promotionPill` read `promotion_authorization.state`.
-- Offer a level the engine cannot run. Only Tier 1 is selectable; Tier 2 is the
-  paid forward-pass tier and appears disabled because it has no checks yet.
+- Offer a level the engine cannot run. Only Tier 1 is selectable; Tier 2
+  (forward-pass testing) appears disabled because Socair has no Tier 2 checks.
 - Present a failed scan as anything but failed. `runScan` resolves to a `failed`
   state with the engine's own message, and `canDownload` is false, so no download
   is offered.
@@ -103,4 +115,4 @@ The engine going away mid-run is `run.spec.ts`: a scan that throws resolves to a
 
 Sober and calm, matching the brand (`docs/brand.md`): the name means at ease and
 secure, so the surface is not alarmist. Colour is a signal, not decoration:
-PASS, FAIL, and NOT_TESTED each get a distinct, accessible treatment.
+PASS, FAIL, LEAD, and NOT_TESTED each get a distinct, accessible treatment.

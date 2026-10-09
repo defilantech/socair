@@ -204,9 +204,8 @@ The artifact hash binds this attestation to one exact file. A re-pulled artifact
 Issued by: `[issuer]` (key `[signer_key_id]`)
 
 The issuer is whoever signs the attestation. An operator who scans and signs
-with their own key issues it themselves. A third party (an independent
-assessor, or Defilan Technologies for a Defilan-issued attestation) issues it
-with its own published key. The issuer's name comes from the signing key and is
+with their own key issues it themselves. A third party, such as an independent
+assessor, issues it with its own published key. The issuer's name comes from the signing key and is
 covered by the signature. A verifier confirms it against the name its own trust
 list gives that key: an attestation whose claimed issuer contradicts that name
 is refused, and one from a key the verifier has not named is shown as

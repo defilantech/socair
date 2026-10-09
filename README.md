@@ -30,11 +30,14 @@ model's behavior: see what each result means, and the detection ceiling, below.
 Each check returns **PASS**, **FAIL**, **LEAD**, or **NOT_TESTED**:
 
 - **FAIL** needs positive evidence.
-- **LEAD** is a suspicious but inconclusive signal. Only escalated review
-  clears it.
+- **LEAD** is a suspicious but inconclusive signal that needs a person's
+  review outside Socair.
 - **NOT_TESTED** is an honest gap, with the reason named.
 
-Nothing passes silently.
+A FAIL or a LEAD withholds promotion; no acceptance clears it, and Socair has
+no other path that does. A NOT_TESTED row withholds promotion until the input
+it needs is supplied and it passes, or a named person signs an acceptance of
+that gap. Nothing passes silently.
 
 | Check | Looks for |
 |---|---|
@@ -55,26 +58,70 @@ free of backdoors.
 
 ## Quickstart
 
+### Install a release
+
+Releases are GitHub pre-releases for now. Each holds `socair` and the optional
+`socair-sigstore` helper for linux and darwin on amd64 and arm64, a
+`SHA256SUMS` file, and a build-provenance attestation for every binary. Check
+the binary before you run it:
+
+```
+V=0.1.0-rc.2
+curl -LO https://github.com/defilantech/socair/releases/download/v$V/socair_${V}_linux_amd64
+curl -LO https://github.com/defilantech/socair/releases/download/v$V/SHA256SUMS
+sha256sum --check --ignore-missing SHA256SUMS
+gh attestation verify socair_${V}_linux_amd64 --repo defilantech/socair \
+  --signer-workflow defilantech/socair/.github/workflows/release.yml
+chmod +x socair_${V}_linux_amd64 && mv socair_${V}_linux_amd64 socair
+```
+
+Use `darwin` or `arm64` in the file name for the other platforms. The
+checksums come from the same release page as the binary, so they catch a
+damaged download, not a tampered release; the attestation and a rebuild from
+source do that. The macOS builds are not notarized: a binary downloaded with a
+browser is quarantined, so after verifying it, clear that with
+`xattr -d com.apple.quarantine socair`. See
+[verifying a release](docs/verify-release.md).
+
+The release binaries do not include the wizard or the airlock console. Those
+are the static web app in `web/`, built with npm from a checkout; see
+[docs/wizard.md](docs/wizard.md). To try the console on real models,
+`scripts/demo-console.sh` builds it and fills a demo store with one model in
+each state.
+
+### Build from source
+
 Go 1.27 or later. Dependencies are vendored, so this builds air-gapped.
 
 ```
 go build -o socair ./cmd/socair
-
-socair scan model.gguf > report.json                  # the report (JSON)
-socair render model.gguf > report.html                # HTML; --pdf, --sarif, --cyclonedx too
-socair scan ~/.cache/huggingface/hub/models--org--name/snapshots/<commit>   # a whole model directory
 ```
+
+### Scan
+
+```
+./socair scan model.gguf > report.json                  # the report (JSON)
+./socair render model.gguf > report.html                # HTML
+./socair render model.gguf --pdf report.pdf             # or --sarif report.sarif, --cyclonedx bom.json
+./socair scan ~/.cache/huggingface/hub/models--org--name/snapshots/<commit>   # a whole model directory
+```
+
+Expect a first scan to come back **withheld**. With no other inputs, the
+provenance and known-bad hash rows are NOT_TESTED, and for a single file so is
+the file inventory, which needs the repository's file listing: Socair did not
+look, so it says so. [provenance-bundle.md](docs/provenance-bundle.md) lists
+the input that moves each row.
+
+To see a complete report without a model, `./socair demo > sample.html` writes
+a fabricated sample report, marked SAMPLE on every page.
 
 Sign and verify:
 
 ```
-socair key gen --out operator --issuer "Acme ML Platform"
-socair sign --key operator.key --report report.json   # report.dsse.json
-socair verify report.dsse.json --trusted operator.pub --artifact model.gguf
+./socair key gen --out operator --issuer "Acme ML Platform"
+./socair sign --key operator.key --report report.json   # report.dsse.json
+./socair verify report.dsse.json --trusted operator.pub --artifact model.gguf
 ```
-
-Releases are built reproducibly, with checksums and build provenance; see
-[verifying a release](docs/verify-release.md).
 
 ## The trust model
 
@@ -83,11 +130,14 @@ Releases are built reproducibly, with checksums and build provenance; see
   verifier confirms the issuer against its own trust list.
 - **The airlock** ([docs/airlock.md](docs/airlock.md)). A content-addressed
   store with a staging area and a clean area:
-  - Only an attestation from a trusted key moves an artifact into clean.
+  - Only an attestation from a trusted key that authorizes promotion moves an
+    artifact into clean.
   - The bytes are hashed while they cross.
-  - `pull` fetches a file or a whole repository at a pinned commit, verifying
-    every file against the hub's hashes.
-  - The activity log is hash-chained.
+  - `pull` fetches one file pinned by its expected SHA-256, or a whole
+    repository at a pinned commit with every file checked against the hub's
+    own hashes (SHA-256 for LFS files, the git blob id for small ones).
+  - The activity log is hash-chained; record its head off the box to detect
+    a rewrite.
 - **Signed acceptances**
   ([docs/provenance-bundle.md](docs/provenance-bundle.md)). Untested surfaces
   cross only when a named acceptor signs for exactly those surfaces of exactly
@@ -100,26 +150,18 @@ Releases are built reproducibly, with checksums and build provenance; see
 - **Reference feeds** ([docs/feed.md](docs/feed.md)). Known-bad hashes,
   reviewed chat templates, and canonical tokenizers come as a signed bundle for
   air-gapped import. A feed that does not verify stops the scan.
-- **Kubernetes.** [LLMKube](https://github.com/defilantech/LLMKube) can refuse
-  to serve a model without an admitted Socair attestation. The verifier it
-  uses is the small, dependency-free
+- **Kubernetes.** [LLMKube](https://github.com/defilantech/LLMKube) is adding
+  an admission gate that refuses to serve a model without an admitted Socair
+  attestation. The verifier it uses is the small, dependency-free
   [`socair-verify`](https://github.com/defilantech/socair-verify) module.
 
-## Open source and commercial
+## Open source
 
-This repository is the complete, open Socair, under the Apache License 2.0:
-the engine and every check, the report format, signing and verification, the
-airlock, signed acceptances and feeds, the wizard, and the integrations.
-
-Defilan Technologies is building commercial offerings on top of it:
-
-- a **curated intelligence feed**, maintained and signed for air-gapped import;
-- **Defilan-issued attestations**, with analyst review of findings, and a
-  catalog of pre-attested popular models;
-- **Tier 2 testing**, which exercises models on the hardware they will run on;
-- **Socair Enterprise**, for multi-site fleets: a central registry, policy,
-  approval workflows, and compliance reporting;
-- **support** and hardened builds.
+Socair is open source under the Apache License 2.0, all of it: the engine and
+every check, the report format, signing and verification, the airlock, signed
+acceptances and feeds, the wizard and console, and the integrations. There is
+no paid edition and no feature held back. The work still to come, including
+checks that run the model on your own GPUs, is built here in the open.
 
 ## Documentation
 

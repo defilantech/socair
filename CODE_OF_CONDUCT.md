@@ -7,8 +7,7 @@ follow it.
 
 ## Reporting
 
-<!-- RELEASE-BLOCKER: set a monitored contact address before the repository is public. -->
-Report unacceptable behavior to the maintainers at **[CONTACT ADDRESS]**.
+Report unacceptable behavior to the maintainers at **security@socair.ai**.
 Reports are handled privately, and the reporter's identity is kept
 confidential. Maintainers who do not follow the code of conduct may face
 consequences determined by Defilan Technologies' project leadership.

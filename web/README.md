@@ -1,42 +1,34 @@
-# sv
+# Socair wizard and airlock console
 
-Everything you need to build a Svelte project, powered by [`sv`](https://github.com/sveltejs/cli).
+The click-through wizard and the airlock console: a SvelteKit 5 single-page
+app, built to static files that `socair serve` hands to the browser. It is a
+client of the engine's local HTTP API and shows only state the engine
+returned. What it shows, and the rules it may not break, are in
+[docs/wizard.md](../docs/wizard.md).
 
-## Creating a project
+The release binaries do not include it. Build it from a checkout:
 
-If you're seeing this, you've probably already done this step. Congrats!
-
-```sh
-# create a new project
-npx sv create my-app
+```
+cd web
+npm ci
+npm run check    # svelte-check
+npm run test     # vitest, hermetic
+npm run build    # static output in web/build
 ```
 
-To recreate this project with the same configuration:
+Serve the build with the engine, from the repository root:
 
-```sh
-# recreate this project
-npx sv@0.17.1 create --template minimal --types ts --add vitest="usages:unit" --no-download-check --install npm web
+```
+socair serve --web web/build                         # the wizard
+socair serve --web web/build --store <airlock store> # the wizard and the airlock console
 ```
 
-## Developing
+For development, `npm run dev` serves the app on `:5173` and proxies `/api`
+to a `socair serve` on `127.0.0.1:8080` (or `SOCAIR_API`).
 
-Once you've created a project and installed dependencies with `npm install` (or `pnpm install` or `yarn`), start a development server:
+`src/lib/schema.spec.ts` imports `docs/report-schema/v1.json`,
+`testdata/report.json`, and `internal/demo/report.json` from outside `web/`,
+so the tests run only from within this repository. They hold the TypeScript
+report types to the same schema the engine produces.
 
-```sh
-npm run dev
-
-# or start the server and open the app in a new browser tab
-npm run dev -- --open
-```
-
-## Building
-
-To create a production version of your app:
-
-```sh
-npm run build
-```
-
-You can preview the production build with `npm run preview`.
-
-> To deploy your app, you may need to install an [adapter](https://svelte.dev/docs/kit/adapters) for your target environment.
+The visual design record is [DESIGN.md](DESIGN.md).

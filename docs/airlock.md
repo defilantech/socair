@@ -1,19 +1,20 @@
 # The airlock
 
 The airlock is the controlled junction between untrusted egress and the on-prem
-clean store. An artifact is pulled or ingested into staging; only a promotion
-moves bytes across into the clean store, and only an attestation signed by a
-key the store trusts, whose subject is the artifact's own hash, is a ticket to
-cross.
+clean store. An artifact is pulled into staging, or ingested: a local path or
+an offline cache entry is resolved and logged where it lies, without a copy.
+Only a promotion moves bytes across into the clean store, and only an
+attestation signed by a key the store trusts, whose subject is the artifact's
+own hash, is a ticket to cross.
 
-Everything here is offline except an explicit `pull`, which is the one command
-allowed to reach the network.
+Everything here is offline except an explicit `pull` (the CLI command, or the
+API's pull route), the one operation that reaches the network.
 
 ## Store layout
 
 ```
 <store>/
-  incoming/<sha256>/<file>            staging: pulled or binned, not trusted
+  incoming/<sha256>/<file>            staging: pulled, not trusted
   incoming/<digest>/<name>/           staging for a model directory (a whole repo)
   incoming/<sha256>/provenance.json   origin facts written by a pull
   incoming/<sha256>/report.json       an unsigned scan result (the console's scan writes it)
@@ -38,7 +39,10 @@ idempotent and the store holds one identity per artifact. "In the clean store"
 does not mean "clean": a conditional promotion crosses too, so a listing must
 carry the attestation state, never assume a clean entry.
 
-`<store>` resolves from `--store`, then `SOCAIR_STORE`, then `~/.socair/store`.
+`<store>` resolves from `--store`, then `SOCAIR_STORE`, then `~/.socair/store`
+for the `airlock` commands and `socair serve`. `socair verify`, `socair
+accept`, and `socair sign --acceptance` read a store only from `--store`; they
+ignore `SOCAIR_STORE`.
 
 ## Commands
 
@@ -49,18 +53,23 @@ socair airlock pull   --repo <org/name> (--revision <commit> | --sha256 <manifes
                       [--include <glob>]... [--exclude <glob>]...
 socair airlock ingest --local <file or directory> [--scan]
 socair airlock ingest --cache --repo <org/name> [--file <name>] [--revision main] [--scan]
-socair airlock trust add <key.pub>
+socair airlock trust add <key.pub> [--name <issuer>]
+socair airlock trust add --acceptor <key.pub>
 socair airlock promote <artifact or directory> --attestation <attestation.dsse.json>
-socair airlock log
+socair airlock log [--verify [--expect-head <head>]]
+socair airlock export --out <dir> [--key <operator.key>]
 ```
+
+Every command also takes `--store <path>`.
 
 - `pull` fetches one artifact through controlled egress into staging, verifies
   it against the requested hash, records the pull, and writes a provenance
-  manifest beside it. The manifest names the artifact's sha256 and the
-  immutable commit the hub resolved the revision to (its `X-Repo-Commit`
-  header), so `revision: main` is never the only record of where the bytes
-  came from. Scan with that manifest to fill the provenance row and the
-  identity section:
+  manifest beside it. `--file` is a plain file name at the repo's root; for a
+  file in a subfolder, pull the repo with `--include <path>`. The manifest
+  names the artifact's sha256 and the immutable commit the hub resolved the
+  revision to (its `X-Repo-Commit` header), so `revision: main` is never the
+  only record of where the bytes came from. Scan with that manifest to fill
+  the provenance row and the identity section:
 
   ```
   SOCAIR_PROVENANCE=<store>/incoming/<sha256>/provenance.json socair scan <store>/incoming/<sha256>/<file>
@@ -68,19 +77,27 @@ socair airlock log
 
   The scan reads only the manifest named this way, never one it finds beside
   the artifact, and counts it only if it names the scanned hash. A source that
-  names no commit leaves `commit_sha` empty and the row NOT_TESTED.
+  names no commit leaves `commit_sha` empty and the row NOT_TESTED. The
+  manifest is not signed: the scan counts any manifest it is pointed at that
+  names the scanned hash, so it is only as trustworthy as whoever can write
+  that file (for a pull, anyone who can write `incoming/`).
 - `pull` without `--file` fetches a whole repo as a model directory. It must be
   pinned: `--revision` a full 40-hex commit, or `--sha256` the expected
   manifest digest, because a branch alone could deliver different bytes
   tomorrow. The revision is resolved to its commit, the file list is read from
   the hub at that commit, and every file is fetched at that commit and checked
-  against the hub's own hash for it (the SHA-256 of a large file, the git blob
-  id of a small one). A file that does not verify, a path that would leave the
-  directory, two names differing only in case, or a file listed without a
-  hash refuses the whole pull, and nothing is staged. Every request, including
-  each page of the file list, goes through the egress policy. The tree lands
-  at `incoming/<digest>/<name>/` with a provenance manifest bound to the
-  digest; the command prints the scan invocation.
+  against the hub's own hash for it (the SHA-256 of an LFS file; for a small
+  file, its git blob id, a SHA-1). A file that does not verify, a path that
+  would leave the directory, two names differing only in case, or a file
+  listed without a hash refuses the whole pull, and nothing is staged. Every
+  request, including each page of the file list, goes through the egress
+  policy. The tree lands at `incoming/<digest>/<name>/` with a provenance
+  manifest bound to the digest; the command prints the scan invocation.
+- The hashes a pull checks against come from the hub: the listing, for a repo
+  pull, and for a single file the `--sha256` you copy from the hub's file
+  page. They catch a corrupted or substituted transfer, the CDN included. They
+  do not catch a compromised hub, which would list the hashes of whatever it
+  serves.
 - `--include` and `--exclude` narrow a whole-repo pull to the files the
   serving stack loads. Patterns match a file's path in the repo the way
   huggingface_hub's allow and ignore patterns do: `*` matches any run of
@@ -103,10 +120,12 @@ socair airlock log
   reports no free space (some network and FUSE mounts) can be waved through
   with `SOCAIR_ROOM_CHECK=off`.
 - `ingest` resolves a local path (a file or a model directory) or an offline
-  Hugging Face cache entry and records it. Without `--file`, `--cache`
-  resolves the whole snapshot; a branch name resolves through the cache's
-  `refs/`, as the hub cache stores it. With `--scan` it also runs the engine and prints the report, so an
-  ingested artifact fills Sections 2 and 3 like any other.
+  Hugging Face cache entry, prints the resolved path, and records it in the
+  log. It does not copy the bytes into staging: a scan or a promotion reads
+  them where they are. Without `--file`, `--cache` resolves the whole
+  snapshot; a branch name resolves through the cache's `refs/`, as the hub
+  cache stores it. With `--scan` it also runs the engine and prints the
+  report, so an ingested artifact fills Sections 2 and 3 like any other.
 - `promote` gates an artifact into the clean store on its attestation. For a
   directory attestation it copies every file, hashing while copying under the
   scan's rules, and renames the tree into `clean/<digest>/<name>/` only when the
@@ -128,8 +147,11 @@ An artifact crosses only when its attestation validates and authorizes it:
   untested rows, and be current. An acceptance named at scan time
   (`SOCAIR_ACCEPTED_BY`) is unsigned and refused. See `docs/provenance-bundle.md`
   for the review, accept, re-issue flow.
-- `withheld` and `escalated` refuse. A FAIL is never cleared here; the only path
-  is escalated review.
+- `withheld`, and any state other than the two above, refuses. A FAIL or a
+  LEAD is never cleared here: no acceptance clears it, and Socair has no other
+  path that does. It needs a person's review outside Socair, and the artifact
+  does not cross. A model whose `config.json` has an `auto_map` entry ends at a
+  Remote code LEAD, so it cannot cross.
 - **The bytes that cross must hash to the attestation that authorizes them.** An
   artifact that does not match its ticket is refused, so nothing crosses on
   another artifact's attestation.
@@ -278,6 +300,14 @@ socair airlock trust add operator.pub [--name "Acme ML Platform"]
 socair airlock promote model.gguf --attestation report.dsse.json
 ```
 
+The last step succeeds only for an `authorized` report. A scan with no other
+inputs is usually `withheld` on NOT_TESTED rows (provenance, known-bad hash,
+and for a single file the repository inventory; see
+[provenance-bundle.md](provenance-bundle.md)), and `promote` refuses it until
+those rows PASS with the inputs they need, or are accepted: the acceptor signs
+with `socair accept`, the operator re-issues with `socair sign --acceptance`,
+and the re-issued attestation is promoted.
+
 **Who issued it.** The issuer is whoever signs. `key gen --issuer` records a
 name in the key files, on a `Socair-Issuer:` line outside the PEM block, which
 PEM parsers (OpenSSL included) ignore. `sign` writes that name into the
@@ -309,17 +339,19 @@ One JSON object per line, append-only. The log is evidence, not state: nothing
 reads it to decide a promotion.
 
 ```json
-{"ts":"2026-09-29T20:29:26Z","action":"promote","outcome":"conditional","source":"airlock","repo":"","sha256":"e150...","detail":"authorized with conditions accepted by chris on 1 surface(s)"}
+{"ts":"2026-10-09T17:02:38.40046Z","action":"promote","outcome":"conditional","source":"airlock","sha256":"8aaff9f1...cb933953","detail":"authorized with conditions accepted by Jane Doe, CISO (signed acceptance, acceptor key 1e2c157cdc14e161) on 4 surface(s) until 2027-01-07T17:02:38Z, attestation issued by Acme ML Platform, signed by fcf1dc921efb204f","prev":"1f6c460b...163f5d19"}
 ```
 
 Actions are `pull`, `ingest`, `trust`, `promote`, `refuse`. Outcomes are `ok`,
-`conditional`, `refused`.
+`conditional`, `refused`. An entry caused through the HTTP API also carries
+`"actor":"local-operator"`; the CLI records no actor.
 
 ### Hash chain
 
 Each entry's `prev` is the sha256 of the previous line's exact bytes; the
-first entry's is 64 zeros. Appends take an exclusive file lock, so concurrent
-writers never fork the chain.
+first entry's is 64 zeros. On Unix (every release platform), appends take an
+exclusive `flock`, so concurrent writers never fork the chain; elsewhere the
+lock holds only within one process.
 
 ```
 socair airlock log --verify
@@ -330,16 +362,21 @@ socair airlock log --verify --expect-head <head>
 follow: an edited, deleted, inserted, or reordered entry, or a line that is not
 an entry. On success it prints the head, the hash of the last line.
 
-A chain cannot see lines cut off its end: what remains is still a valid chain.
-Record the head somewhere the airlock box cannot rewrite (a ticket, a change
-record, a second machine), and pass it as `--expect-head` later; verification
-then fails if that head is no longer in the log. Signed periodic checkpoints
-would make this automatic and are not built yet.
+The chain is unkeyed SHA-256, so it shows careless edits, not a deliberate
+rewrite. Whoever can write `log.jsonl` can rewrite any entry and recompute
+every link after it, and an edit to the last line leaves nothing to break. A
+chain also cannot see lines cut off its end: what remains is still a valid
+chain. Only a head recorded off the box catches a rewrite: record it
+somewhere the airlock box cannot rewrite (a ticket, a change record, a second
+machine), and pass it as `--expect-head` later. Verification then fails unless
+that exact line, and so every line before it, is still in the log. Entries
+after the recorded head are covered only once you record a later head. Signed
+periodic checkpoints would make this automatic and are not built yet.
 
 Entries written before chaining have no `prev`. They are counted and reported
 as not covered; the chain starts from the last of them.
 
-## Offline and air-gapped customers
+## Offline and air-gapped sites
 
 - A local artifact path is ingested directly; there is no network call.
 - An offline Hugging Face cache is resolved by repo, revision, and file. The
@@ -361,8 +398,8 @@ SOCAIR_TEST_EGRESS=1 go test ./internal/airlock -run RealEgress -v
 
 - A pull verifies the artifact hash, not a publisher signature.
 - An operator signature says the operator ran the checks and stands behind the
-  report. It is not a Defilan signature; that is the paid tier (#22).
+  report. It is not a Defilan signature.
 - The clean store is a directory of bytes and attestations, not an admission
-  gate for a serving stack. On Kubernetes, LLMKube's gate refuses to serve a
-  model without an admitted attestation. For the end-to-end deployment, see
-  [intake-host.md](intake-host.md).
+  gate for a serving stack. On Kubernetes, LLMKube is adding an admission gate
+  that refuses to serve a model without an admitted attestation. For the
+  end-to-end deployment, see [intake-host.md](intake-host.md).

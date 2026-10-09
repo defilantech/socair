@@ -1,5 +1,6 @@
 # Binaries
 /socair
+/tools/socair-sigstore/socair-sigstore
 /bin/
 *.exe
 
@@ -21,6 +22,7 @@
 *.gguf
 !/testdata/**/*.gguf
 
-# Secrets
+# Secrets. `socair key gen --out <prefix>` writes <prefix>.key next to you.
 .env
 *.pem
+*.key

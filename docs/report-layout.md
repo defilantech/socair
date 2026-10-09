@@ -1,28 +1,30 @@
 # Report layout (v1)
 
 The implemented layout of the HTML attestation. Rendering lives in
-`internal/render`, driven by the report data model. See
-`docs/report-layout-proposal.md` for the proposal this encodes.
+`internal/render`, driven by the report data model.
 
-## The three Chris answers
+## Three layout rules
 
 1. **NOT_TESTED reads as a neutral grey pill plus an explicit "not tested" tag,
    with the reason inline.** Neutral about the artifact, impossible to mistake
    for a pass. Enforced by a test: a NOT_TESTED status must never render with
    the pass class.
-2. **The badge is a word**, not a scale: "Tier 1 (static)", beside the three
-   counts (Pass, Fail, Not tested).
+2. **The badge is a word**, not a scale: "Tier 1 (static)", beside the four
+   counts (Pass, Fail, Lead, Not tested).
 3. **The cover is a compact block on page one**, not a full page: artifact name,
    hash, format, quant, split, document id, issuer, badge, counts. Then straight
    into the graded table.
 
 ## Structure
 
-- Cover block: artifact line, the word badge, the four counts.
+- Cover block: artifact line, the word badge, the promotion state, the four
+  counts.
 - Checks performed: the graded table. Columns Check, Looks for, Result, Evidence.
-  Result is a pill: PASS (green), FAIL (red), LEAD (amber) plus the "escalate"
-  tag, NOT_TESTED (neutral grey) plus the "not tested" tag. The hero row first.
-- Bounded statement: the fixed Option A wording.
+  Result is a pill: PASS (green), FAIL (red), LEAD (amber) with its own tag,
+  NOT_TESTED (neutral grey) plus the "not tested" tag. Rows appear in the order
+  the engine reports them, starting with Format and structure.
+- Bounded statement: one of two fixed sentences, one for a report with no FAIL
+  or LEAD and one for a report with findings. It is never edited per artifact.
 - Out of scope: the ceiling, in full, with the "does not certify the absence of
   unknown backdoors" sentence in bold.
 - Promotion authorization: authorized or withheld, with conditions.
@@ -31,7 +33,7 @@ The implemented layout of the HTML attestation. Rendering lives in
 
 ## Sample build
 
-`socair demo` renders the fabricated sample attestation for sales. It carries a
+`socair demo` renders the fabricated sample attestation. It carries a
 SAMPLE watermark (fixed positioning, repeats on each printed page in Chrome
 print), a header chip, and a footer mark. A test asserts a real issuance carries
 none of it.
@@ -44,16 +46,22 @@ none of it.
   inject markup.
 - NOT_TESTED is never rendered with the pass class, by design and by test.
 
+## Other formats
+
+The same document also renders as:
+
+- **PDF**, drawn directly in pure Go with the vendored `go-pdf/fpdf`
+  (`internal/render/pdf`), so it renders air-gapped. Byte-stable, by test.
+- **SARIF** (`internal/render/sarif`).
+- **CycloneDX 1.6 ML-BOM** (`internal/render/cyclonedx`).
+
+`socair render` writes each with a flag, and `POST /api/render` serves each by
+`format` (`docs/api.md`).
+
 ## Commands
 
 ```
-socair render <path>   scan a real artifact and write the HTML attestation
-socair demo            write the SAMPLE attestation
+socair render <path>                     scan a real artifact and write the HTML attestation
+socair render <path> --pdf report.pdf    the PDF (also --sarif <out>, --cyclonedx <out>)
+socair demo                              write the SAMPLE attestation
 ```
-
-## Open
-
-- PDF output is not built. The HTML is print-ready; conversion needs a renderer
-  decision (headless Chrome or a pure-Go library) and is a follow-up.
-- SARIF is planned but deferred. The fileable artifact is the document, and no
-  buyer has asked for SARIF yet.

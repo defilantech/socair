@@ -1,8 +1,12 @@
 # The engine API
 
-A stateless HTTP/JSON API over the engine, so the click-ops wizard is a client
-of the same path the CLI calls. Nothing is stored server-side: a scan returns the
-report document, and a render takes that document back and returns bytes.
+An HTTP/JSON API over the engine, so the click-ops wizard is a client of the
+same path the CLI calls. Scan and render are stateless: a scan returns the
+report document, a render takes that document back and returns bytes, and
+neither stores anything. The airlock and console routes act on the store named
+by `--store`: ingest, pull, and promote record what they did in its activity
+log, and the console's scan and attestation upload write evidence files into
+the staging entry.
 
 The API is a thin client of `internal/engine`. It invents no report shape.
 
@@ -43,15 +47,18 @@ is also checked against the pages they might visit:
 ### `GET /api/version`
 
 ```json
-{"version":"0.1.0-dev"}
+{"version":"dev"}
 ```
+
+`dev` in a source build; a release build reports its version without the
+leading `v`, such as `0.1.0-rc.2`.
 
 ### `GET /api/health`
 
 `200` when healthy, `503` when a configured store cannot open.
 
 ```json
-{"ok":true,"store":"ready","version":"0.1.0-dev"}
+{"ok":true,"store":"ready","version":"dev"}
 ```
 
 `store` is `absent` (none configured), `ready`, or `unopenable`.
@@ -63,6 +70,8 @@ Request `{"path":"/models/model.gguf"}`. `local` is accepted as an alias.
 `200` `{"report": { ...the attestation document... }}`.
 
 A scan that fails is **never a 200**: `422` with `{"error":"..."}` and no report.
+A scan whose report does not validate is an engine fault: `500`, also with no
+report.
 
 ### `POST /api/render`
 
@@ -75,6 +84,10 @@ The default format is `html`.
 Returns the bytes with the matching `Content-Type`. An unfilable document is
 refused with `422` before anything is rendered.
 
+Render does not verify a signature. It renders the document it is given,
+signer and issuer fields included, as given. A rendered report is a claim; the
+DSSE envelope, checked with `socair verify`, is the proof.
+
 ### `GET /api/airlock/log`
 
 `200` `{"events":[ ... ]}`.
@@ -82,11 +95,15 @@ refused with `422` before anything is rendered.
 ### `POST /api/airlock/ingest`
 
 Request `{"local":"/path"}` or `{"repo":"org/name","file":"name","revision":"main"}`.
-`200` `{"path":"/resolved/path","event":{...}}`.
+`200` `{"path":"/resolved/path","event":{...}}`. The path is resolved and
+logged; nothing is copied into staging.
 
 ### `POST /api/airlock/pull`
 
 Request `{"repo":"org/name","file":"name","sha256":"<64-hex>","revision":"main"}`.
+A single file only: a whole-repository pull is a CLI step. The API never
+sends `HF_TOKEN`, since it has no auth, so it cannot pull a gated or private
+repo.
 `200` `{"path":"<staging path>","event":{...}}`, or `422` when egress is denied,
 the source is unreachable, or the bytes do not hash to the requested hash.
 `400` for a `file` that is not a plain name or is a staging evidence name
@@ -100,8 +117,9 @@ and handed to the one gate implementation. A bare report document is refused
 with `400`: a document is not a ticket until a trusted key signs it.
 
 `200` `{"event":{...}}`, or `422` when the gate refuses: no trusted key in the
-store, a signature that does not verify against it, a withheld or escalated
-state, or an artifact that does not hash to the attested digest.
+store, a signature that does not verify against it, a state that does not
+authorize promotion, or an artifact that does not hash to the attested
+digest.
 
 ## Console endpoints
 
@@ -190,18 +208,22 @@ entries a request causes.
 
 ## Error shape
 
-Every error is a non-2xx with `{"error":"<actionable message>"}`.
+Every error is a non-2xx with `{"error":"<actionable message>"}`. Under
+`/api/` that holds with or without `--web`: the wizard's SPA fallback never
+answers there.
 
 - `400`: bad input.
-- `404`: a store entry or evidence file that does not exist, or an `/api` path
-  no route handles. With `--web`, the SPA fallback never answers under `/api`.
+- `403`: a non-loopback `Host`, or a cross-origin or cross-site request.
+- `404`: a store entry or evidence file that does not exist, or an `/api/` path
+  no route handles.
 - `405`: a route's path with a method it does not take (including `OPTIONS`);
   `Allow` lists the methods it does take.
 - `413`: an uploaded attestation over 4 MiB.
+- `415`: a `POST` body that is not `application/json`.
 - `422`: understood and refused (a scan failure, an unfilable document, a
   refused promotion, a denied pull, a refused attestation upload).
 - `500`: an internal failure.
-- `503`: health, a degraded store.
+- `503`: health, a degraded store; or the engine is busy (the load limit).
 
 ## Testing
 

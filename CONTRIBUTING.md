@@ -12,9 +12,9 @@ under the Apache License 2.0 and maintained by Defilan Technologies.
 
 ## Sign off your commits (DCO)
 
-Every commit must carry a Developer Certificate of Origin sign-off, certifying
-you wrote the change or have the right to submit it under the project's
-license (<https://developercertificate.org/>):
+Sign off every commit in your pull request with a Developer Certificate of
+Origin sign-off, certifying you wrote the change or have the right to submit
+it under the project's license (<https://developercertificate.org/>):
 
 ```
 git commit -s -m "Describe the change"
@@ -36,7 +36,8 @@ gofmt -l cmd internal          # must print nothing
 
 The wizard (`web/`): `npm ci && npm run check && npm run test`. The optional
 keyless verifier is its own module: `cd tools/socair-sigstore && go test ./...`.
-CI also runs staticcheck, govulncheck, a vendor-drift check, and short fuzzing.
+CI also runs staticcheck, govulncheck, a vendor-drift check, short fuzzing,
+and the chat-template check over llama.cpp's real templates.
 
 ## The rules a change is held to
 
@@ -52,7 +53,10 @@ negotiable:
 - **Measure false positives before changing a detector.** Run the relevant
   real-corpus gate (`SOCAIR_TEMPLATE_CORPUS`, `SOCAIR_SAFETENSORS_CORPUS`,
   `SOCAIR_GGUF_CORPUS`, `SOCAIR_TOKENIZER_CORPUS`) and record the result in
-  `docs/false-positive-baseline.md`.
+  `docs/false-positive-baseline.md`. `SOCAIR_TEMPLATE_CORPUS` takes one
+  directory of `.jinja` files; `SOCAIR_SAFETENSORS_CORPUS` and
+  `SOCAIR_GGUF_CORPUS` take colon-separated directories;
+  `SOCAIR_TOKENIZER_CORPUS` takes space-separated model directories.
 - **A rule change bumps the check-set version.** If a change can alter a
   verdict, bump `CheckSetVersion` and add a row to `docs/check-set.md`; a test
   fails until you do. See that file for when a change keeps the version.
@@ -66,11 +70,10 @@ negotiable:
 
 ## What belongs in this repository
 
-This repository is the complete, open Socair: the engine and checks, the report
-format, signing and verification, the airlock, and the integrations. Defilan's
-commercial offerings (a curated intelligence feed, Defilan-issued attestations,
-Tier 2 testing, and Socair Enterprise) are built on top of it, not inside it.
-Open interfaces such as the feed format are here, so anyone can build on them.
+Everything. Socair is developed entirely in the open, with no closed or paid
+edition: the engine and checks, the report format, signing and verification,
+the airlock, the integrations, and the reference data a feed carries. Checks
+that need GPUs or the network land here too, behind an explicit opt-in.
 
 ## Code of conduct
 

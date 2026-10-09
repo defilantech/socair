@@ -1,0 +1,45 @@
+name: False positive
+description: A real, legitimate model got a FAIL or a LEAD it should not have.
+labels: ["detection"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        A false positive on a real model is a bug we measure against (docs/false-positive-baseline.md).
+        If you think a malicious file got a PASS, that is a detection bypass: report it privately (SECURITY.md), not here.
+  - type: input
+    id: model
+    attributes:
+      label: Model
+      description: Where the artifact comes from, e.g. a Hugging Face repo and commit, or the GGUF file name and publisher.
+      placeholder: org/name at <40-hex commit>, file model-Q4_K_M.gguf
+    validations:
+      required: true
+  - type: input
+    id: sha256
+    attributes:
+      label: Artifact SHA-256
+      description: The `artifact.sha256` from the report (the manifest digest for a model directory).
+    validations:
+      required: true
+  - type: textarea
+    id: row
+    attributes:
+      label: The check row
+      description: The row's name, status, and notes from the report JSON (`checks[]`). For a chat template, `socair template <path>` output helps.
+      render: json
+    validations:
+      required: true
+  - type: textarea
+    id: why
+    attributes:
+      label: Why you believe it is a false positive
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Socair version and check set
+      description: "`socair version`, and `scope.check_set_version` from the report."
+    validations:
+      required: true

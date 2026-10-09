@@ -8,7 +8,7 @@ import (
 )
 
 // access is what a route needs: reading the store, or changing it. Step 1
-// grants both to the local operator; a login (Step 1b) or roles (paid)
+// grants both to the local operator; a login (Step 1b) or roles
 // decide per route here, without touching handlers.
 type access int
 

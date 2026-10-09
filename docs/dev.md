@@ -7,16 +7,21 @@ go build ./...
 go test ./...
 ```
 
-CI runs gofmt, build, and test on every push (`.github/workflows/ci.yml`).
+CI (`.github/workflows/ci.yml`) runs on pushes to `main` and on pull requests:
+gofmt, vet, build, and the tests with the race detector; staticcheck,
+govulncheck, and a vendor-drift check; short fuzzing of the parsers; the
+chat-template check over llama.cpp's real templates; the same build, test, and
+supply-chain checks for `tools/socair-sigstore`; and the wizard's check, tests,
+and build.
 
 ## Layout
 
 - `cmd/socair`: the CLI. A thin caller of the engine, not the product surface.
-- `internal/gguf`: the GGUF artifact reader. Produces an `ArtifactManifest`.
+- `internal/gguf`: the GGUF artifact reader. Produces a `gguf.Manifest`.
 - `internal/airlock`: the controlled junction between egress and the clean store. A pull lands in staging; only a promotion crosses.
 - `internal/modeldir`: reads a model directory as one artifact (walk, snapshot, manifest digest, chat templates).
 - `internal/report`: the report data model, the cross-stack contract.
-- `internal/checks/...`: one package per check. Each returns PASS, FAIL, or NOT_TESTED with evidence.
+- `internal/checks/...`: one package per check. Each returns PASS, FAIL, LEAD, or NOT_TESTED with evidence.
 - `docs/`: the product artifacts (attestation template, brand, stack) and design docs.
 - `testdata/`: golden files. GGUF fixtures are generated in tests, not committed, so they cannot rot silently.
 

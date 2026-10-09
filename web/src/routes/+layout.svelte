@@ -69,7 +69,7 @@
 
 <footer class="site-footer">
 	<div class="bar">
-		Socair is a Defilan Technologies product. This attestation does not certify the absence of unknown
+		Socair is open source, from Defilan Technologies. This attestation does not certify the absence of unknown
 		backdoors.
 	</div>
 </footer>

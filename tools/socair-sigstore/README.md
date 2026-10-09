@@ -14,17 +14,20 @@ not verified".
 
 ```
 cd tools/socair-sigstore
-go build -mod=vendor -o socair-sigstore .
+go build -mod=vendor -o ../../bin/socair-sigstore .
 ```
 
-The build fetches nothing; it works air-gapped like `socair`.
+This writes the binary to `bin/` at the repository root, which git ignores.
+The build fetches nothing; it works air-gapped like `socair`. Releases also
+carry it prebuilt, as `socair-sigstore_<version>_<os>_<arch>`, checked the
+same way as `socair` (see `docs/verify-release.md`).
 
 ## Configure the scanner
 
 ```
-SOCAIR_SIGSTORE_VERIFIER=/usr/local/bin/socair-sigstore
-SOCAIR_SIGSTORE_TRUSTED_ROOT=/etc/socair/trusted_root.json
-SOCAIR_SIGSTORE_IDENTITIES=/etc/socair/sigstore-identities
+export SOCAIR_SIGSTORE_VERIFIER=/usr/local/bin/socair-sigstore
+export SOCAIR_SIGSTORE_TRUSTED_ROOT=/etc/socair/trusted_root.json
+export SOCAIR_SIGSTORE_IDENTITIES=/etc/socair/sigstore-identities
 ```
 
 - `SOCAIR_SIGSTORE_TRUSTED_ROOT` is a Sigstore `trusted_root.json`: the Fulcio

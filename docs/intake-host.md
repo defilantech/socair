@@ -23,24 +23,29 @@ page puts them in order for this deployment.
 ```
 
 - **The intake host** is the only machine that reaches the model hub, and only
-  the hub: Socair's egress allowlist covers `huggingface.co`, `hf.co`, and their
-  CDN subdomains, and every redirect is checked against it.
+  the hub. Enforce that at the host: restrict its egress with a firewall to the
+  hub (or your mirror). Socair's own egress allowlist covers `huggingface.co`,
+  `hf.co`, and their CDN subdomains, and checks every redirect, but it governs
+  only Socair's own requests. Within Socair, `socair airlock pull` and the
+  API's pull route are the only code paths that reach the network.
 - **The clean store** (`<store>/clean/`) is exported to the GPU servers
   read-only (NFS, SMB, or a read-only volume). The GPU servers never write to
   it and never reach the internet.
-- **Nothing reaches `clean/` except through `promote`**, and `promote` admits
-  only bytes whose hash matches an attestation signed by a key you trust.
+- **Within Socair, only `promote` writes to `clean/`**, and it admits only
+  bytes whose hash matches an attestation signed by a key you trust. Make the
+  store writable only by the user Socair runs as, so nothing else on the host
+  writes there either.
 
 ## What each requirement maps to
 
 | A security team asks for | Socair does |
 |---|---|
-| The GPU servers don't pull from the hub | Only `socair airlock pull` reaches the network, from the intake host, through an allowlist |
+| The GPU servers don't pull from the hub | Socair reaches the network only through `airlock pull` (the CLI command or the API route), from the intake host, through an allowlist; the host firewall enforces the same |
 | Models pinned to a known version | A whole-repo pull must name a full commit (or the expected digest); a branch alone is refused |
 | Hash checks | Every file is checked against the hub's own hash for it at that commit, and hashed again while it is copied into `clean/` |
 | Approved formats only | Formats Socair does not parse are NOT_TESTED, so the model is withheld until a named person signs an acceptance of exactly those gaps. To forbid a format outright, never accept it. |
-| No remote code | `auto_map` entries and `.py` files are a LEAD. A LEAD cannot be accepted away; only escalated review clears it, so such a model does not cross. |
-| Automated scanning | The Tier 1 checks run on every model: structure, embedded payloads, chat template, tokenizer, pickle, quantization label, provenance, known-bad hashes |
+| No remote code | `auto_map` entries and `.py` files are a LEAD. No acceptance clears a LEAD and Socair has no other path that does, so a model whose `config.json` has `auto_map` ends at a Remote code LEAD and cannot cross. |
+| Scanning before promotion | The Tier 1 checks run on every model you scan: structure, embedded payloads, chat template, tokenizer, pickle, quantization label, provenance, known-bad hashes. Nothing scans automatically: you run `socair scan`, or the console's scan, and `promote` needs a signed attestation from that scan |
 | A record of every model brought in | Each promoted model keeps its signed attestation beside its bytes, and `log.jsonl` records every pull, promotion, and refusal in a hash chain |
 
 ## One-time setup
@@ -50,10 +55,11 @@ before you run it; see [verify-release.md](verify-release.md). Releases are
 reproducible, so you can also rebuild one from source and compare checksums.
 
 **2. Create the store, on a volume with room.** A model is written twice at
-its peak. A scan copies it into a private snapshot beside the staged copy, and
-a promotion copies it into `clean/` before the staged copy is removed. Put the
-scan snapshot on the store's volume too; its default is the system temp
-directory, which is usually too small:
+its peak: a scan copies the staged copy into a private snapshot, and a
+promotion copies it into `clean/`. `promote` does not delete the staged copy,
+so a promoted model also stays in `incoming/<id>/` until you remove it by
+hand. Put the scan snapshot on the store's volume too; its default is the
+system temp directory, which is usually too small:
 
 ```
 export SOCAIR_STORE=/srv/socair/store
@@ -62,9 +68,13 @@ socair airlock init "$SOCAIR_STORE"
 mkdir -p "$SOCAIR_SCAN_TMP"
 ```
 
-Plan for about twice the largest model's size free, beyond what `clean/`
-already holds: a 755 GB model needs roughly 1.5 TB free while it moves
-through. Pull, scan, and promote each check for room before they start and
+Size the volume for `clean/` and `incoming/` together, and plan for about
+twice the largest model's size free beyond what both already hold: a 755 GB
+model needs roughly 1.5 TB free while it moves through. Socair never deletes
+a staged copy, so remove `incoming/<id>/` by hand once you no longer need it,
+or staged copies accumulate. Keep it while you may need to re-scan: a clean
+entry whose acceptance expires is re-scanned and re-accepted from its staged
+copy. Pull, scan, and promote each check for room before they start and
 refuse with the shortfall, rather than failing partway through a long copy.
 
 **3. Create the signing key, ideally on a different machine.** The operator key
@@ -89,6 +99,13 @@ socair airlock trust add --acceptor ciso.pub
 `$SOCAIR_STORE/clean` on each server read-only. Do not export `incoming/`,
 `trusted-keys/`, `acceptor-keys/`, or the log.
 
+Promoted files are private to the user that ran `promote`: a single file is
+mode 0600, and a model directory's files are 0400 inside 0700 directories. A
+serving user with another uid cannot read them through a plain export. Either
+export with uid mapping, such as NFS `all_squash` with `anonuid` and
+`anongid` set to the Socair user's uid and gid, or run the serving process as
+that uid.
+
 **6. Optional: a mirror.** If the intake host reaches the hub through a mirror,
 set `SOCAIR_HF_ENDPOINT` (its host joins the allowlist) and, if it redirects,
 `SOCAIR_EGRESS_ALLOW`.
@@ -112,7 +129,10 @@ The console shows each step below as it happens: run
 open it on that machine. It lists what is staged and approved, scans a staged
 model, files a signed attestation, and prints the exact CLI command for any
 step that needs a key (promote, sign, accept). It does not hold keys, so those
-steps stay in the commands below. See [wizard.md](wizard.md).
+steps stay in the commands below. The console is the static web app in
+`web/`, built with npm from a checkout (`cd web && npm ci && npm run build`
+writes `web/build`); a release binary alone does not include it. See
+[wizard.md](wizard.md).
 
 **1. Pull it, pinned to a commit.** Take the commit from the model's page on
 the hub. The pull verifies every file and prints the scan command to run next.
@@ -145,22 +165,33 @@ native support never imports. A repo whose `config.json` has an `auto_map`
 entry loads its own code, so it still shows a Remote code LEAD, and it should.
 
 For a single file (one GGUF, for example), name the file and its expected
-SHA-256, which the hub shows on the file's page:
+SHA-256, which the hub shows on the file's page. `--file` takes a plain file
+name at the repo's root; for a file in a subfolder, pull the repo with
+`--include <path>` instead.
 
 ```
 socair airlock pull --repo <org/name> --file <name.gguf> --sha256 <hash>
 ```
 
-**2. Scan it, with the provenance the pull recorded.**
+**2. Scan it, with the provenance the pull recorded.** Write the report into
+the staging entry, where the console reads it:
 
 ```
-export SOCAIR_PROVENANCE=$SOCAIR_STORE/incoming/<id>/provenance.json
-socair scan   $SOCAIR_STORE/incoming/<id>/<name> > report.json
-socair render $SOCAIR_STORE/incoming/<id>/<name> > report.html   # the same checks, for a person to read
+E=$SOCAIR_STORE/incoming/<id>          # the staging entry
+export SOCAIR_PROVENANCE=$E/provenance.json
+socair scan   $E/<name> > $E/report.json
+socair render $E/<name> > report.html   # the same checks, for a person to read
 ```
 
 `<id>` is the artifact's hash for a single file, or the manifest digest for a
 whole repository; the pull prints the exact paths.
+
+The console shows a staging entry's evidence from `incoming/<id>/` only:
+`report.json`, `report.dsse.json`, `report.acceptance.dsse.json`, and
+`report.conditional.dsse.json`. `sign`, `accept`, and `sign --acceptance`
+write their output next to their input, so starting from `$E/report.json`
+puts every step where the console shows it. A report written anywhere else
+works for every command below, but the console will not show it.
 
 Read the report's promotion state and its rows. Each row says what it looked
 for, what it found, and what its PASS means.
@@ -168,8 +199,11 @@ for, what it found, and what its PASS means.
 **3. Sign it** (on the signing machine):
 
 ```
-socair sign --key operator.key --report report.json            # report.dsse.json
+socair sign --key operator.key --report $E/report.json         # $E/report.dsse.json
 ```
+
+If the signing machine is not the intake host, copy `report.json` to it and
+bring `report.dsse.json` back into `$E`, or upload it in the console.
 
 **4. Act on the promotion state.**
 
@@ -182,7 +216,7 @@ reference data once, and these rows start to PASS.
 - **Authorized** (every row PASS): promote it.
 
   ```
-  socair airlock promote $SOCAIR_STORE/incoming/<id>/<name> --attestation report.dsse.json
+  socair airlock promote $E/<name> --attestation $E/report.dsse.json
   ```
 
 - **Withheld, with NOT_TESTED rows only:** the security reviewer reads the
@@ -193,20 +227,29 @@ reference data once, and these rows start to PASS.
   [provenance-bundle.md](provenance-bundle.md) for the full flow.
 
   ```
-  socair accept --attestation report.dsse.json --key ciso.key --by "Jane Doe, CISO" \
-    --expires 2027-01-31T00:00:00Z --store "$SOCAIR_STORE"          # report.acceptance.dsse.json
-  socair sign --key operator.key --attestation report.dsse.json \
-    --acceptance report.acceptance.dsse.json --store "$SOCAIR_STORE" # report.conditional.dsse.json
-  socair airlock promote $SOCAIR_STORE/incoming/<id>/<name> --attestation report.conditional.dsse.json
+  socair accept --attestation $E/report.dsse.json --key ciso.key --by "Jane Doe, CISO" \
+    --expires <RFC 3339 time> --store "$SOCAIR_STORE"                 # $E/report.acceptance.dsse.json
+  socair sign --key operator.key --attestation $E/report.dsse.json \
+    --acceptance $E/report.acceptance.dsse.json --store "$SOCAIR_STORE" # $E/report.conditional.dsse.json
+  socair airlock promote $E/<name> --attestation $E/report.conditional.dsse.json
   ```
 
+  `--expires` may not be later than the report's `header.rescan_due`, which
+  is the scan time plus 90 days unless `SOCAIR_RESCAN_DAYS` set another
+  number: `jq -r .header.rescan_due $E/report.json`. `accept` and
+  `sign --acceptance` read the store only from `--store`, not from
+  `SOCAIR_STORE`.
+
 - **Withheld, with a FAIL or a LEAD:** stop. The airlock will not promote it,
-  and no acceptance clears it. A FAIL carries its evidence; a LEAD needs a
-  person to review it. Choose a different model or version, or escalate.
+  no acceptance clears it, and Socair has no other path that does. A FAIL
+  carries its evidence; a LEAD needs a person to review it outside Socair.
+  Choose a different model or version. A model whose `config.json` has an
+  `auto_map` entry ends here, at a Remote code LEAD, and cannot cross.
 
 **5. Point the serving stack at the clean copy.** The model is at
 `clean/<sha256>/<file>` (or `clean/<digest>/<name>/` for a whole repository).
-Serve from that path, read-only.
+Serve from that path, read-only, through the uid-mapped export from setup
+step 5 or as the Socair user.
 
 ## Reading the clean store
 
@@ -239,22 +282,25 @@ done
   [airlock.md](airlock.md).
 - **Per action:** `log.jsonl` records every pull, ingest, trust change,
   promotion, and refusal. Each line carries the hash of the line before it, so
-  an edited or deleted line breaks the chain:
+  a careless edit or deletion breaks the chain:
 
   ```
   socair airlock log --verify          # prints the head
   ```
 
-  A chain cannot show lines cut off its end, so record the head somewhere the
-  intake host cannot rewrite (a ticket, a change record), and check against it
-  later with `--expect-head <head>`.
+  The chain is unkeyed SHA-256. Whoever can write `log.jsonl` can rewrite it
+  and recompute every link, an edit to the last line leaves nothing to break,
+  and a chain cannot show lines cut off its end. Only a head recorded off the
+  box catches that: record the head somewhere the intake host cannot rewrite
+  (a ticket, a change record), and check against it later with
+  `--expect-head <head>`. That covers every entry up to the recorded head.
 
 ## Kubernetes
 
-If the GPU cluster runs Kubernetes with [LLMKube](https://github.com/defilantech/LLMKube),
-its admission gate can refuse to serve a model without an admitted Socair
-attestation, so a model copied around the airlock is still stopped at serve
-time.
+[LLMKube](https://github.com/defilantech/LLMKube) is adding an admission gate
+that refuses to serve a model without an admitted Socair attestation. On a GPU
+cluster that runs it, a model copied around the airlock would then still be
+stopped at serve time.
 
 ## What this does not do
 

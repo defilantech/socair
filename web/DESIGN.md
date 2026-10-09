@@ -5,7 +5,7 @@ record extends the site's design record, `DESIGN.md` in the socair-web repo
 ("The Settled Cairn"); everything there holds unless a console extension
 below says otherwise. The product rules come first: the console shows only
 state the engine returned, a gap never looks like a pass, and every tone
-carries a text label (PRODUCT.md).
+carries a text label, so colour is never the only signal.
 
 ## World (inherited)
 
