@@ -242,6 +242,37 @@ func TestDirectoryReportListsItsFiles(t *testing.T) {
 	}
 }
 
+// The cover names the license as the report states it, a disagreement in the
+// amber of a signal that needs a person (never the FAIL look), and every
+// statement read is listed with what it was identified as.
+func TestLicenseIdentityRenders(t *testing.T) {
+	d := loadGolden(t)
+	d.Artifact.License = &report.License{
+		Disagreement: "the sources name different licenses: Apache License 2.0 (model card license), and Creative Commons Attribution-NonCommercial 4.0 International (LICENSE)",
+		Sources: []report.LicenseSource{
+			{Source: "model card license", Value: "apache-2.0", ID: "apache-2.0"},
+			{Source: "LICENSE", Value: "Attribution-NonCommercial 4.0 International", ID: "cc-by-nc-4.0"},
+			{Source: "LICENSE-EXTRA", Value: "ACME TERMS", Note: "not a license text the catalogue recognizes"},
+		},
+	}
+	d.Artifact.BaseModels = []report.BaseModel{{Name: "Base", Repo: "org/base", Source: "model card base_model"}}
+	out := renderString(t, d)
+	for _, want := range []string{"License: <strong>the sources disagree</strong>", `<div class="disagree">License: the sources name different licenses`,
+		"<h2>License statements</h2>", "cc-by-nc-4.0", `<span class="tag">not identified</span>`, "not legal advice", "Declared base model: org/base"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("rendered report lacks %q", want)
+		}
+	}
+	d.Artifact.License = &report.License{ID: "mit", Name: "MIT License", Sources: []report.LicenseSource{{Source: "LICENSE", Value: "MIT License", ID: "mit"}}}
+	if out := renderString(t, d); !strings.Contains(out, "License: <strong>MIT License</strong> (mit)") || strings.Contains(out, `class="disagree"`) {
+		t.Error("an identified license must be named, with no disagreement")
+	}
+	d.Artifact.License = &report.License{}
+	if out := renderString(t, d); !strings.Contains(out, "License: none stated") || strings.Contains(out, "License statements") {
+		t.Error("a report whose artifact states no license must say so")
+	}
+}
+
 // A reader must see whether an acceptance carries the acceptor's signature.
 func TestAcceptanceIsLabelledSignedOrUnsigned(t *testing.T) {
 	d := loadGolden(t)

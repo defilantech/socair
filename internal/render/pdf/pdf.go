@@ -170,6 +170,8 @@ func RenderPDF(w io.Writer, d *report.Document) error {
 	pdf.MultiCell(contentW, lineH, "Artifact SHA256: "+d.Verification.ArtifactSHA256, "", "L", false)
 	pdf.Ln(2)
 
+	licenseSources(pdf, d)
+
 	if len(d.Artifact.Files) > 0 {
 		heading(pdf, "Files")
 		pdf.SetFont("Helvetica", "", 8)
@@ -242,6 +244,13 @@ func cover(pdf *fpdf.Fpdf, d *report.Document) {
 	}
 	facts += "  ·  document " + d.Header.DocumentID + "  ·  issuer " + d.Issuer.Authority
 	pdf.MultiCell(contentW, 4, facts, "", "L", false)
+	if line := licenseLine(d); line != "" {
+		pdf.MultiCell(contentW, 4, line, "", "L", false)
+	}
+	if l := d.Artifact.License; l != nil && l.Disagreement != "" {
+		pdf.SetTextColor(leadInk.r, leadInk.g, leadInk.b)
+		pdf.MultiCell(contentW, 4, "License: "+l.Disagreement+".", "", "L", false)
+	}
 	pdf.Ln(2)
 
 	pdf.SetFont("Helvetica", "B", 11)
@@ -295,6 +304,60 @@ func cover(pdf *fpdf.Fpdf, d *report.Document) {
 	pdf.SetFont("Helvetica", "", 10)
 	pdf.SetTextColor(muted.r, muted.g, muted.b)
 	pdf.CellFormat(contentW, 6, countsLine(p, f, l, n), "", 1, "L", false, 0, "")
+}
+
+// licenseLine states the identified license and the declared base models for
+// the cover, or "" for a report that predates them.
+func licenseLine(d *report.Document) string {
+	var parts []string
+	if l := d.Artifact.License; l != nil {
+		switch {
+		case l.ID != "":
+			parts = append(parts, "license "+l.Name+" ("+l.ID+")")
+		case l.Disagreement != "":
+			parts = append(parts, "license: the sources disagree")
+		case len(l.Sources) > 0:
+			parts = append(parts, "license not identified")
+		default:
+			parts = append(parts, "no license stated")
+		}
+	}
+	if len(d.Artifact.BaseModels) > 0 {
+		var bases []string
+		for _, b := range d.Artifact.BaseModels {
+			if b.Repo != "" {
+				bases = append(bases, b.Repo)
+			} else {
+				bases = append(bases, b.Name)
+			}
+		}
+		parts = append(parts, "declared base "+strings.Join(bases, ", "))
+	}
+	return strings.Join(parts, "  ·  ")
+}
+
+// licenseSources lists what the artifact says about its license.
+func licenseSources(pdf *fpdf.Fpdf, d *report.Document) {
+	l := d.Artifact.License
+	if l == nil || len(l.Sources) == 0 {
+		return
+	}
+	heading(pdf, "License statements")
+	pdf.SetFont("Helvetica", "", 8)
+	pdf.SetTextColor(muted.r, muted.g, muted.b)
+	pdf.MultiCell(contentW, lineH, "What the artifact says about its license, and where. A license is identified, never reviewed: this is not legal advice.", "", "L", false)
+	for _, s := range l.Sources {
+		id := s.ID
+		if id == "" {
+			id = "not identified"
+		}
+		line := s.Source + ": \"" + s.Value + "\"  ·  " + id
+		if s.Note != "" {
+			line += " (" + s.Note + ")"
+		}
+		pdf.MultiCell(contentW, lineH, line, "", "L", false)
+	}
+	pdf.Ln(2)
 }
 
 func countsLine(pass, fail, lead, notTested int) string {

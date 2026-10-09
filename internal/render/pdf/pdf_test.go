@@ -45,6 +45,37 @@ func TestPDFRenders(t *testing.T) {
 	}
 }
 
+// The cover names the license as the report states it: an identified one by
+// name, a disagreement as one, and nothing as no license at all.
+func TestLicenseLine(t *testing.T) {
+	d := loadGolden(t)
+	d.Artifact.License = nil
+	d.Artifact.BaseModels = nil
+	if got := licenseLine(d); got != "" {
+		t.Errorf("a report without license identity: %q", got)
+	}
+	for _, c := range []struct {
+		l    report.License
+		want string
+	}{
+		{report.License{ID: "mit", Name: "MIT License"}, "license MIT License (mit)"},
+		{report.License{Disagreement: "the sources name different licenses: x"}, "license: the sources disagree"},
+		{report.License{Sources: []report.LicenseSource{{Source: "LICENSE", Value: "ACME"}}}, "license not identified"},
+		{report.License{}, "no license stated"},
+	} {
+		l := c.l
+		d.Artifact.License = &l
+		if got := licenseLine(d); got != c.want {
+			t.Errorf("licenseLine = %q, want %q", got, c.want)
+		}
+	}
+	d.Artifact.BaseModels = []report.BaseModel{{Name: "Base", Repo: "org/base", Source: "model card base_model"}}
+	if got := licenseLine(d); !strings.HasSuffix(got, "declared base org/base") {
+		t.Errorf("licenseLine = %q, want the declared base", got)
+	}
+	render(t, d)
+}
+
 func TestPDFIsByteStable(t *testing.T) {
 	d := loadGolden(t)
 	a := render(t, d)
