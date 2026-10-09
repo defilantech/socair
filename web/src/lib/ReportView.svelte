@@ -7,6 +7,7 @@
 		acceptedSurfaces,
 		counts,
 		countOrder,
+		licenseLabel,
 		measurementPill,
 		measurementSummary,
 		nodeClassFacts,
@@ -31,6 +32,8 @@
 	const pa = $derived(report.promotion_authorization);
 	const accepted = $derived(acceptedSurfaces(report));
 	const level = $derived(report.tier2 ? 'Tier 1 (static), with Tier 2 measurements' : 'Tier 1 (static)');
+	const license = $derived(licenseLabel(report));
+	const licenseTone = { plain: '', amber: 'tone-amber', neutral: 'tone-neutral' } as const;
 </script>
 
 <div class="report">
@@ -56,6 +59,30 @@
 			<dt>File</dt><dd>{report.artifact.file_name}</dd>
 			<dt>Format</dt><dd>{report.artifact.format}</dd>
 			<dt>SHA-256</dt><dd class="hash">{report.artifact.sha256}</dd>
+			{#if license && report.artifact.license}
+				<dt>License</dt>
+				<dd>
+					<span class={licenseTone[license.tone]}>{license.text}</span>
+					{#if report.artifact.license.disagreement}<p class="prose">{report.artifact.license.disagreement}.</p>{/if}
+					{#if report.artifact.license.sources?.length}
+						<ul class="license-sources">
+							{#each report.artifact.license.sources as s, i (i)}
+								<li>
+									{s.source}: “{s.value}” · {s.id ?? 'not identified'}{#if s.note}<span class="meta"> ({s.note})</span>{/if}
+								</li>
+							{/each}
+						</ul>
+					{/if}
+					<p class="meta">Identified, not reviewed: this is not legal advice.</p>
+				</dd>
+			{/if}
+			{#if report.artifact.base_models?.length}
+				<dt>Declared base</dt>
+				<dd>
+					{report.artifact.base_models.map((b) => b.repo || b.name).join(', ')}
+					<span class="meta">(the artifact's claim, not verified lineage)</span>
+				</dd>
+			{/if}
 		</dl>
 	</section>
 

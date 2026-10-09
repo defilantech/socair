@@ -639,16 +639,23 @@ table.models th.check a {
 	}
 }
 
-/* Lists of short items (accepted gaps, evidence files): one item per line. */
+/* Lists of short items (accepted gaps, evidence files, license statements):
+   one item per line. */
 ul.surfaces,
-ul.files {
+ul.files,
+ul.license-sources {
 	list-style: none;
 	margin: 0.25rem 0 0.75rem;
 	padding: 0;
 }
 ul.surfaces li,
-ul.files li {
+ul.files li,
+ul.license-sources li {
 	padding: 0.15rem 0;
+}
+ul.license-sources {
+	font-size: 0.8125rem;
+	color: var(--mist-soft);
 }
 ul.surfaces li::before {
 	content: '';
