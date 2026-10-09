@@ -296,7 +296,7 @@ func scanRepo(root string) (repoListing, error) {
 			l.findings = append(l.findings, checks.Finding{
 				Pattern: "repo-binary",
 				Span:    rel,
-				Detail:  fmt.Sprintf("repo file %q is a %s executable", rel, kind),
+				Detail:  fmt.Sprintf("repo file %q is a native executable (%s)", rel, kind),
 			})
 			return nil
 		}
