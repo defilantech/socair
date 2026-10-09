@@ -102,8 +102,8 @@ it, and set it on the intake host:
 export HF_TOKEN=hf_...
 ```
 
-The token is sent only to the hub's own host, never across a redirect to the
-CDN, and never written to the log or an error.
+The token is sent only to the hub's own host over https, never across a
+redirect to the CDN, and never written to the log or an error.
 
 ## Bringing a model in
 
@@ -138,8 +138,8 @@ socair airlock pull --repo deepseek-ai/DeepSeek-V4.1-Flash --revision <commit> \
 ```
 
 Left-out files are never fetched. The attestation covers exactly the files
-that were pulled, and the provenance manifest and the log name every file left
-out. Leave code out only when the serving stack does not run it: DeepSeek's
+that were pulled, and the provenance manifest, the log, and the report's
+provenance row name every file left out. Leave code out only when the serving stack does not run it: DeepSeek's
 `inference/` scripts are a reference implementation that a serving engine with
 native support never imports. A repo whose `config.json` has an `auto_map`
 entry loads its own code, so it still shows a Remote code LEAD, and it should.

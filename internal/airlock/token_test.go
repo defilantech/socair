@@ -148,3 +148,87 @@ func TestPullRepoNamesHFTokenForAMaskedListing(t *testing.T) {
 		t.Fatalf("want a refusal explaining the masked hash, got %v", err)
 	}
 }
+
+// The token reaches only the endpoint's host, whatever URL a page of the
+// listing links to. Falsification: attach the token in newRequest without the
+// host check and the other host records it.
+func TestTokenStaysOffAPaginationLinkToAnotherHost(t *testing.T) {
+	t.Setenv("SOCAIR_EGRESS", "")
+	var mu sync.Mutex
+	var seen []string
+	other := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		seen = append(seen, r.Header.Get("Authorization"))
+		mu.Unlock()
+		w.Write([]byte("[]"))
+	}))
+	defer other.Close()
+	hub := newFakeHub()
+	hub.nextURL = other.URL + "/page2"
+	s, _ := Init(t.TempDir())
+	pol := hubPolicy(hub.start(t))
+	pol.Token = testToken
+	_, _, _ = PullRepo(context.Background(), s, "org/tiny", hubCommit, "", pol)
+	mu.Lock()
+	defer mu.Unlock()
+	if len(seen) == 0 {
+		t.Fatal("the pull never followed the link")
+	}
+	for _, a := range seen {
+		if a != "" {
+			t.Fatalf("the token went to another host: %q", a)
+		}
+	}
+}
+
+// A bearer token over plain http is readable on the wire, so it goes only
+// over https, or to a loopback endpoint. Falsification: drop the scheme check
+// and the http mirror case carries the token.
+func TestTokenIsNotSentOverPlainHTTP(t *testing.T) {
+	for endpoint, want := range map[string]bool{
+		"https://huggingface.co":   true,
+		"http://mirror.example:80": false,
+		"http://127.0.0.1:8080":    true,
+		"http://[::1]:8080":        true,
+		"http://localhost:8080":    true,
+	} {
+		pol := EgressPolicy{Endpoint: endpoint, Token: testToken}
+		req, err := pol.newRequest(context.Background(), endpoint+"/api/models/org/tiny/revision/main")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := req.Header.Get("Authorization") != ""; got != want {
+			t.Errorf("%s: token sent = %v, want %v", endpoint, got, want)
+		}
+	}
+}
+
+// A refused redirect names its target, and a CDN target is a signed URL, a
+// read capability for the file until it expires. The query is dropped from
+// errors and so from the log. Falsification: drop the redaction and the
+// signature appears in both.
+func TestARefusedRedirectDoesNotRecordTheSignedURL(t *testing.T) {
+	t.Setenv("SOCAIR_EGRESS", "")
+	hub := newFakeHub()
+	srv := hub.start(t)
+	inner := srv.Config.Handler
+	srv.Config.Handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasSuffix(r.URL.Path, "/model.safetensors") && strings.Contains(r.URL.Path, "/resolve/") {
+			http.Redirect(w, r, "http://cdn.elsewhere.invalid/x?X-Amz-Signature=sigsecret&Expires=1", http.StatusFound)
+			return
+		}
+		inner.ServeHTTP(w, r)
+	})
+	s, _ := Init(t.TempDir())
+	_, _, err := PullRepo(context.Background(), s, "org/tiny", hubCommit, "", hubPolicy(srv))
+	if err == nil {
+		t.Fatal("a redirect off the allowlist must refuse the pull")
+	}
+	log, _ := os.ReadFile(s.LogPath())
+	if strings.Contains(err.Error(), "sigsecret") || strings.Contains(string(log), "sigsecret") {
+		t.Fatalf("the signed URL was recorded: %v", err)
+	}
+	if !strings.Contains(err.Error(), "cdn.elsewhere.invalid") {
+		t.Errorf("the refusal must still name the host: %v", err)
+	}
+}

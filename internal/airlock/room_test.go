@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
+	"math"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -125,4 +126,21 @@ func TestPromoteDirectoryRefusesAShortStore(t *testing.T) {
 	if _, serr := os.Stat(filepath.Join(s.CleanPath(e.SHA256), "tiny")); !os.IsNotExist(serr) {
 		t.Fatal("a refused promotion must not place the tree")
 	}
+}
+
+// A listing whose sizes add past int64 must not wrap to a negative total
+// that passes the room check. Falsification: sum with plain addition and the
+// pull reaches the download.
+func TestPullRepoRefusesAnOverflowingListing(t *testing.T) {
+	t.Setenv("SOCAIR_EGRESS", "")
+	hub := newFakeHub()
+	oid := strings.Repeat("a", 40)
+	hub.extra = []treeEntry{
+		{Type: "file", Path: "huge-1.bin", Size: math.MaxInt64/2 + 1, OID: oid},
+		{Type: "file", Path: "huge-2.bin", Size: math.MaxInt64/2 + 1, OID: oid},
+	}
+	s, _ := Init(t.TempDir())
+	fullDisk(t, 1e15)
+	_, _, err := PullRepo(context.Background(), s, "org/tiny", hubCommit, "", hubPolicy(hub.start(t)))
+	wantShort(t, "overflowing listing", err, s.Root)
 }

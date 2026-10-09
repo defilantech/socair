@@ -144,7 +144,7 @@ func Pull(ctx context.Context, s *Store, dst, repo, revision, wantSHA string, po
 	}
 	resp, err := client.Do(req)
 	if err != nil {
-		return fail(fmt.Sprintf("pull failed within the %s stall budget: %v", pol.Timeout, err))
+		return fail(fmt.Sprintf("pull failed within the %s stall budget: %v", pol.Timeout, redactURL(err)))
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
@@ -282,16 +282,42 @@ func (p EgressPolicy) checkRedirect(req *http.Request, via []*http.Request) erro
 }
 
 // newRequest is a GET through the policy, carrying the token when, and only
-// when, it goes to the endpoint's own host.
+// when, it goes to the endpoint's own host, over https or to loopback: a
+// bearer token sent over plain http is readable on the wire.
 func (p EgressPolicy) newRequest(ctx context.Context, u string) (*http.Request, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
 	if err != nil {
 		return nil, err
 	}
-	if p.Token != "" && p.isEndpointHost(req.URL) {
+	if p.Token != "" && p.isEndpointHost(req.URL) && (req.URL.Scheme == "https" || isLoopback(req.URL.Hostname())) {
 		req.Header.Set("Authorization", "Bearer "+p.Token)
 	}
 	return req, nil
+}
+
+func isLoopback(host string) bool {
+	if strings.EqualFold(host, "localhost") {
+		return true
+	}
+	ip := net.ParseIP(host)
+	return ip != nil && ip.IsLoopback()
+}
+
+// redactURL drops the query and fragment from the URL a transport error
+// names. A failed or refused redirect names its target, and a CDN target is a
+// signed URL, a read capability for the file until it expires; it must not
+// reach an error, and so the log.
+func redactURL(err error) error {
+	var ue *url.Error
+	if errors.As(err, &ue) {
+		if u, perr := url.Parse(ue.URL); perr == nil {
+			u.RawQuery, u.Fragment, u.User = "", "", nil
+			ue.URL = u.String()
+		} else {
+			ue.URL = "(unparseable URL)"
+		}
+	}
+	return err
 }
 
 // isEndpointHost reports whether u is on exactly the endpoint's host and port.

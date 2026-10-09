@@ -356,7 +356,11 @@ func (o Options) airlockPull(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	e, err := airlock.Pull(r.Context(), s, dst, req.Repo, req.Revision, req.SHA256, airlock.DefaultEgressPolicy())
+	// The API has no auth, so its pulls never carry the operator's HF_TOKEN:
+	// anyone who reaches it could otherwise probe private repos with it.
+	pol := airlock.DefaultEgressPolicy()
+	pol.Token = ""
+	e, err := airlock.Pull(r.Context(), s, dst, req.Repo, req.Revision, req.SHA256, pol)
 	if err != nil {
 		writeError(w, http.StatusUnprocessableEntity, err.Error())
 		return

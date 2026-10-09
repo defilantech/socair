@@ -4,7 +4,12 @@
 // the start, naming the volume and the shortfall, not hours in on a full disk.
 package diskfree
 
-import "fmt"
+import (
+	"fmt"
+	"math/bits"
+	"os"
+	"strings"
+)
 
 // Available reports the bytes an unprivileged writer can use on the file
 // system holding dir, and whether the platform could say. It is a variable so
@@ -23,9 +28,11 @@ func (e *ShortError) Error() string {
 
 // Need returns a *ShortError when the file system holding dir has fewer than
 // n bytes available. When the platform cannot report free space it returns
-// nil: the copy itself still fails on a full disk, only later.
+// nil: the copy itself still fails on a full disk, only later. Some network
+// and FUSE file systems report no free space at all, so SOCAIR_ROOM_CHECK=off
+// turns the check off for an operator who knows the volume has room.
 func Need(dir string, n int64) error {
-	if n <= 0 {
+	if n <= 0 || strings.EqualFold(strings.TrimSpace(os.Getenv("SOCAIR_ROOM_CHECK")), "off") {
 		return nil
 	}
 	free, ok := Available(dir)
@@ -33,6 +40,15 @@ func Need(dir string, n int64) error {
 		return nil
 	}
 	return &ShortError{Dir: dir, Need: uint64(n), Available: free}
+}
+
+// bytesOf is blocks times block size, saturating rather than wrapping.
+func bytesOf(blocks, size uint64) uint64 {
+	hi, lo := bits.Mul64(blocks, size)
+	if hi != 0 {
+		return ^uint64(0)
+	}
+	return lo
 }
 
 // Human formats a byte count in decimal units, as the hub lists file sizes.

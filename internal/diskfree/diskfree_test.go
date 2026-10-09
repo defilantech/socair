@@ -73,3 +73,27 @@ func TestHumanSizes(t *testing.T) {
 		}
 	}
 }
+
+// Some network and FUSE file systems report no free space at all. An
+// operator who knows the volume has room can turn the check off.
+// Falsification: ignore SOCAIR_ROOM_CHECK and the short case refuses.
+func TestNeedCanBeTurnedOff(t *testing.T) {
+	stub(t, 0, true)
+	t.Setenv("SOCAIR_ROOM_CHECK", "off")
+	if err := Need(t.TempDir(), 1<<40); err != nil {
+		t.Fatalf("SOCAIR_ROOM_CHECK=off must not refuse: %v", err)
+	}
+	t.Setenv("SOCAIR_ROOM_CHECK", "")
+	if err := Need(t.TempDir(), 1<<40); err == nil {
+		t.Fatal("the check is on by default")
+	}
+}
+
+func TestBytesSaturates(t *testing.T) {
+	if got := bytesOf(1<<40, 1<<40); got != ^uint64(0) {
+		t.Fatalf("an overflowing product must saturate, got %d", got)
+	}
+	if got := bytesOf(3, 4096); got != 12288 {
+		t.Fatalf("bytesOf(3, 4096) = %d", got)
+	}
+}

@@ -91,12 +91,17 @@ socair airlock log
   lists. Left-out files are never fetched; the digest, and so the attestation
   subject, covers the kept files alone, and the provenance manifest
   (`selection`: the patterns and every file `left_out`) and the log name what
-  was left out. A selection that keeps nothing, or a pattern with an unclosed
-  `[`, is refused before any download.
+  was left out. The scan's provenance row says so too, so the signed report
+  that travels with the bytes reads as a selection, not the whole repo. A
+  selection that keeps nothing, a bare or empty `--include`/`--exclude`, or a
+  pattern with an unclosed `[` is refused before any download. A comma inside
+  `[...]` belongs to the class.
 - Every copy of a model checks for room first: a pull from the listing's sizes
   (or a single file's declared length), a scan's snapshot in `SOCAIR_SCAN_TMP`,
   and a promotion into the store. One that cannot fit is refused at the start,
-  naming the volume, what it needs, and what is free.
+  naming the volume, what it needs, and what is free. A file system that
+  reports no free space (some network and FUSE mounts) can be waved through
+  with `SOCAIR_ROOM_CHECK=off`.
 - `ingest` resolves a local path (a file or a model directory) or an offline
   Hugging Face cache entry and records it. Without `--file`, `--cache`
   resolves the whole snapshot; a branch name resolves through the cache's
@@ -149,11 +154,14 @@ An artifact crosses only when its attestation validates and authorizes it:
   path is built, and resolved paths must stay under the store or cache root.
 - A denied pull names the host and says how to allow it.
 - `HF_TOKEN`, when set, is sent as a bearer token to the endpoint's own host
-  and port only. It is stripped on a redirect to any other host (net/http
-  alone would keep it for the same host name at another port and for any
-  subdomain), and it never appears in an error or the log. A gated repo
+  and port only, and only over https (or to a loopback endpoint). It is
+  stripped on a redirect to any other host (net/http alone would keep it for
+  the same host name at another port and for any subdomain), and it never
+  appears in an error or the log. A failed or refused redirect is recorded
+  without its query string, since a CDN target is a signed URL. A gated repo
   answers an anonymous request with 401 and masks its file hashes in the
-  listing; both refusals name `HF_TOKEN`.
+  listing; both refusals name `HF_TOKEN`. Pulls through the HTTP API never
+  carry the token, because the API has no auth.
 - The provenance manifest records origin facts (artifact hash, repo, revision,
   resolved commit). It never asserts a signing status; an unsigned upstream
   stays unsigned.
@@ -168,6 +176,7 @@ Environment:
   redirect targets. A leading dot matches subdomains.
 - `SOCAIR_PULL_TIMEOUT`: stall budget, a Go duration such as `30s`.
 - `HF_TOKEN`: a Hugging Face access token, for gated and private repos.
+- `SOCAIR_ROOM_CHECK`: `off` skips the free-space check before large copies.
 - `SOCAIR_SCAN_TMP`: where a scan writes its snapshot, a full copy of the
   model; put it on a volume with room (the default is the system temp dir).
 - `SOCAIR_HF_CACHE` or `HF_HOME`: the offline cache root for `ingest --cache`.
