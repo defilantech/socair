@@ -24,8 +24,10 @@ func TestFoldingIsBounded(t *testing.T) {
 	}
 	start := time.Now()
 	_ = Inspect(b.String())
-	// Uncapped, this does not finish; capped, it takes milliseconds.
-	if el := time.Since(start); el > 2*time.Second {
+	// Uncapped, this does not finish; capped, it takes well under a second,
+	// and two to three under the race detector on CI's shared runners. The
+	// bound only has to tell the two apart.
+	if el := time.Since(start); el > 15*time.Second {
 		t.Fatalf("a folding bomb took %s", el)
 	}
 }
