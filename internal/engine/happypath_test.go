@@ -113,10 +113,10 @@ func TestHappyPathAllRowsPopulate(t *testing.T) {
 // NOT_TESTED, so with every input supplied the best Tier 1 outcome is an
 // authorization with that one gap named and accepted, never a clean one.
 func TestGGUFHappyPathIsConditional(t *testing.T) {
-	supplyInputs(t, gguftest.BuildGGUF(gguftest.Clean()))
+	supplyInputs(t, gguftest.CleanQ5KM())
 	t.Setenv("SOCAIR_ACCEPTED_BY", "ciso@example.com")
 
-	p := writeFixture(t, "fixture-Q5_K_M.gguf", gguftest.BuildGGUF(gguftest.Clean()))
+	p := writeFixture(t, "fixture-Q5_K_M.gguf", gguftest.CleanQ5KM())
 	d, err := Scan(p)
 	if err != nil {
 		t.Fatalf("Scan: %v", err)
@@ -172,7 +172,9 @@ func TestHappyPathDropsOneInput(t *testing.T) {
 // read as a label, a GGUF whose every row PASSes reaches a clean
 // authorization, which no GGUF could before (#82).
 func TestGGUFWithTokenizerAuthorizes(t *testing.T) {
-	fixture := gguftest.BuildGGUF(append(gguftest.Clean(), gguftest.Vocab()...))
+	// A Q5_K tensor, so the quant row judges the tensors rather than labels.
+	fixture := gguftest.BuildWithTensors(append(gguftest.Clean(), gguftest.Vocab()...),
+		[]gguftest.Tensor{{Name: "blk.0.attn_q.weight", Dims: []uint64{256}, Type: 13}}, 176)
 	supplyInputs(t, fixture)
 	p := writeFixture(t, "fixture-Q5_K_M.gguf", fixture)
 	d, err := Scan(p)

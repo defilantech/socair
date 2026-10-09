@@ -10,10 +10,23 @@ import (
 
 func ptr(v uint32) *uint32 { return &v }
 
-func TestMatchPasses(t *testing.T) {
-	if got := Compare("F16", ptr(1)).Status; got != checks.Pass {
-		t.Fatalf("status = %s, want PASS", got)
+// Two labels that agree say nothing about the tensors, and the row's PASS means
+// a tensor of the declared base type was seen. With no tensor table to read, a
+// match is NOT_TESTED with that reason, never a PASS. Falsification: let a
+// label match PASS again and this fails.
+func TestLabelsAgreeIsNotTested(t *testing.T) {
+	r := Compare("F16", ptr(1))
+	if r.Status != checks.NotTested || len(r.Findings) != 0 {
+		t.Fatalf("status = %s findings %v, want NOT_TESTED with no finding", r.Status, r.Findings)
 	}
+	if !strings.Contains(r.Notes, "matches") || !strings.Contains(r.Notes, "not inspected") {
+		t.Fatalf("notes %q must say the labels match and the tensors were not inspected", r.Notes)
+	}
+}
+
+// agree reports whether the two labels were compared and found to agree.
+func agree(r checks.Result) bool {
+	return r.Status == checks.NotTested && strings.Contains(r.Notes, "matches")
 }
 
 func TestMismatchFails(t *testing.T) {
@@ -48,14 +61,17 @@ func TestMissingInputsNotTested(t *testing.T) {
 // The mapping is from llama.cpp include/llama.h, enum llama_ftype. These
 // values are the ones observed in real artifacts on disk.
 func TestFullEnumMapping(t *testing.T) {
-	if got := Compare("Q5_K_M", ptr(17)).Status; got != checks.Pass {
-		t.Errorf("Q5_K_M/17 = %s, want PASS (gemma)", got)
+	if r := Compare("Q5_K_M", ptr(17)); !agree(r) {
+		t.Errorf("Q5_K_M/17 = %s %q, want the labels to agree (gemma)", r.Status, r.Notes)
 	}
-	if got := Compare("IQ3_S", ptr(26)).Status; got != checks.Pass {
-		t.Errorf("IQ3_S/26 = %s, want PASS (minimax)", got)
+	if r := Compare("IQ3_S", ptr(26)); !agree(r) {
+		t.Errorf("IQ3_S/26 = %s %q, want the labels to agree (minimax)", r.Status, r.Notes)
 	}
-	if got := Compare("BF16", ptr(32)).Status; got != checks.Pass {
-		t.Errorf("BF16/32 = %s, want PASS", got)
+	if r := Compare("BF16", ptr(32)); !agree(r) {
+		t.Errorf("BF16/32 = %s %q, want the labels to agree", r.Status, r.Notes)
+	}
+	if got := Compare("Q4_0", ptr(17)).Status; got != checks.Fail {
+		t.Errorf("Q4_0/17 = %s, want FAIL: the mapping must tell the labels apart", got)
 	}
 	if got := Compare("Q5_K_M", ptr(1024)).Status; got != checks.NotTested {
 		t.Errorf("guessed type = %s, want NOT_TESTED", got)
@@ -114,7 +130,10 @@ func TestCompareObserved(t *testing.T) {
 			t.Errorf("%s over %v: status %s (%s), want %s", c.declared, c.types, r.Status, r.Notes, c.want)
 		}
 	}
-	if r := CompareObserved("Q5_K_M", ptr(17), nil); r.Status != checks.Pass {
-		t.Errorf("no tensor table must fall back to the label comparison, got %s", r.Status)
+	if r := CompareObserved("Q5_K_M", ptr(17), nil); !agree(r) {
+		t.Errorf("no tensor table must fall back to the label comparison and stay a gap, got %s %q", r.Status, r.Notes)
+	}
+	if r := CompareObserved("Q4_0", ptr(17), nil); r.Status != checks.Fail {
+		t.Errorf("no tensor table, labels that disagree: got %s, want FAIL", r.Status)
 	}
 }

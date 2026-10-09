@@ -32,7 +32,9 @@ func TestSampleDocumentValidates(t *testing.T) {
 // is what a Tier 1 scan says. Falsification: rename a row or restore a stale
 // one and this fails.
 func TestSampleUsesTheEngineRows(t *testing.T) {
-	for _, k := range []string{"SOCAIR_REPO_MIRROR", "SOCAIR_DENYLIST", "SOCAIR_PROVENANCE", "SOCAIR_ACCEPTED_BY", "SOCAIR_FEED", "SOCAIR_TOKENIZER_REFERENCE", "SOCAIR_TEMPLATE_REFERENCE"} {
+	for _, k := range []string{"SOCAIR_REPO_MIRROR", "SOCAIR_DENYLIST", "SOCAIR_PROVENANCE", "SOCAIR_ACCEPTED_BY", "SOCAIR_FEED", "SOCAIR_TOKENIZER_REFERENCE", "SOCAIR_TEMPLATE_REFERENCE",
+		"SOCAIR_LICENSE_POLICY", "SOCAIR_TIER2_HELPER", "SOCAIR_TIER2_ENDPOINT", "SOCAIR_TIER2_REFERENCE_ENDPOINT",
+		"SOCAIR_TIER2_PROBES", "SOCAIR_TIER2_NODE_CLASS", "SOCAIR_TIER2_TIMEOUT"} {
 		t.Setenv(k, "")
 	}
 	p := filepath.Join(t.TempDir(), "clean-Q5_K_M.gguf")

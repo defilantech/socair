@@ -23,8 +23,10 @@ The implemented layout of the HTML attestation. Rendering lives in
   Result is a pill: PASS (green), FAIL (red), LEAD (amber) with its own tag,
   NOT_TESTED (neutral grey) plus the "not tested" tag. Rows appear in the order
   the engine reports them, starting with Format and structure.
-- Bounded statement: one of two fixed sentences, one for a report with no FAIL
-  or LEAD and one for a report with findings. It is never edited per artifact.
+- Bounded statement: one of four fixed sentences, a pair for Tier 1 and a pair
+  for a report with Tier 2 measurements; in each pair, one for a report with no
+  FAIL or LEAD and one for a report with findings. It is never edited per
+  artifact.
 - Out of scope: the ceiling, in full, with the "does not certify the absence of
   unknown backdoors" sentence in bold.
 - Promotion authorization: authorized or withheld, with conditions.

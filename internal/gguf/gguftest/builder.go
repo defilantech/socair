@@ -133,6 +133,14 @@ func writeStr(b *bytes.Buffer, s string) {
 	b.WriteString(s)
 }
 
+// CleanQ5KM is the Clean metadata (file type 17, Q5_K_M) over a tensor table
+// with one Q5_K tensor of one block, whose bytes tile the data section
+// exactly: a clean GGUF whose quantization can be judged from its tensors, not
+// only from its labels.
+func CleanQ5KM() []byte {
+	return BuildWithTensors(Clean(), []Tensor{{Name: "blk.0.attn_q.weight", Dims: []uint64{256}, Type: 13, Offset: 0}}, 176)
+}
+
 // Tensor is one tensor-table entry for BuildWithTensors.
 type Tensor struct {
 	Name   string
