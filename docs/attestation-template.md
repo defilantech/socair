@@ -170,6 +170,8 @@ Node classes not tested for this artifact: `[untested_node_classes]`
 
 Does this attestation authorize promotion into the clean store? `[yes / no]`
 
+State: `[authorized / authorized_with_conditions / withheld / escalated]`. Accepted surfaces, acceptor, and expiry appear only when the state is authorized_with_conditions.
+
 Level: `[Tier 1 only / Tier 2]`
 
 Conditions: `[conditions]`

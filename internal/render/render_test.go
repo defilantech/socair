@@ -245,6 +245,9 @@ func TestDirectoryReportListsItsFiles(t *testing.T) {
 // A reader must see whether an acceptance carries the acceptor's signature.
 func TestAcceptanceIsLabelledSignedOrUnsigned(t *testing.T) {
 	d := loadGolden(t)
+	d.PromotionAuthorization.State = report.StateAuthorizedWithConditions
+	d.PromotionAuthorization.Authorized = true
+	d.PromotionAuthorization.AcceptedSurfaces = d.Findings.NotTested
 	d.PromotionAuthorization.AcceptedBy = "Jane Doe, CISO"
 	d.PromotionAuthorization.AcceptedAt = "2026-10-03T12:00:00Z"
 	if out := renderString(t, d); !strings.Contains(out, "unsigned: named at scan time") {
@@ -254,5 +257,31 @@ func TestAcceptanceIsLabelledSignedOrUnsigned(t *testing.T) {
 	d.PromotionAuthorization.AcceptanceExpires = "2026-12-01T00:00:00Z"
 	if out := renderString(t, d); !strings.Contains(out, "signed acceptance, until 2026-12-01T00:00:00Z") || strings.Contains(out, "unsigned: named") {
 		t.Error("a signed acceptance must be labelled signed, with its expiry")
+	}
+}
+
+// TestAcceptedLineOnlyUnderConditions: a withheld report listed its gaps as
+// accepted surfaces, and the cover printed "Accepted, not tested" when nobody
+// had accepted anything. The engine and Validate no longer produce that, and
+// the renderer prints an acceptance only for authorized_with_conditions, so a
+// hand-made document cannot show one either. Falsification: test the list
+// alone in the template and the withheld case prints it.
+func TestAcceptedLineOnlyUnderConditions(t *testing.T) {
+	for _, state := range []string{report.StateWithheld, report.StateEscalated, report.StateAuthorized} {
+		d := loadGolden(t)
+		d.PromotionAuthorization.State = state
+		d.PromotionAuthorization.AcceptedSurfaces = d.Findings.NotTested
+		d.PromotionAuthorization.AcceptedBy = "Jane Doe, CISO"
+		if out := renderString(t, d); strings.Contains(out, "Accepted, not tested") || strings.Contains(out, "Accepted by") {
+			t.Errorf("a report in state %s must not print an acceptance", state)
+		}
+	}
+	d := loadGolden(t)
+	d.PromotionAuthorization.State = report.StateAuthorizedWithConditions
+	d.PromotionAuthorization.Authorized = true
+	d.PromotionAuthorization.AcceptedSurfaces = d.Findings.NotTested
+	d.PromotionAuthorization.AcceptedBy = "Jane Doe, CISO"
+	if out := renderString(t, d); !strings.Contains(out, "Accepted, not tested: File inventory and payloads, Hash, provenance, lineage.") {
+		t.Error("an authorized_with_conditions report must print what was accepted")
 	}
 }

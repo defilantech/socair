@@ -194,14 +194,41 @@ func TestPromotionStateRules(t *testing.T) {
 		d, _ := loadGolden(t)
 		d.PromotionAuthorization.State = StateAuthorized
 		d.PromotionAuthorization.Authorized = true
+		d.PromotionAuthorization.AcceptedSurfaces = []string{"File inventory and payloads"}
 		if len(Validate(d)) == 0 {
 			t.Fatal("an authorized report with accepted surfaces must fail validation")
+		}
+	})
+	// A withheld report used to carry its gaps as accepted_surfaces, which
+	// every renderer printed as "Accepted, not tested" when nobody had
+	// accepted anything. Only authorized_with_conditions accepts.
+	// Falsification: refuse accepted_surfaces on authorized alone and the
+	// withheld and escalated cases validate.
+	t.Run("only conditions carry an acceptance", func(t *testing.T) {
+		for _, state := range []string{StateWithheld, StateEscalated} {
+			for field, set := range map[string]func(*PromotionAuthorization){
+				"accepted_surfaces":  func(pa *PromotionAuthorization) { pa.AcceptedSurfaces = []string{"File inventory and payloads"} },
+				"accepted_by":        func(pa *PromotionAuthorization) { pa.AcceptedBy = "ciso@example.com" },
+				"accepted_at":        func(pa *PromotionAuthorization) { pa.AcceptedAt = "2026-09-29T00:00:00Z" },
+				"acceptance_expires": func(pa *PromotionAuthorization) { pa.AcceptanceExpires = "2027-01-31T00:00:00Z" },
+			} {
+				d, _ := loadGolden(t)
+				d.PromotionAuthorization.State = state
+				if problems := Validate(d); len(problems) != 0 {
+					t.Fatalf("the golden in state %s should validate before the edit, got %v", state, problems)
+				}
+				set(&d.PromotionAuthorization)
+				if len(Validate(d)) == 0 {
+					t.Errorf("a report in state %s carrying %s must fail validation", state, field)
+				}
+			}
 		}
 	})
 	t.Run("conditions need a named acceptance", func(t *testing.T) {
 		d, _ := loadGolden(t)
 		d.PromotionAuthorization.State = StateAuthorizedWithConditions
 		d.PromotionAuthorization.Authorized = true
+		d.PromotionAuthorization.AcceptedSurfaces = d.Findings.NotTested
 		d.PromotionAuthorization.AcceptedBy = ""
 		if len(Validate(d)) == 0 {
 			t.Fatal("authorized_with_conditions without accepted_by must fail validation")
@@ -296,7 +323,7 @@ func TestPromotionStateBoundToChecks(t *testing.T) {
 		d.PromotionAuthorization.State = StateAuthorizedWithConditions
 		d.PromotionAuthorization.Authorized = true
 		d.PromotionAuthorization.AcceptedBy = "ciso@example.com"
-		d.PromotionAuthorization.AcceptedSurfaces = append(d.PromotionAuthorization.AcceptedSurfaces, "Format and structure")
+		d.PromotionAuthorization.AcceptedSurfaces = append(d.Findings.NotTested, "Format and structure")
 		if len(Validate(d)) == 0 {
 			t.Fatal("an acceptance over a LEAD must fail validation; a LEAD clears only by escalation")
 		}

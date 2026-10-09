@@ -232,11 +232,7 @@
     "authorized": false,
     "state": "withheld",
     "level": "Tier 1 only",
-    "conditions": "No check has run yet, so nothing is authorized for promotion.",
-    "accepted_surfaces": [
-      "File inventory and payloads",
-      "Hash, provenance, lineage"
-    ]
+    "conditions": "No check has run yet, so nothing is authorized for promotion."
   },
   "verification": {
     "document_hash": "",

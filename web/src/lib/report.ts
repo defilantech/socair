@@ -81,6 +81,15 @@ export function promotionPill(d: Document): Pill {
 	}
 }
 
+// acceptedSurfaces lists what an acceptance covers. Only an authorization with
+// conditions accepts anything, so every other state accepted nothing, whatever
+// the document lists; its gaps are its NOT_TESTED rows.
+export function acceptedSurfaces(d: Document): string[] {
+	const pa = d.promotion_authorization;
+	if (pa.state !== 'authorized_with_conditions') return [];
+	return pa.accepted_surfaces ?? [];
+}
+
 export interface Level {
 	id: string;
 	label: string;

@@ -250,11 +250,7 @@
     "authorized": false,
     "state": "withheld",
     "level": "Tier 1 only",
-    "conditions": "Withheld: the hero check FAILED and two checks are NOT_TESTED. Submit for escalated review.",
-    "accepted_surfaces": [
-      "Safetensors header and opcodes",
-      "Forward-pass trigger probes (Tier 2)"
-    ]
+    "conditions": "Withheld: the hero check FAILED and two checks are NOT_TESTED. Submit for escalated review."
   },
   "verification": {
     "document_hash": "",

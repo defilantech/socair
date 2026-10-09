@@ -1,6 +1,14 @@
 import { describe, it, expect } from 'vitest';
 import type { Document } from './api';
-import { statusPill, promotionLabel, promotionPill, counts, countOrder, availableLevels } from './report';
+import {
+	statusPill,
+	promotionLabel,
+	promotionPill,
+	acceptedSurfaces,
+	counts,
+	countOrder,
+	availableLevels
+} from './report';
 
 function doc(state: string, statuses: string[]): Document {
 	return {
@@ -57,6 +65,25 @@ describe('promotion badge', () => {
 	});
 	it('keeps escalated review red', () => {
 		expect(promotionPill(doc('escalated', []))).toBe('fail');
+	});
+});
+
+// A withheld report used to list its gaps as accepted surfaces, and the page
+// said "Accepted, not tested" when nobody had accepted anything. Only an
+// authorization with conditions accepts.
+describe('accepted surfaces', () => {
+	const withSurfaces = (state: string) => {
+		const d = doc(state, ['NOT_TESTED']);
+		d.promotion_authorization.accepted_surfaces = ['c0'];
+		return d;
+	};
+	it('shows what an authorization with conditions accepted', () => {
+		expect(acceptedSurfaces(withSurfaces('authorized_with_conditions'))).toEqual(['c0']);
+	});
+	it('shows nothing accepted for any other state, whatever the document lists', () => {
+		for (const state of ['withheld', 'escalated', 'authorized']) {
+			expect(acceptedSurfaces(withSurfaces(state)), state).toEqual([]);
+		}
 	});
 });
 

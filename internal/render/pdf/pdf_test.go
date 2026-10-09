@@ -5,7 +5,10 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
+
+	"github.com/go-pdf/fpdf"
 
 	"github.com/defilantech/socair/internal/report"
 )
@@ -66,6 +69,45 @@ func TestStatusColorsAreDistinct(t *testing.T) {
 	}
 	if untInk == passInk {
 		t.Errorf("NOT_TESTED must not share the pass text color: %v", untInk)
+	}
+}
+
+// coverText draws the cover block alone, uncompressed, so its text can be
+// searched.
+func coverText(t *testing.T, d *report.Document) string {
+	t.Helper()
+	p := fpdf.New("P", "mm", "A4", "")
+	p.SetCompression(false)
+	p.AddPage()
+	cover(p, d)
+	var b bytes.Buffer
+	if err := p.Output(&b); err != nil {
+		t.Fatal(err)
+	}
+	return b.String()
+}
+
+// TestAcceptedLineOnlyUnderConditions: the cover printed "Accepted, not
+// tested" for any report that listed accepted surfaces, a withheld one
+// included. Falsification: test the list alone and the withheld case prints
+// it.
+func TestAcceptedLineOnlyUnderConditions(t *testing.T) {
+	for _, state := range []string{report.StateWithheld, report.StateEscalated, report.StateAuthorized} {
+		d := loadGolden(t)
+		d.PromotionAuthorization.State = state
+		d.PromotionAuthorization.AcceptedSurfaces = d.Findings.NotTested
+		d.PromotionAuthorization.AcceptedBy = "Jane Doe, CISO"
+		if strings.Contains(coverText(t, d), "Accepted, not tested") {
+			t.Errorf("a report in state %s must not print an acceptance", state)
+		}
+	}
+	d := loadGolden(t)
+	d.PromotionAuthorization.State = report.StateAuthorizedWithConditions
+	d.PromotionAuthorization.Authorized = true
+	d.PromotionAuthorization.AcceptedSurfaces = d.Findings.NotTested
+	d.PromotionAuthorization.AcceptedBy = "Jane Doe, CISO"
+	if !strings.Contains(coverText(t, d), "Accepted, not tested") {
+		t.Error("an authorized_with_conditions report must print what was accepted")
 	}
 }
 

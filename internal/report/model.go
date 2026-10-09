@@ -273,6 +273,17 @@ type PromotionAuthorization struct {
 // Signed reports whether the acceptance carries the acceptor's signature.
 func (pa PromotionAuthorization) Signed() bool { return pa.Acceptance != "" }
 
+// Accepted returns the surfaces an acceptance covers. Only an
+// authorized_with_conditions report accepts anything, so for every other
+// state it is nil whatever the document lists. Renderers print an acceptance
+// only from it.
+func (pa PromotionAuthorization) Accepted() []string {
+	if pa.State != StateAuthorizedWithConditions {
+		return nil
+	}
+	return pa.AcceptedSurfaces
+}
+
 type Verification struct {
 	DocumentHash      string `json:"document_hash,omitempty"`
 	SigningMethod     string `json:"signing_method"`
@@ -498,8 +509,16 @@ func validatePromotion(d *Document) []string {
 		}
 	}
 	problems = append(problems, validateAcceptance(d)...)
-	if pa.State == StateAuthorized && len(pa.AcceptedSurfaces) > 0 {
-		problems = append(problems, "promotion_authorization: an authorized report must not carry accepted_surfaces")
+	// Only authorized_with_conditions accepts anything. A withheld report's
+	// gaps are its NOT_TESTED rows; listing them as accepted surfaces would
+	// tell a reader someone accepted them.
+	if pa.State != StateAuthorizedWithConditions {
+		if len(pa.AcceptedSurfaces) > 0 {
+			problems = append(problems, fmt.Sprintf("promotion_authorization: a report in state %q must not carry accepted_surfaces; only authorized_with_conditions accepts", pa.State))
+		}
+		if pa.AcceptedBy != "" || pa.AcceptedAt != "" || pa.AcceptanceExpires != "" {
+			problems = append(problems, fmt.Sprintf("promotion_authorization: a report in state %q must not carry accepted_by, accepted_at, or acceptance_expires", pa.State))
+		}
 	}
 	return append(problems, validateStateAgainstChecks(d)...)
 }

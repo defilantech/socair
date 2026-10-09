@@ -366,7 +366,10 @@ func promotion(d *report.Document, acceptedBy, expires string) report.PromotionA
 		}
 	}
 
-	pa := report.PromotionAuthorization{Level: "Tier 1 only", AcceptedSurfaces: gaps, AcceptanceExpires: expires}
+	// Only an acceptance fills accepted_surfaces and its expiry. A withheld
+	// report's gaps are named in its conditions and findings.not_tested, never
+	// as surfaces someone accepted.
+	pa := report.PromotionAuthorization{Level: "Tier 1 only"}
 
 	switch {
 	case len(fails) > 0 || len(leads) > 0:
@@ -384,7 +387,6 @@ func promotion(d *report.Document, acceptedBy, expires string) report.PromotionA
 	case len(gaps) == 0:
 		pa.State = report.StateAuthorized
 		pa.Authorized = true
-		pa.AcceptedSurfaces = nil
 		pa.Conditions = "Every Tier 1 check PASSed."
 	case strings.TrimSpace(acceptedBy) == "":
 		pa.State = report.StateWithheld
@@ -394,6 +396,8 @@ func promotion(d *report.Document, acceptedBy, expires string) report.PromotionA
 	default:
 		pa.State = report.StateAuthorizedWithConditions
 		pa.Authorized = true
+		pa.AcceptedSurfaces = gaps
+		pa.AcceptanceExpires = expires
 		pa.AcceptedBy = acceptedBy
 		pa.AcceptedAt = time.Now().UTC().Format(time.RFC3339)
 		pa.Conditions = "Authorized with conditions: " + strings.Join(gaps, ", ") +

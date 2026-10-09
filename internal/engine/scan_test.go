@@ -45,35 +45,48 @@ func TestPromotionAuthorizedWhenAllPass(t *testing.T) {
 		"Format and structure": report.StatusPass,
 		"Quant match":          report.StatusPass,
 	})
-	pa := promotion(d, "", "")
+	pa := promotion(d, "", "2027-01-01T00:00:00Z")
 	if pa.State != report.StateAuthorized || !pa.Authorized {
 		t.Fatalf("all PASS must authorize, got state=%s authorized=%v", pa.State, pa.Authorized)
 	}
-	if len(pa.AcceptedSurfaces) != 0 {
-		t.Errorf("a clean report must carry no accepted surfaces, got %v", pa.AcceptedSurfaces)
+	if len(pa.AcceptedSurfaces) != 0 || pa.AcceptanceExpires != "" {
+		t.Errorf("a clean report must carry no acceptance, got surfaces %v until %q", pa.AcceptedSurfaces, pa.AcceptanceExpires)
 	}
 }
 
 func TestPromotionWithheldOnFail(t *testing.T) {
 	d := promotionDoc(map[string]report.Status{
-		"Chat template (hero)": report.StatusFail,
+		"Chat template (hero)":      report.StatusFail,
+		"Hash, provenance, lineage": report.StatusNotTested,
 	})
-	pa := promotion(d, "ciso@example.com", "")
+	pa := promotion(d, "ciso@example.com", "2027-01-01T00:00:00Z")
 	if pa.State != report.StateWithheld || pa.Authorized {
 		t.Fatalf("a FAIL must withhold even with an acceptance, got state=%s authorized=%v", pa.State, pa.Authorized)
 	}
+	if len(pa.AcceptedSurfaces) != 0 || pa.AcceptedBy != "" || pa.AcceptanceExpires != "" {
+		t.Errorf("a withheld report accepted nothing, got surfaces %v by %q until %q", pa.AcceptedSurfaces, pa.AcceptedBy, pa.AcceptanceExpires)
+	}
 }
 
+// TestPromotionGapsWithoutAcceptanceAreWithheld: a withheld report used to
+// list its gaps as accepted_surfaces, and every renderer printed them as
+// "Accepted, not tested" when nobody had accepted anything. The gaps are named
+// in the conditions and findings.not_tested; accepted_surfaces is for an
+// acceptance. Falsification: fill accepted_surfaces for every state again and
+// this fails.
 func TestPromotionGapsWithoutAcceptanceAreWithheld(t *testing.T) {
 	d := promotionDoc(map[string]report.Status{
 		"Hash, provenance, lineage": report.StatusNotTested,
 	})
-	pa := promotion(d, "", "")
+	pa := promotion(d, "", "2027-01-01T00:00:00Z")
 	if pa.State != report.StateWithheld || pa.Authorized {
 		t.Fatalf("gaps without an acceptance must withhold, got state=%s authorized=%v", pa.State, pa.Authorized)
 	}
-	if len(pa.AcceptedSurfaces) == 0 {
-		t.Error("withheld gaps must still be listed as surfaces")
+	if len(pa.AcceptedSurfaces) != 0 || pa.AcceptanceExpires != "" {
+		t.Errorf("nobody accepted these gaps, got surfaces %v until %q", pa.AcceptedSurfaces, pa.AcceptanceExpires)
+	}
+	if !strings.Contains(pa.Conditions, "Hash, provenance, lineage") {
+		t.Errorf("the conditions must name the gaps, got %q", pa.Conditions)
 	}
 }
 
@@ -90,6 +103,9 @@ func TestPromotionGapsWithAcceptanceAreConditional(t *testing.T) {
 	}
 	if len(pa.AcceptedSurfaces) == 0 {
 		t.Error("the accepted surfaces must travel with the artifact")
+	}
+	if pa.AcceptanceExpires != "2027-01-01T00:00:00Z" {
+		t.Errorf("the acceptance must carry its expiry, got %q", pa.AcceptanceExpires)
 	}
 }
 

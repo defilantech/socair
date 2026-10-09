@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/defilantech/socair/internal/acceptance"
 	"github.com/defilantech/socair/internal/airlock"
 	"github.com/defilantech/socair/internal/attest"
 )
@@ -72,9 +73,14 @@ func acceptCmd(args []string) error {
 	if err := os.WriteFile(out, raw, 0o644); err != nil {
 		return err
 	}
-	pa := v.Document.PromotionAuthorization
+	// The surfaces come from the acceptance just signed: the withheld report
+	// lists its gaps as NOT_TESTED rows, not as accepted surfaces.
+	a, err := acceptance.Parse(raw)
+	if err != nil {
+		return err
+	}
 	fmt.Printf("%s accepted %d untested surface(s) of %s until %s, with key %s\n  %s\n  %s\nre-issue it: socair sign --attestation %s --acceptance %s --key <operator.key>\n",
-		by, len(pa.AcceptedSurfaces), v.Document.Header.DocumentID, expires.UTC().Format(time.RFC3339), attest.ShortID(k.ID),
-		strings.Join(pa.AcceptedSurfaces, ", "), out, in, out)
+		by, len(a.AcceptedSurfaces), v.Document.Header.DocumentID, expires.UTC().Format(time.RFC3339), attest.ShortID(k.ID),
+		strings.Join(a.AcceptedSurfaces, ", "), out, in, out)
 	return nil
 }

@@ -21,10 +21,9 @@ func withholdForGap(d *report.Document) {
 	d.Checks[0].Status = report.StatusNotTested
 	d.Findings.NotTested = []string{d.Checks[0].Name}
 	d.PromotionAuthorization = report.PromotionAuthorization{
-		State:            report.StateWithheld,
-		Level:            "Tier 1 only",
-		AcceptedSurfaces: []string{d.Checks[0].Name},
-		Conditions:       "Withheld: " + d.Checks[0].Name + " is NOT_TESTED.",
+		State:      report.StateWithheld,
+		Level:      "Tier 1 only",
+		Conditions: "Withheld: " + d.Checks[0].Name + " is NOT_TESTED.",
 	}
 }
 
@@ -142,6 +141,7 @@ func TestPromoteRefusesSelfAcceptance(t *testing.T) {
 	pa := &final.PromotionAuthorization
 	a, _ := acceptance.Parse(raw)
 	pa.State, pa.Authorized = report.StateAuthorizedWithConditions, true
+	pa.AcceptedSurfaces = a.AcceptedSurfaces
 	pa.AcceptedBy, pa.AcceptedAt, pa.AcceptanceExpires = a.AcceptedBy, a.AcceptedAt, a.Expires
 	pa.Acceptance, pa.ReviewedDocumentHash = base64.StdEncoding.EncodeToString(raw), a.ReviewedDocumentHash
 	final.Verification.DocumentHash, final.Header.DocumentHash = "", ""
