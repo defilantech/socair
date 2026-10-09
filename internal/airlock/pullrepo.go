@@ -61,6 +61,28 @@ type treeEntry struct {
 // verify, and any path that would leave the directory, refuses the pull.
 // Every request goes through the egress policy.
 func PullRepo(ctx context.Context, s *Store, repo, revision, wantDigest string, pol EgressPolicy) (Event, string, error) {
+	return PullRepoSelected(ctx, s, repo, revision, wantDigest, Selection{}, pol)
+}
+
+// pullManifest is the provenance manifest a repo pull writes: the origin
+// facts the provenance check reads, and, for a selected pull, the patterns
+// and every file they left out, so the record says the staged tree is part of
+// the repo, not all of it.
+type pullManifest struct {
+	provenance.Manifest
+	Selection *pulledSelection `json:"selection,omitempty"`
+}
+
+type pulledSelection struct {
+	Selection
+	LeftOut []string `json:"left_out"`
+}
+
+// PullRepoSelected is PullRepo carrying only the files sel keeps. The left-out
+// files are never fetched; the staged tree, its manifest digest, and so the
+// attestation subject are the kept files alone, and the provenance manifest
+// and the log name every file left out.
+func PullRepoSelected(ctx context.Context, s *Store, repo, revision, wantDigest string, sel Selection, pol EgressPolicy) (Event, string, error) {
 	refuse := func(err error) (Event, string, error) {
 		e := Event{Action: ActionPull, Outcome: OutcomeRefused, Repo: repo, SHA256: normalizeSHA(wantDigest), Detail: err.Error()}
 		if s != nil {
@@ -99,6 +121,10 @@ func PullRepo(ctx context.Context, s *Store, repo, revision, wantDigest string, 
 	if err := notEvidenceName(name); err != nil {
 		return fail(err.Error())
 	}
+	keep, err := sel.compile()
+	if err != nil {
+		return fail(err.Error())
+	}
 	client := pol.client()
 
 	// Resolve the revision to the commit every later request is pinned to.
@@ -122,6 +148,21 @@ func PullRepo(ctx context.Context, s *Store, repo, revision, wantDigest string, 
 	}
 	if len(entries) == 0 {
 		return fail("the repo has no files at commit " + commit)
+	}
+	var leftOut []string
+	if !sel.empty() {
+		kept := make([]treeEntry, 0, len(entries))
+		for _, e := range entries {
+			if keep.keeps(e.Path) {
+				kept = append(kept, e)
+			} else {
+				leftOut = append(leftOut, e.Path)
+			}
+		}
+		if len(kept) == 0 {
+			return fail(fmt.Sprintf("the selection (%s) keeps none of the %d files at commit %s", sel, len(entries), commit))
+		}
+		entries = kept
 	}
 
 	tmp, err := s.tmpRoot()
@@ -174,12 +215,15 @@ func PullRepo(ctx context.Context, s *Store, repo, revision, wantDigest string, 
 	if err := replaceDir(tree, filepath.Join(stage, name), tmp); err != nil {
 		return fail("stage: " + err.Error())
 	}
-	manifest := provenance.Manifest{
+	manifest := pullManifest{Manifest: provenance.Manifest{
 		ArtifactSHA256: digest,
 		RepoURL:        endpoint + "/" + repo,
 		CommitOrTag:    revision,
 		CommitSHA:      commit,
 		Source:         "airlock pull",
+	}}
+	if !sel.empty() {
+		manifest.Selection = &pulledSelection{Selection: sel, LeftOut: leftOut}
 	}
 	b, err := json.MarshalIndent(manifest, "", "  ")
 	if err != nil {
@@ -192,6 +236,12 @@ func PullRepo(ctx context.Context, s *Store, repo, revision, wantDigest string, 
 	detail := fmt.Sprintf("model directory, revision %s at commit %s, %d files, %d bytes, each verified against the hub's hash", revision, commit, len(files), total)
 	if len(skipped) > 0 {
 		detail += "; not fetched: " + strings.Join(skipped, ", ")
+	}
+	if !sel.empty() {
+		detail += fmt.Sprintf("; selected with %s, left out %d files", sel, len(leftOut))
+		if len(leftOut) > 0 {
+			detail += ": " + strings.Join(leftOut, ", ")
+		}
 	}
 	e := Event{Action: ActionPull, Outcome: OutcomeOK, Repo: repo, SHA256: digest, Detail: detail}
 	if s != nil {

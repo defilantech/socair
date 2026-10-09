@@ -60,16 +60,20 @@ func airlockInit(args []string) error {
 func airlockPull(args []string) error {
 	fs := parseFlags(args)
 	repo, sha, file := fs.val("repo"), fs.val("sha256"), fs.val("file")
+	sel := airlock.Selection{Include: fs.list("include"), Exclude: fs.list("exclude")}
 	if repo == "" || (file != "" && sha == "") {
 		return errors.New("usage: socair airlock pull --repo <org/name> --file <name> --sha256 <hash> [--revision main] [--store <path>]\n" +
-			"       socair airlock pull --repo <org/name> (--revision <commit> | --sha256 <manifest digest>) [--store <path>]   whole repo, as a model directory")
+			"       socair airlock pull --repo <org/name> (--revision <commit> | --sha256 <manifest digest>) [--include <glob>]... [--exclude <glob>]... [--store <path>]   whole repo, as a model directory")
+	}
+	if file != "" && (len(sel.Include) > 0 || len(sel.Exclude) > 0) {
+		return errors.New("--include and --exclude select files from a whole-repo pull; a single-file pull names its file with --file")
 	}
 	s, err := airlock.Open(storeRoot(fs))
 	if err != nil {
 		return err
 	}
 	if file == "" {
-		ev, staged, err := airlock.PullRepo(context.Background(), s, repo, fs.val("revision"), sha, airlock.DefaultEgressPolicy())
+		ev, staged, err := airlock.PullRepoSelected(context.Background(), s, repo, fs.val("revision"), sha, sel, airlock.DefaultEgressPolicy())
 		if err != nil {
 			return err
 		}
@@ -271,11 +275,13 @@ func shortHash(sha string) string {
 // convention of flags before or after positionals.
 type flagSet struct {
 	vals map[string]string
-	pos  []string
+	// all keeps every value a repeated flag was given, in order.
+	all map[string][]string
+	pos []string
 }
 
 func parseFlags(args []string) *flagSet {
-	fs := &flagSet{vals: map[string]string{}}
+	fs := &flagSet{vals: map[string]string{}, all: map[string][]string{}}
 	for i := 0; i < len(args); i++ {
 		a := args[i]
 		if !strings.HasPrefix(a, "--") {
@@ -284,7 +290,7 @@ func parseFlags(args []string) *flagSet {
 		}
 		key := strings.TrimPrefix(a, "--")
 		if eq := strings.IndexByte(key, '='); eq >= 0 {
-			fs.vals[key[:eq]] = key[eq+1:]
+			fs.set(key[:eq], key[eq+1:])
 			continue
 		}
 		if i+1 >= len(args) || strings.HasPrefix(args[i+1], "--") {
@@ -292,9 +298,27 @@ func parseFlags(args []string) *flagSet {
 			continue
 		}
 		i++
-		fs.vals[key] = args[i]
+		fs.set(key, args[i])
 	}
 	return fs
+}
+
+func (f *flagSet) set(key, v string) {
+	f.vals[key] = v
+	f.all[key] = append(f.all[key], v)
+}
+
+// list returns every value of a repeatable flag, each split on commas.
+func (f *flagSet) list(key string) []string {
+	var out []string
+	for _, v := range f.all[key] {
+		for _, part := range strings.Split(v, ",") {
+			if part = strings.TrimSpace(part); part != "" {
+				out = append(out, part)
+			}
+		}
+	}
+	return out
 }
 
 func (f *flagSet) val(key string) string { return f.vals[key] }
