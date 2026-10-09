@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/defilantech/socair/internal/checks/provenance"
+	"github.com/defilantech/socair/internal/diskfree"
 )
 
 // EgressPolicy controls what the airlock is allowed to reach and how long a
@@ -77,13 +78,14 @@ func DefaultEgressPolicy() EgressPolicy {
 // The manifest records origin facts (repo, revision); it never asserts a
 // signing status.
 func Pull(ctx context.Context, s *Store, dst, repo, revision, wantSHA string, pol EgressPolicy) (Event, error) {
-	fail := func(detail string) (Event, error) {
-		e := Event{Action: ActionPull, Outcome: OutcomeRefused, Repo: repo, SHA256: normalizeSHA(wantSHA), Detail: detail}
+	refuse := func(err error) (Event, error) {
+		e := Event{Action: ActionPull, Outcome: OutcomeRefused, Repo: repo, SHA256: normalizeSHA(wantSHA), Detail: err.Error()}
 		if s != nil {
 			_ = s.Record(e)
 		}
-		return e, fmt.Errorf("airlock pull %s: %s", repo, detail)
+		return e, fmt.Errorf("airlock pull %s: %w", repo, err)
 	}
+	fail := func(detail string) (Event, error) { return refuse(errors.New(detail)) }
 
 	if strings.TrimSpace(repo) == "" {
 		return fail("repo is required")
@@ -141,6 +143,9 @@ func Pull(ctx context.Context, s *Store, dst, repo, revision, wantSHA string, po
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
 		return fail(fmt.Sprintf("source returned HTTP %d for %s", resp.StatusCode, src))
+	}
+	if err := diskfree.Need(filepath.Dir(dst), resp.ContentLength); err != nil {
+		return refuse(err)
 	}
 
 	body := newStallReader(resp.Body, pol.Timeout, cancel)

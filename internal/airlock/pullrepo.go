@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"hash"
 	"io"
@@ -22,6 +23,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/defilantech/socair/internal/checks/provenance"
+	"github.com/defilantech/socair/internal/diskfree"
 	"github.com/defilantech/socair/internal/modeldir"
 )
 
@@ -59,13 +61,14 @@ type treeEntry struct {
 // verify, and any path that would leave the directory, refuses the pull.
 // Every request goes through the egress policy.
 func PullRepo(ctx context.Context, s *Store, repo, revision, wantDigest string, pol EgressPolicy) (Event, string, error) {
-	fail := func(detail string) (Event, string, error) {
-		e := Event{Action: ActionPull, Outcome: OutcomeRefused, Repo: repo, SHA256: normalizeSHA(wantDigest), Detail: detail}
+	refuse := func(err error) (Event, string, error) {
+		e := Event{Action: ActionPull, Outcome: OutcomeRefused, Repo: repo, SHA256: normalizeSHA(wantDigest), Detail: err.Error()}
 		if s != nil {
 			_ = s.Record(e)
 		}
-		return e, "", fmt.Errorf("airlock pull %s: %s", repo, detail)
+		return e, "", fmt.Errorf("airlock pull %s: %w", repo, err)
 	}
+	fail := func(detail string) (Event, string, error) { return refuse(errors.New(detail)) }
 	if err := validRepo(repo); err != nil {
 		return fail(err.Error())
 	}
@@ -124,6 +127,15 @@ func PullRepo(ctx context.Context, s *Store, repo, revision, wantDigest string, 
 	tmp, err := s.tmpRoot()
 	if err != nil {
 		return fail(err.Error())
+	}
+	// The listing names every size, so a repo that cannot fit is refused
+	// before the first byte, not hundreds of gigabytes in.
+	var need int64
+	for _, e := range entries {
+		need += e.Size
+	}
+	if err := diskfree.Need(tmp, need); err != nil {
+		return refuse(err)
 	}
 	work, err := os.MkdirTemp(tmp, "pull-")
 	if err != nil {

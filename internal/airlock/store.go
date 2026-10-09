@@ -16,6 +16,7 @@ import (
 	"strings"
 
 	"github.com/defilantech/socair/internal/attest"
+	"github.com/defilantech/socair/internal/diskfree"
 )
 
 // Store is a content-addressed clean store with a staging area.
@@ -218,14 +219,21 @@ func (e *hashMismatchError) Error() string {
 // and renames the copy into place only if they hash to wantSHA. The stored
 // bytes are the verified bytes, whatever happens to src during the copy.
 func (s *Store) placeVerified(src, dstDir, wantSHA string) (string, error) {
-	if err := os.MkdirAll(dstDir, 0o755); err != nil {
-		return "", fmt.Errorf("create destination: %w", err)
-	}
 	in, err := os.Open(src)
 	if err != nil {
 		return "", fmt.Errorf("open artifact %q: %w", src, err)
 	}
 	defer in.Close()
+	fi, err := in.Stat()
+	if err != nil {
+		return "", err
+	}
+	if err := diskfree.Need(dstDir, fi.Size()); err != nil {
+		return "", err
+	}
+	if err := os.MkdirAll(dstDir, 0o755); err != nil {
+		return "", fmt.Errorf("create destination: %w", err)
+	}
 	if promoteOpened != nil {
 		promoteOpened()
 	}
