@@ -88,6 +88,11 @@ func TestPromotionGapsWithoutAcceptanceAreWithheld(t *testing.T) {
 	if !strings.Contains(pa.Conditions, "Hash, provenance, lineage") {
 		t.Errorf("the conditions must name the gaps, got %q", pa.Conditions)
 	}
+	// The way through is a signed acceptance; a name typed at scan time is
+	// unsigned and does not cross the airlock.
+	if !strings.Contains(pa.Conditions, "socair accept") {
+		t.Errorf("the conditions must name the signed acceptance, got %q", pa.Conditions)
+	}
 }
 
 func TestPromotionGapsWithAcceptanceAreConditional(t *testing.T) {

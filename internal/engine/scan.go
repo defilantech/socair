@@ -393,7 +393,8 @@ func promotion(d *report.Document, acceptedBy, expires string) report.PromotionA
 		pa.State = report.StateWithheld
 		pa.Authorized = false
 		pa.Conditions = "Withheld: " + strings.Join(gaps, ", ") +
-			" are NOT_TESTED and no acceptance has been recorded (set SOCAIR_ACCEPTED_BY)."
+			" are NOT_TESTED and no acceptance has been recorded. An acceptor accepts them by signing an acceptance of the signed report (socair accept); " +
+			"a name in SOCAIR_ACCEPTED_BY records an unsigned acceptance, which the airlock does not promote."
 	default:
 		pa.State = report.StateAuthorizedWithConditions
 		pa.Authorized = true
