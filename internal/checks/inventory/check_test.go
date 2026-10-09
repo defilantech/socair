@@ -43,6 +43,127 @@ func TestCleanArtifactWithCleanMirrorPasses(t *testing.T) {
 	}
 }
 
+// TestUnreadMirrorIsNotTested: walk errors were swallowed, so a mirror path
+// that did not exist, or a directory with nothing in it, PASSed as "repo: 0
+// files". A repo listing that was not read cannot pass. Falsification: return
+// nil from the walk on an error again, or drop the empty check, and these
+// PASS.
+func TestUnreadMirrorIsNotTested(t *testing.T) {
+	p := writeFixture(t, "clean-Q5_K_M.gguf", gguftest.BuildGGUF(gguftest.Clean()))
+	absent := filepath.Join(t.TempDir(), "no-such-mirror")
+	empty := t.TempDir()
+	file := writeFixture(t, "mirror.txt", []byte("not a directory"))
+	for name, c := range map[string]struct{ mirror, want string }{
+		"missing":         {absent, "no-such-mirror"},
+		"empty":           {empty, "holds no files"},
+		"not a directory": {file, "not a directory"},
+	} {
+		r := Inspect(p, Options{RepoMirror: c.mirror})
+		if r.Status != checks.NotTested {
+			t.Errorf("%s mirror: status = %s, want NOT_TESTED: %s", name, r.Status, r.Notes)
+		}
+		if !strings.Contains(r.Notes, c.want) {
+			t.Errorf("%s mirror: notes must say %q, got %q", name, c.want, r.Notes)
+		}
+	}
+}
+
+// TestUnreadEntryIsNamed: an entry the walk could not read was skipped and
+// the row still PASSed. It is now named, and the row is NOT_TESTED, as for an
+// archive whose contents were not scanned. A FAIL elsewhere in the mirror
+// still stands on its evidence. Falsification: skip unreadable entries
+// silently and the first case PASSes.
+func TestUnreadEntryIsNamed(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("root reads every file regardless of mode")
+	}
+	p := writeFixture(t, "clean-Q5_K_M.gguf", gguftest.BuildGGUF(gguftest.Clean()))
+	mirror := t.TempDir()
+	_ = os.WriteFile(filepath.Join(mirror, "config.json"), []byte("{}"), 0o600)
+	locked := filepath.Join(mirror, "locked")
+	if err := os.Mkdir(locked, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	_ = os.WriteFile(filepath.Join(locked, "hidden.bin"), []byte("unseen"), 0o600)
+	secret := filepath.Join(mirror, "secret.bin")
+	_ = os.WriteFile(secret, []byte("unseen"), 0o600)
+	for _, q := range []string{locked, secret} {
+		if err := os.Chmod(q, 0); err != nil {
+			t.Fatal(err)
+		}
+	}
+	t.Cleanup(func() { _ = os.Chmod(locked, 0o755); _ = os.Chmod(secret, 0o600) })
+
+	r := Inspect(p, Options{RepoMirror: mirror})
+	if r.Status != checks.NotTested {
+		t.Fatalf("status = %s, want NOT_TESTED over unread entries: %s", r.Status, r.Notes)
+	}
+	for _, want := range []string{"locked", "secret.bin"} {
+		if !strings.Contains(r.Notes, want) {
+			t.Errorf("the unread entry %q must be named, got %q", want, r.Notes)
+		}
+	}
+
+	elf := append([]byte{0x7f, 'E', 'L', 'F'}, make([]byte, 16)...)
+	_ = os.WriteFile(filepath.Join(mirror, "helper"), elf, 0o600)
+	if r := Inspect(p, Options{RepoMirror: mirror}); r.Status != checks.Fail {
+		t.Fatalf("an executable beside an unread entry must still FAIL, got %s: %s", r.Status, r.Notes)
+	}
+}
+
+// TestScriptNamedExecutableFails: files named .py, .sh, .js, or .rb were
+// counted as scripts without being read, so an ELF named setup.py PASSed.
+// Every file is now read for an executable or archive signature, whatever
+// its name. Falsification: skip script-named files before reading them and
+// these PASS.
+func TestScriptNamedExecutableFails(t *testing.T) {
+	p := writeFixture(t, "clean-Q5_K_M.gguf", gguftest.BuildGGUF(gguftest.Clean()))
+	pe := make([]byte, 0x80)
+	copy(pe, "MZ")
+	pe[0x3c] = 0x40
+	copy(pe[0x40:], "PE\x00\x00")
+	for name, body := range map[string][]byte{
+		"setup.py":       append([]byte{0x7f, 'E', 'L', 'F'}, make([]byte, 16)...),
+		"run.sh":         pe,
+		"bin/install.js": append([]byte{0xcf, 0xfa, 0xed, 0xfe}, make([]byte, 16)...),
+	} {
+		mirror := t.TempDir()
+		_ = os.WriteFile(filepath.Join(mirror, "config.json"), []byte("{}"), 0o600)
+		target := filepath.Join(mirror, filepath.FromSlash(name))
+		_ = os.MkdirAll(filepath.Dir(target), 0o755)
+		if err := os.WriteFile(target, body, 0o600); err != nil {
+			t.Fatal(err)
+		}
+		r := Inspect(p, Options{RepoMirror: mirror})
+		if r.Status != checks.Fail {
+			t.Errorf("%s: status = %s, want FAIL for an executable named like a script: %s", name, r.Status, r.Notes)
+			continue
+		}
+		if len(r.Findings) != 1 || r.Findings[0].Span != name {
+			t.Errorf("%s: the finding must name the file, got %+v", name, r.Findings)
+		}
+	}
+
+	// An archive named like a script is not scanned inside, so it is named.
+	mirror := t.TempDir()
+	zip := append([]byte{0x50, 0x4b, 0x03, 0x04}, make([]byte, 60)...)
+	_ = os.WriteFile(filepath.Join(mirror, "loader.py"), zip, 0o600)
+	if r := Inspect(p, Options{RepoMirror: mirror}); r.Status != checks.NotTested || !strings.Contains(r.Notes, "loader.py (zip)") {
+		t.Errorf("a zip named loader.py: status = %s, notes %q; want NOT_TESTED naming it", r.Status, r.Notes)
+	}
+}
+
+// TestInspectRepoReadsScriptNamedFiles: a directory scan whose weights carry
+// no metadata lists the directory alone, through the same reader.
+func TestInspectRepoReadsScriptNamedFiles(t *testing.T) {
+	dir := t.TempDir()
+	_ = os.WriteFile(filepath.Join(dir, "config.json"), []byte("{}"), 0o600)
+	_ = os.WriteFile(filepath.Join(dir, "setup.py"), append([]byte{0x7f, 'E', 'L', 'F'}, make([]byte, 16)...), 0o600)
+	if r := InspectRepo(dir); r.Status != checks.Fail {
+		t.Fatalf("status = %s, want FAIL for an ELF named setup.py: %s", r.Status, r.Notes)
+	}
+}
+
 func TestEmbeddedScriptInMetadataFails(t *testing.T) {
 	kvs := gguftest.WithMeta("general.name", gguftest.Str("general.name", "<script>fetch('http://x')</script>"))
 	p := writeFixture(t, "payload-Q5_K_M.gguf", gguftest.BuildGGUF(kvs))

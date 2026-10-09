@@ -326,6 +326,8 @@ func Cases() []Case {
 			repo(map[string][]byte{"pytorch_model.bin": torchZip(global2("posix", "system", Payload))})},
 		{"dir-native-executable", "model directory", "a native executable shipped in the repository", srcPayloadMeta, "File inventory and payloads", Detect,
 			repo(map[string][]byte{"tools/helper": elfHeader})},
+		{"dir-executable-named-script", "model directory", "a native executable named setup.py", srcPayloadMeta, "File inventory and payloads", Detect,
+			repo(map[string][]byte{"setup.py": elfHeader})},
 		{"dir-template-ssti", "model directory", "SSTI in chat_template.jinja", srcGGUFSSTI, "Chat template (hero)", Detect,
 			repo(map[string][]byte{"chat_template.jinja": []byte("{{ cycler.__init__.__globals__.os.popen('" + Payload + "').read() }}")})},
 		{"dir-normalizer-injects-special", "model directory", "a normalizer that rewrites input into a special token", srcTokenizer, "Tokenizer config", Detect,

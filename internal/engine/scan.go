@@ -26,7 +26,7 @@ import (
 )
 
 // CheckSetVersion names the set of checks this engine runs.
-const CheckSetVersion = "tier1/0.6"
+const CheckSetVersion = "tier1/0.7"
 
 // Version is the socair version: "dev" in a source build, the release tag
 // in a release build (scripts/build-release.sh sets it with -ldflags -X).

@@ -30,18 +30,18 @@ fails the build, and so does an improvement until the case is updated.
   models are measured separately, on real corpora, in
   [false-positive-baseline.md](false-positive-baseline.md).
 
-## Socair (check set tier1/0.6, 2026-10-04)
+## Socair (check set tier1/0.7, 2026-10-09)
 
 | Check row | Cases | Detected (FAIL or LEAD) | Withheld as a gap (NOT_TESTED) | Missed (PASS) |
 |---|---|---|---|---|
 | Chat template (hero) | 8 | 7 | 0 | 1 |
-| File inventory and payloads | 5 | 5 | 0 | 0 |
+| File inventory and payloads | 6 | 6 | 0 | 0 |
 | Format and structure | 2 | 2 | 0 | 0 |
 | Known-bad hash match | 1 | 1 | 0 | 0 |
 | Pickle opcode scan | 17 | 17 | 0 | 0 |
 | Remote code | 1 | 1 | 0 | 0 |
 | Tokenizer config | 3 | 3 | 0 | 0 |
-| **All** | **37** | **36** | **0** | **1** |
+| **All** | **38** | **37** | **0** | **1** |
 
 Benign controls flagged (FAIL or LEAD on any row): 0 of 5.
 
@@ -86,6 +86,7 @@ Benign controls flagged (FAIL or LEAD on any row): 0 of 5.
 | `dir-remote-code` | model directory | auto_map pointing at repository code that runs a command | Remote code | LEAD | medium |
 | `dir-pickle-weights` | model directory | pytorch_model.bin with a pickle gadget beside safe weights | Pickle opcode scan | FAIL | critical |
 | `dir-native-executable` | model directory | a native executable shipped in the repository | File inventory and payloads | FAIL | critical |
+| `dir-executable-named-script` | model directory | a native executable named setup.py | File inventory and payloads | FAIL | critical |
 | `dir-template-ssti` | model directory | SSTI in chat_template.jinja | Chat template (hero) | FAIL | critical |
 | `dir-normalizer-injects-special` | model directory | a normalizer that rewrites input into a special token | Tokenizer config | LEAD | high |
 | `dir-known-bad-hash` | model directory | a file whose hash is on the known-bad list | Known-bad hash match | FAIL | critical |
@@ -104,7 +105,9 @@ Versions:
 - Fickling 0.1.12 (Trail of Bits)
 
 Each ran with default settings, and its verdict was read as its documentation
-describes. A *suspicious* result counts as a finding, as Socair's LEAD does:
+describes. This comparison predates `dir-executable-named-script`, added with
+check set tier1/0.7, so its model-directory counts cover the six cases before
+it; the other scanners have not been run on that case. A *suspicious* result counts as a finding, as Socair's LEAD does:
 picklescan's suspicious globals and Fickling's SUSPICIOUS. "Not scanned" means
 the tool skipped the file, could not parse it, or does not support the format.
 
@@ -165,6 +168,7 @@ How to read it:
 | `control-safetensors` | clean | clean | clean | could not scan | could not scan |
 | `control-torch-zip` | clean | clean | finding (suspicious) | could not scan | could not scan |
 | `dir-known-bad-hash` | finding | clean | could not scan | could not scan | could not scan |
+| `dir-executable-named-script` | finding | not run | not run | not run | not run |
 | `dir-native-executable` | finding | clean | could not scan | could not scan | could not scan |
 | `dir-normalizer-injects-special` | finding | clean | could not scan | could not scan | could not scan |
 | `dir-pickle-weights` | finding | finding | finding | could not scan | finding |

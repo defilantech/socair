@@ -10,15 +10,20 @@ Everything here is offline. There is no network call at scan time.
 ## 1. Repo mirror, `SOCAIR_REPO_MIRROR`
 
 A directory holding the model repository's file listing as delivered. The
-inventory check walks it and flags real binary executables (ELF, PE, Mach-O,
-archives). Scripts and config files (`.py`, `.sh`, `.js`) are inventoried, not
-failed, because model repos legitimately ship them.
+inventory check walks it and reads the start of every file, whatever its name:
+a native executable (ELF, PE, Mach-O) is a FAIL, and an archive is named as
+unscanned. Scripts and config files (`.py`, `.sh`, `.js`) are inventoried, not
+failed, because model repos legitimately ship them; an executable named
+`setup.py` is still an executable.
 
 - Moves `File inventory and payloads` from NOT_TESTED to PASS (or FAIL on a
   binary).
 - Layout: the mirror is the root; any subdirectory structure is fine.
 - Absent: the repo side of the inventory note says the listing was not
   inspected, and the row stays NOT_TESTED.
+- Missing, empty, or not a directory: NOT_TESTED with the reason. An entry the
+  walk cannot read is named and leaves the row NOT_TESTED, unless a binary
+  elsewhere already FAILs it.
 
 ## 2. Denylist, `SOCAIR_DENYLIST`
 
