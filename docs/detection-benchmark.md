@@ -29,7 +29,8 @@ generated corpus, on 2026-10-04; CI does not re-run them.
   follow the comparison table.
 - **The attacks are defanged.** Each case keeps the attack's structure (the
   gadget, the opcodes, the archive trick, the template construct) and swaps its
-  payload for `echo socair-benchmark`. Every scanner here, Socair included,
+  payload for `echo socair-benchmark`, or, for a template that injects an
+  instruction, a benign instruction in its place. Every scanner here, Socair included,
   reads structure and never loads the file, so a defanged reproduction is
   detected as the original would be.
 - **Live samples are not here yet.** These exist only as real malicious files

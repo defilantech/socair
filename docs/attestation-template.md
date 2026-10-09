@@ -9,7 +9,7 @@
 
 This document is the artifact a security buyer files. Fill the bracketed fields per scan and leave the fixed wording unchanged. Two elements are fixed and must not be edited per artifact:
 
-- The bounded statement in Section 7: one of two fixed sentences, picked from the check rows.
+- The bounded statement in Section 7: one of four fixed sentences, picked from the check rows (a pair for Tier 1, a pair for a report with Tier 2 measurements).
 - The published ceiling in Section 8.
 
 ---
