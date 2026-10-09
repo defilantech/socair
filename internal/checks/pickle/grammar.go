@@ -194,17 +194,6 @@ func (g *validation) conforms() bool {
 	return len(g.gaps) == 0 && g.broken == "" && len(g.violations) == 0
 }
 
-func (g *validation) worst() checks.Status {
-	s := checks.Pass
-	for _, v := range g.violations {
-		if v.status == checks.Fail {
-			return checks.Fail
-		}
-		s = checks.Lead
-	}
-	return s
-}
-
 func (g *validation) gap(reason string) {
 	for _, r := range g.gaps {
 		if r == reason {
