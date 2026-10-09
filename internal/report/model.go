@@ -123,9 +123,12 @@ var passMeaning = map[string]string{
 	"Tokenizer config": "The tokenizer tables are internally consistent, and no control token carries instructions. " +
 		"When a canonical reference table for its family is configured (from a feed or SOCAIR_TOKENIZER_REFERENCE), " +
 		"every token was compared with it and no ordinary token differs; the notes say which reference, or that none was configured or matched.",
-	"Quant match":        "At least one tensor has the base type the declared quantization requires. This checks labeling, not safety.",
-	"Pickle opcode scan": "Every import the pickle makes is on the reviewed safe list.",
-	"Remote code":        "No auto_map entry and no Python file: a loader would run no code from the repository.",
+	"Quant match": "At least one tensor has the base type the declared quantization requires. This checks labeling, not safety.",
+	"Pickle opcode scan": "Every pickle conforms to grammar socair-wo/1: protocol 2 or 3 as CPython writes it, building only tensors and plain containers " +
+		"through calls whose arguments were checked, and every storage it references matches a record of exactly its size. " +
+		"A NumPy array with no object dtype holds no pickle, and its data matches its shape. " +
+		"Not covered: a loader bug, a reader that parses the bytes differently, code carried as data, or a tampered Python environment.",
+	"Remote code": "No auto_map entry and no Python file: a loader would run no code from the repository.",
 	"Hash, provenance, lineage": "A trusted publisher signature verified over this artifact, or an operator-supplied manifest binds this hash " +
 		"to a repository at an immutable commit. The notes say which; a manifest is the operator's claim, not a signature.",
 	"Known-bad hash match": "This exact hash is not on the configured denylist. Any changed byte gives a new hash, so it catches only known files.",
@@ -414,7 +417,7 @@ func DefaultCeiling() []string {
 		"Behavioral safety: jailbreak susceptibility, harmful capability, and bias.",
 		"Malicious behavior that only emerges at runtime under real traffic.",
 		"Artifact formats we do not parse.",
-		"Pickle code execution reached only through imports on the reviewed safe list.",
+		"Pickle code execution through a reviewed class's state, loader bugs, parse differentials, a tampered environment, or code carried as data for a later stage to run.",
 		"Chat-template instructions written as ordinary guidance (no override or concealment phrase, URL, hidden or obfuscated text, or condition on message content): the text a rendered template adds is listed in the report, not judged, unless the template matches a reviewed template.",
 		"Legal review of a license, and compliance with its usage policies. The license is identified, and checked only against a policy you configure.",
 	}
