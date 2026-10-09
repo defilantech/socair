@@ -91,7 +91,7 @@ func orRoot(p string) string {
 }
 
 // TestHandWrittenReportsMatchSchema: the engine's output is the Go model, so
-// TestSchemaMatchesModel covers it. The golden and the sales demo are written
+// TestSchemaMatchesModel covers it. The golden and the sample report are written
 // by hand, so their keys are checked against the closed schema directly.
 func TestHandWrittenReportsMatchSchema(t *testing.T) {
 	raw, err := os.ReadFile(filepath.Join("..", "..", "docs", "report-schema", "v1.json"))
@@ -117,6 +117,30 @@ func TestHandWrittenReportsMatchSchema(t *testing.T) {
 		for _, k := range unknownKeys("", doc, schema) {
 			t.Errorf("%s: %s is not in the schema", p, k)
 		}
+	}
+}
+
+// TestSchemaBoundedStatementIsTheFixedPair: the schema admits exactly the two
+// fixed sentences, so the published contract and the engine cannot drift.
+// Falsification: edit either sentence in one place only and this fails.
+func TestSchemaBoundedStatementIsTheFixedPair(t *testing.T) {
+	raw, err := os.ReadFile(filepath.Join("..", "..", "docs", "report-schema", "v1.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var schema struct {
+		Properties struct {
+			BoundedStatement struct {
+				Enum []string `json:"enum"`
+			} `json:"bounded_statement"`
+		} `json:"properties"`
+	}
+	if err := json.Unmarshal(raw, &schema); err != nil {
+		t.Fatal(err)
+	}
+	want := []string{BoundedStatementNoIndicators, BoundedStatementIndicators}
+	if got := schema.Properties.BoundedStatement.Enum; !reflect.DeepEqual(got, want) {
+		t.Fatalf("schema bounded_statement enum = %q, want %q", got, want)
 	}
 }
 

@@ -1,13 +1,13 @@
 <script lang="ts">
 	import type { Document } from '$lib/api';
-	import { statusPill, promotionLabel, promotionPill, counts, countOrder } from '$lib/report';
+	import { statusPill, promotionLabel, promotionPill, acceptedSurfaces, counts, countOrder } from '$lib/report';
 
 	// The engine's report, read-only. Section numbers follow the attestation
-	// template (docs/attestation-template.md), so the bounded statement's
-	// "Section 2/3/4/8" references resolve on this page. `status` shows the
-	// document's promotion state; a page with its own status block (a model
-	// page) passes false so one state, and its accepted gaps, are not shown
-	// twice.
+	// template (docs/attestation-template.md), and the bounded statement's
+	// closing reference, "Out of scope", is section 8's heading here. `status`
+	// shows the document's promotion state; a page with its own status block
+	// (a model page) passes false so one state, and its accepted gaps, are not
+	// shown twice.
 	let {
 		report,
 		signed = false,
@@ -18,6 +18,7 @@
 	const countLabel = { fail: 'FAIL', lead: 'LEAD', notTested: 'NOT TESTED', pass: 'PASS' } as const;
 	const countPill = { fail: 'fail', lead: 'lead', notTested: 'not-tested', pass: 'pass' } as const;
 	const pa = $derived(report.promotion_authorization);
+	const accepted = $derived(acceptedSurfaces(report));
 </script>
 
 <div class="report">
@@ -115,14 +116,14 @@
 		{/if}
 	</section>
 
-	{#if pa.conditions || (status && pa.accepted_surfaces?.length)}
+	{#if pa.conditions || (status && accepted.length)}
 		<section aria-labelledby="sec-9">
 			<h2 id="sec-9">9. Promotion authorization</h2>
 			{#if pa.conditions}<p class="prose">{pa.conditions}</p>{/if}
-			{#if status && pa.accepted_surfaces?.length}
+			{#if status && accepted.length}
 				<p class="meta">Accepted, not tested{pa.accepted_by ? `, by ${pa.accepted_by}` : ''}:</p>
 				<ul class="surfaces">
-					{#each pa.accepted_surfaces as s (s)}<li>{s}</li>{/each}
+					{#each accepted as s (s)}<li>{s}</li>{/each}
 				</ul>
 			{/if}
 		</section>

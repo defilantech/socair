@@ -1,6 +1,14 @@
 import { describe, it, expect } from 'vitest';
 import type { Document } from './api';
-import { statusPill, promotionLabel, promotionPill, counts, countOrder, availableLevels } from './report';
+import {
+	statusPill,
+	promotionLabel,
+	promotionPill,
+	acceptedSurfaces,
+	counts,
+	countOrder,
+	availableLevels
+} from './report';
 
 function doc(state: string, statuses: string[]): Document {
 	return {
@@ -30,7 +38,7 @@ describe('status treatment', () => {
 		expect(statusPill('PASS')).toBe('pass');
 		expect(statusPill('FAIL')).toBe('fail');
 	});
-	it('gives LEAD its own escalation treatment, never pass or the gap look', () => {
+	it('gives LEAD its own treatment, never pass or the gap look', () => {
 		expect(statusPill('LEAD')).toBe('lead');
 		expect(statusPill('LEAD')).not.toBe('pass');
 		expect(statusPill('LEAD')).not.toBe('not-tested');
@@ -49,14 +57,33 @@ describe('promotion badge', () => {
 	it('treats conditions as a caution, never clean green', () => {
 		expect(promotionPill(doc('authorized_with_conditions', []))).not.toBe('pass');
 	});
-	// PRODUCT.md (Capabilities and Constraints): conditions are amber. The
-	// grey NOT_TESTED look would make one state read two ways on a model page.
+	// Conditions are amber. The grey NOT_TESTED look would make one state read
+	// two ways on a model page.
 	it('gives conditions the amber caution, not the gap look', () => {
 		expect(promotionPill(doc('authorized_with_conditions', []))).toBe('conditions');
 		expect(promotionPill(doc('authorized_with_conditions', []))).not.toBe('not-tested');
 	});
 	it('keeps escalated review red', () => {
 		expect(promotionPill(doc('escalated', []))).toBe('fail');
+	});
+});
+
+// A withheld report used to list its gaps as accepted surfaces, and the page
+// said "Accepted, not tested" when nobody had accepted anything. Only an
+// authorization with conditions accepts.
+describe('accepted surfaces', () => {
+	const withSurfaces = (state: string) => {
+		const d = doc(state, ['NOT_TESTED']);
+		d.promotion_authorization.accepted_surfaces = ['c0'];
+		return d;
+	};
+	it('shows what an authorization with conditions accepted', () => {
+		expect(acceptedSurfaces(withSurfaces('authorized_with_conditions'))).toEqual(['c0']);
+	});
+	it('shows nothing accepted for any other state, whatever the document lists', () => {
+		for (const state of ['withheld', 'escalated', 'authorized']) {
+			expect(acceptedSurfaces(withSurfaces(state)), state).toEqual([]);
+		}
 	});
 });
 

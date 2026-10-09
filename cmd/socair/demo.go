@@ -9,8 +9,8 @@ import (
 	"github.com/defilantech/socair/internal/report"
 )
 
-// demoCmd renders the fabricated sample attestation for a sales conversation,
-// marked SAMPLE on every page. No real artifact is read.
+// demoCmd renders the fabricated sample attestation, which shows what a report
+// looks like, marked SAMPLE on every page. No real artifact is read.
 func demoCmd() error {
 	d, err := demo.Document()
 	if err != nil {

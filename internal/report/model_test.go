@@ -3,8 +3,10 @@ package report
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/defilantech/socair/internal/gguf"
@@ -27,6 +29,10 @@ func TestGoldenValidates(t *testing.T) {
 	d, _ := loadGolden(t)
 	if problems := Validate(d); len(problems) != 0 {
 		t.Fatalf("golden has validation problems: %v", problems)
+	}
+	// The golden is hand-written, so it is held to the fixed wording here.
+	if d.AssuranceLevel != Tier1Assurance() {
+		t.Errorf("golden assurance level %+v is not the fixed Tier 1 wording", d.AssuranceLevel)
 	}
 }
 
@@ -104,6 +110,74 @@ func TestValidateCatchesAlteredBoundedStatement(t *testing.T) {
 	}
 }
 
+// TestBoundedStatementFollowsTheRows: one fixed sentence was printed on every
+// report, so a report with a FAIL said its checks "found no indicators". The
+// sentence is now picked from the rows. Falsification: return the
+// no-indicators sentence whatever the rows say and this fails.
+func TestBoundedStatementFollowsTheRows(t *testing.T) {
+	rows := func(ss ...Status) []CheckResult {
+		var out []CheckResult
+		for i, s := range ss {
+			out = append(out, CheckResult{Name: fmt.Sprintf("c%d", i), Status: s})
+		}
+		return out
+	}
+	for _, c := range []struct {
+		rows []CheckResult
+		want string
+	}{
+		{rows(StatusPass), BoundedStatementNoIndicators},
+		{rows(StatusPass, StatusNotTested), BoundedStatementNoIndicators},
+		{rows(StatusNotTested), BoundedStatementNoIndicators},
+		{rows(StatusPass, StatusFail), BoundedStatementIndicators},
+		{rows(StatusNotTested, StatusLead), BoundedStatementIndicators},
+		{rows(StatusFail, StatusLead, StatusNotTested), BoundedStatementIndicators},
+	} {
+		if got := BoundedStatementFor(c.rows); got != c.want {
+			t.Errorf("%v: got %q, want %q", c.rows, got, c.want)
+		}
+	}
+	if strings.Contains(BoundedStatementIndicators, "found no indicators") {
+		t.Error("the indicators sentence must not say no indicators were found")
+	}
+	if strings.Contains(BoundedStatementNoIndicators, "node class") || strings.Contains(BoundedStatementIndicators, "node class") {
+		t.Error("Tier 1 runs on no node class; the bounded statement must not name one")
+	}
+}
+
+// TestValidateBindsTheBoundedStatementToTheRows: Validate re-derives the
+// sentence from the check rows, so the clean sentence over a FAIL or LEAD, or
+// the indicators sentence over clean rows, is refused even though each is one
+// of the fixed sentences. Falsification: accept either fixed sentence in
+// Validate and a report claiming "no indicators" over a FAIL validates.
+func TestValidateBindsTheBoundedStatementToTheRows(t *testing.T) {
+	boundedProblem := func(problems []string) bool {
+		for _, p := range problems {
+			if strings.Contains(p, "bounded_statement") {
+				return true
+			}
+		}
+		return false
+	}
+	for _, s := range []Status{StatusFail, StatusLead} {
+		d, _ := loadGolden(t)
+		d.Checks[0].Status = s
+		d.BoundedStatement = BoundedStatementNoIndicators
+		if !boundedProblem(Validate(d)) {
+			t.Errorf("the no-indicators sentence over a %s row must fail validation", s)
+		}
+		d.BoundedStatement = BoundedStatementIndicators
+		if problems := Validate(d); boundedProblem(problems) {
+			t.Errorf("the indicators sentence over a %s row should validate, got %v", s, problems)
+		}
+	}
+	d, _ := loadGolden(t)
+	d.BoundedStatement = BoundedStatementIndicators
+	if !boundedProblem(Validate(d)) {
+		t.Error("the indicators sentence over rows with no FAIL or LEAD must fail validation")
+	}
+}
+
 func TestPromotionStateRules(t *testing.T) {
 	t.Run("unknown state", func(t *testing.T) {
 		d, _ := loadGolden(t)
@@ -124,14 +198,41 @@ func TestPromotionStateRules(t *testing.T) {
 		d, _ := loadGolden(t)
 		d.PromotionAuthorization.State = StateAuthorized
 		d.PromotionAuthorization.Authorized = true
+		d.PromotionAuthorization.AcceptedSurfaces = []string{"File inventory and payloads"}
 		if len(Validate(d)) == 0 {
 			t.Fatal("an authorized report with accepted surfaces must fail validation")
+		}
+	})
+	// A withheld report used to carry its gaps as accepted_surfaces, which
+	// every renderer printed as "Accepted, not tested" when nobody had
+	// accepted anything. Only authorized_with_conditions accepts.
+	// Falsification: refuse accepted_surfaces on authorized alone and the
+	// withheld and escalated cases validate.
+	t.Run("only conditions carry an acceptance", func(t *testing.T) {
+		for _, state := range []string{StateWithheld, StateEscalated} {
+			for field, set := range map[string]func(*PromotionAuthorization){
+				"accepted_surfaces":  func(pa *PromotionAuthorization) { pa.AcceptedSurfaces = []string{"File inventory and payloads"} },
+				"accepted_by":        func(pa *PromotionAuthorization) { pa.AcceptedBy = "ciso@example.com" },
+				"accepted_at":        func(pa *PromotionAuthorization) { pa.AcceptedAt = "2026-09-29T00:00:00Z" },
+				"acceptance_expires": func(pa *PromotionAuthorization) { pa.AcceptanceExpires = "2027-01-31T00:00:00Z" },
+			} {
+				d, _ := loadGolden(t)
+				d.PromotionAuthorization.State = state
+				if problems := Validate(d); len(problems) != 0 {
+					t.Fatalf("the golden in state %s should validate before the edit, got %v", state, problems)
+				}
+				set(&d.PromotionAuthorization)
+				if len(Validate(d)) == 0 {
+					t.Errorf("a report in state %s carrying %s must fail validation", state, field)
+				}
+			}
 		}
 	})
 	t.Run("conditions need a named acceptance", func(t *testing.T) {
 		d, _ := loadGolden(t)
 		d.PromotionAuthorization.State = StateAuthorizedWithConditions
 		d.PromotionAuthorization.Authorized = true
+		d.PromotionAuthorization.AcceptedSurfaces = d.Findings.NotTested
 		d.PromotionAuthorization.AcceptedBy = ""
 		if len(Validate(d)) == 0 {
 			t.Fatal("authorized_with_conditions without accepted_by must fail validation")
@@ -157,10 +258,13 @@ func TestPromotionStateRules(t *testing.T) {
 // validate. Falsification: drop the binding in validatePromotion and a forged
 // report crosses into the clean store.
 func TestPromotionStateBoundToChecks(t *testing.T) {
+	// setStatus keeps the bounded statement in step with the rows, so the
+	// only thing wrong with each forged document is its promotion state.
 	setStatus := func(d *Document, name string, s Status) {
 		for i := range d.Checks {
 			if d.Checks[i].Name == name {
 				d.Checks[i].Status = s
+				d.BoundedStatement = BoundedStatementFor(d.Checks)
 				return
 			}
 		}
@@ -204,7 +308,7 @@ func TestPromotionStateBoundToChecks(t *testing.T) {
 		d.PromotionAuthorization.Authorized = true
 		d.PromotionAuthorization.AcceptedBy = "ciso@example.com"
 		if len(Validate(d)) == 0 {
-			t.Fatal("authorized_with_conditions over a FAIL must fail validation; a FAIL clears only by escalation")
+			t.Fatal("authorized_with_conditions over a FAIL must fail validation; no acceptance clears a FAIL")
 		}
 	})
 	t.Run("conditions must accept every gap", func(t *testing.T) {
@@ -223,9 +327,9 @@ func TestPromotionStateBoundToChecks(t *testing.T) {
 		d.PromotionAuthorization.State = StateAuthorizedWithConditions
 		d.PromotionAuthorization.Authorized = true
 		d.PromotionAuthorization.AcceptedBy = "ciso@example.com"
-		d.PromotionAuthorization.AcceptedSurfaces = append(d.PromotionAuthorization.AcceptedSurfaces, "Format and structure")
+		d.PromotionAuthorization.AcceptedSurfaces = append(d.Findings.NotTested, "Format and structure")
 		if len(Validate(d)) == 0 {
-			t.Fatal("an acceptance over a LEAD must fail validation; a LEAD clears only by escalation")
+			t.Fatal("an acceptance over a LEAD must fail validation; no acceptance clears a LEAD")
 		}
 	})
 	t.Run("all PASS authorizes", func(t *testing.T) {
@@ -254,8 +358,8 @@ func TestNewFromManifest(t *testing.T) {
 	if len(d.Checks) != 0 {
 		t.Fatalf("a seeded document runs no checks yet, got %d rows", len(d.Checks))
 	}
-	if d.BoundedStatement != BoundedStatement {
-		t.Error("bounded statement not set from the fixed constant")
+	if d.BoundedStatement != BoundedStatementNoIndicators {
+		t.Error("a seeded document has no FAIL or LEAD, so it carries the no-indicators sentence")
 	}
 	if d.Artifact.SHA256 != m.SHA256 {
 		t.Error("artifact hash not carried into the report")

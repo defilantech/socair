@@ -9,10 +9,8 @@
 
 This document is the artifact a security buyer files. Fill the bracketed fields per scan and leave the fixed wording unchanged. Two elements are fixed and must not be edited per artifact:
 
-- The bounded statement in Section 7.
+- The bounded statement in Section 7: one of two fixed sentences, picked from the check rows.
 - The published ceiling in Section 8.
-
-Section references in the bounded statement point at this template's numbering.
 
 ---
 
@@ -69,22 +67,25 @@ canonical manifest of those hashes (`socair.modeldir/v1`, see
 
 ## 4. Checks performed
 
-Each row returns PASS, FAIL, LEAD, or NOT_TESTED. FAIL is positive evidence. LEAD is a suspicious signal that is not conclusive, such as instruction-override language in a chat template; it is not a gap, so a named acceptance never clears it, only escalated review. An ambiguous or unverifiable result is recorded as NOT_TESTED with a named reason, never as a silent pass.
+Each row returns PASS, FAIL, LEAD, or NOT_TESTED. FAIL is positive evidence. LEAD is a suspicious signal that is not conclusive, such as instruction-override language in a chat template; it is not a gap, so no acceptance clears it. A FAIL or a LEAD withholds promotion and needs a person's review outside Socair. An ambiguous or unverifiable result is recorded as NOT_TESTED with a named reason, never as a silent pass.
 
 Every row also carries a fixed **PASS means** line (`pass_means`): what that check's PASS establishes and where it stops, for example that the tokenizer check tests internal consistency and does not compare against a canonical copy. The wording is fixed per check (`report.PassMeaning`), never per artifact.
 
+The rows that run depend on the format: every report carries structure, inventory, provenance, and the known-bad hash; a GGUF adds the chat template, tokenizer, and quant rows; a model directory adds the chat template, tokenizer, and remote code rows; a pickle checkpoint adds the pickle row.
+
 | Check | Looks for | Result | Evidence | Notes |
 |---|---|---|---|---|
-| Format and structure | Malformed GGUF/safetensors structure, unexpected tensors | `[result]` | `[evidence]` | `[notes]` |
-| Chat template (hero) | Code reach, hidden or obfuscated text, and override or content-triggered instructions in the chat template | `[result]` | `[evidence]` | `[notes]` |
-| Tokenizer config | Tokenizer metadata anomalies | `[result]` | `[evidence]` | `[notes]` |
-| Safetensors header and opcodes | Serialized code gadgets in headers or pickle opcodes | `[result]` | `[evidence]` | `[notes]` |
+| Format and structure | Malformed container structure, unexpected tensors | `[result]` | `[evidence]` | `[notes]` |
+| File inventory and payloads | Hidden files, embedded payloads, unexpected executables | `[result]` | `[evidence]` | `[notes]` |
 | Hash, provenance, lineage | Traceable origin: a manifest bound to this hash, from an immutable upstream commit | `[result]` | `[evidence]` | `[notes]` |
 | Known-bad hash match | Match against the known-bad artifact denylist | `[result]` | `[evidence]` | `[notes]` |
+| Chat template (hero) | Code reach, hidden or obfuscated text, and override or content-triggered instructions in the chat template | `[result]` | `[evidence]` | `[notes]` |
+| Tokenizer config | Tampered tokenizer tables: special-token ids, token types, control tokens | `[result]` | `[evidence]` | `[notes]` |
+| Quant match (GGUF) | Declared quantization (file name) against the tensor types in the file | `[result]` | `[evidence]` | `[notes]` |
 | Remote code (model directory) | Code a loader would run: auto_map entries and Python files (trust_remote_code) | `[result]` | `[evidence]` | `[notes]` |
-| Quant match | Declared quantization against observed weight layout | `[result]` | `[evidence]` | `[notes]` |
-| Forward-pass trigger probes (Tier 2) | Behavior under the production serving stack | `[result / not run]` | `[evidence]` | `[notes]` |
-| Serving-stack differential (Tier 2) | Same artifact behaving differently across stacks | `[result / not run]` | `[evidence]` | `[notes]` |
+| Pickle opcode scan (pickle) | Imports in pickle-based model files that reach code execution | `[result]` | `[evidence]` | `[notes]` |
+
+Tier 2 checks (forward-pass trigger probes, a serving-stack differential) are not part of this release. A Tier 1 report lists them in Section 8 as not run, never as rows.
 
 ### Severity and framework mapping
 
@@ -114,7 +115,7 @@ No Tier 1 check addresses AML.T0018 (Manipulate AI Model) or LLM04 (Data and Mod
 
   `[fail_entries]`
 
-- LEAD entries: the suspicious signal, where it was found, and the escalation it needs.
+- LEAD entries: the suspicious signal, where it was found, and what a reviewer should look at.
 
   `[lead_entries]`
 
@@ -138,7 +139,15 @@ What Tier 2 would add, and whether it ran: `[tier2_note]`
 
 ## 7. Bounded statement (fixed)
 
-> For the artifact identified by hash in Section 2, served on the node class named in Section 3, the checks listed in Section 4 found no indicators within their stated scope. Every surface outside that scope is enumerated as NOT_TESTED in Section 8.
+The statement is one of two fixed sentences, picked from the check rows (`report.BoundedStatementFor`). Validation picks it again from the rows and refuses a report whose statement differs, so neither sentence can be edited, and a report with a FAIL or LEAD can never carry the first.
+
+When no row is FAIL or LEAD:
+
+> For the artifact identified by its hash, the Tier 1 checks that returned PASS found no indicators within their stated scope. Rows marked NOT_TESTED were not examined, for the reason each row gives. Tier 1 runs no inference, so no model behavior was tested. Every surface outside that scope is listed under Out of scope.
+
+When any row is FAIL or LEAD:
+
+> For the artifact identified by its hash, the Tier 1 checks found the indicators this report lists: each FAIL is positive evidence, and each LEAD is a suspicious signal that needs review. Rows marked NOT_TESTED were not examined, for the reason each row gives. Tier 1 runs no inference, so no model behavior was tested. Every surface outside that scope is listed under Out of scope.
 
 ## 8. Out of scope and NOT_TESTED (fixed ceiling)
 
@@ -164,24 +173,19 @@ Node classes not tested for this artifact: `[untested_node_classes]`
 
 Does this attestation authorize promotion into the clean store? `[yes / no]`
 
+State: `[authorized / authorized_with_conditions / withheld / escalated]`. Accepted surfaces, acceptor, and expiry appear only when the state is authorized_with_conditions.
+
 Level: `[Tier 1 only / Tier 2]`
 
 Conditions: `[conditions]`
 
-## 10. Escalation path
+## 10. Review of a FAIL or LEAD
 
-A FAIL is actionable, not terminal. This attestation explains the FAIL in Section 5 and records how the artifact can be submitted for escalated review.
+A FAIL or a LEAD withholds promotion, and no acceptance clears it. Socair has no override: the airlock admits only an authorized report. Section 5 explains each FAIL and LEAD and where it was found, so a person can review the artifact and this report outside Socair.
 
-Summary: `[escalation_summary]`
+Review summary: `[review_summary]`
 
-Available escalated review:
-
-- Automated Tier 2 battery: forward-pass probes on the production node class. `[tier2_available]`
-- Human analyst addendum: a person reviews the artifact and this report and signs an addendum. `[analyst_available]`
-
-Service levels: `[sla_tiers]`
-
-Escalated review is part of the paid assurance program.
+A chat template a person has reviewed can be added to the reviewed templates of a signed reference-data feed (`docs/feed.md`); a re-scan then treats that template's language as reviewed. Code reach is never cleared that way.
 
 ## 11. Verification and reproducibility
 

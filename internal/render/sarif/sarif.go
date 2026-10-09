@@ -1,7 +1,7 @@
 // Package sarif emits a SARIF 2.1.0 log from a report document.
 //
 // One run, one result per check. The level mapping is deliberate: a FAIL is an
-// error, a LEAD is a warning (a suspicious signal for escalation), a
+// error, a LEAD is a warning (a suspicious signal that needs review), a
 // NOT_TESTED is a note (we did not look; it is not a finding), and a PASS is
 // none.
 package sarif

@@ -2,15 +2,15 @@
 //
 // These read the document. They never invent a status, a count, or a badge the
 // engine did not return. NOT_TESTED is a deliberate non-signal and must never
-// render with the pass treatment. LEAD is a suspicious signal for escalation
+// render with the pass treatment. LEAD is a suspicious signal that needs review,
 // with its own treatment, never pass and never the neutral gap look.
 
 import type { CheckStatus, Document } from './api';
 
 // Pill is the visual treatment for a status or a promotion state. 'conditions'
 // is the amber caution of an authorization with conditions: never the pass
-// look and never the neutral gap look (PRODUCT.md, Capabilities and
-// Constraints: conditions and needs-acceptance are amber).
+// look and never the neutral gap look. Conditions and needs-acceptance are
+// amber.
 export type Pill = 'pass' | 'fail' | 'lead' | 'not-tested' | 'conditions';
 
 // statusPill maps a check status to its treatment. NOT_TESTED is never pass.
@@ -81,6 +81,15 @@ export function promotionPill(d: Document): Pill {
 	}
 }
 
+// acceptedSurfaces lists what an acceptance covers. Only an authorization with
+// conditions accepts anything, so every other state accepted nothing, whatever
+// the document lists; its gaps are its NOT_TESTED rows.
+export function acceptedSurfaces(d: Document): string[] {
+	const pa = d.promotion_authorization;
+	if (pa.state !== 'authorized_with_conditions') return [];
+	return pa.accepted_surfaces ?? [];
+}
+
 export interface Level {
 	id: string;
 	label: string;
@@ -88,8 +97,8 @@ export interface Level {
 }
 
 // availableLevels lists the assurance levels the wizard offers. Only Tier 1 is
-// runnable today; Tier 2 is the paid forward-pass tier and has no checks, so it
-// must not be selectable.
+// runnable; Tier 2 (forward-pass testing) is not part of this release and has
+// no checks, so it must not be selectable.
 export function availableLevels(): Level[] {
 	return [
 		{ id: 'tier1', label: 'Tier 1 (static)', available: true },

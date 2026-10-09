@@ -3,6 +3,7 @@ package airlock
 import (
 	"errors"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -33,6 +34,52 @@ func TestAssessWithheldVerifiesButDoesNotAdmit(t *testing.T) {
 	}
 	if a.State != report.StateWithheld || a.Admits() == nil {
 		t.Fatalf("state %s admits %v", a.State, a.Admits())
+	}
+}
+
+// TestAdmitsNamesWhatTheWithholdingNeeds: a report withheld only on
+// NOT_TESTED rows was refused with "a FAIL or LEAD is clearable only by
+// escalated review", which named neither its gaps nor the way through. The
+// refusal now follows the reason: gaps need a signed acceptance, and a FAIL
+// or LEAD needs a person's review outside Socair. Falsification: return one
+// message for every withheld report and one of the cases fails.
+func TestAdmitsNamesWhatTheWithholdingNeeds(t *testing.T) {
+	s := trustedStore(t)
+	_, d := authorizedArtifact(t)
+	gap := *d
+	gap.Checks = append([]report.CheckResult(nil), d.Checks...)
+	withholdForGap(&gap)
+	a, err := s.Assess(envelopeFor(t, &gap), time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	msg := a.Admits().Error()
+	for _, want := range []string{"withholds promotion", gap.Checks[0].Name, "NOT_TESTED", "socair accept", "socair sign --acceptance"} {
+		if !strings.Contains(msg, want) {
+			t.Errorf("a gap refusal must say %q, got %q", want, msg)
+		}
+	}
+	if strings.Contains(msg, "FAIL") || strings.Contains(msg, "escalat") {
+		t.Errorf("a report withheld only on gaps has no FAIL or LEAD to review, got %q", msg)
+	}
+
+	fail := *d
+	fail.Checks = append([]report.CheckResult(nil), d.Checks...)
+	fail.Checks[0].Status = report.StatusFail
+	fail.BoundedStatement = report.BoundedStatementFor(fail.Checks)
+	fail.Findings.Fails = []string{fail.Checks[0].Name}
+	fail.PromotionAuthorization = report.PromotionAuthorization{State: report.StateWithheld, Level: "Tier 1 only"}
+	if a, err = s.Assess(envelopeFor(t, &fail), time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	msg = a.Admits().Error()
+	for _, want := range []string{"withholds promotion", "FAIL on " + fail.Checks[0].Name, "no acceptance clears", "a person's review outside Socair"} {
+		if !strings.Contains(msg, want) {
+			t.Errorf("a FAIL refusal must say %q, got %q", want, msg)
+		}
+	}
+	if strings.Contains(msg, "socair accept") || strings.Contains(msg, "escalat") {
+		t.Errorf("a FAIL refusal must not point at an acceptance or an escalation, got %q", msg)
 	}
 }
 

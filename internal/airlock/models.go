@@ -229,7 +229,7 @@ func (s *Store) derive(loc, id string, at time.Time) (Model, *report.Document) {
 				m.Stage = StageReady
 				m.Next = Next{Action: "promote", Command: "socair airlock promote " + shellQuote(art) + " --attestation " + shellQuote(p) + " --store " + shellQuote(s.Root)}
 			case hasFailOrLead(d):
-				m.Stage, m.StageReason = StageBlocked, "a FAIL or LEAD withholds it; only escalated review clears it"
+				m.Stage, m.StageReason = StageBlocked, "a FAIL or LEAD withholds it, and no acceptance clears it; it needs a person's review outside Socair"
 			default:
 				m.Stage = StageNeedsAcceptance
 				m.StageReason = "withheld on NOT_TESTED rows: " + strings.Join(d.Findings.NotTested, ", ")

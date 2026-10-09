@@ -114,6 +114,41 @@ func TestFeedDenylistFailsAListedArtifact(t *testing.T) {
 	}
 }
 
+// TestUnreadLocalDenylistBesideAFeedIsNotTested: a local list that did not
+// load was dropped without a word whenever a feed carried a denylist, so the
+// row PASSed against the feed alone while SOCAIR_DENYLIST named a list no one
+// read. The row is now NOT_TESTED naming it, and a match on the feed still
+// FAILs. Falsification: report the unread list only when no other list
+// loaded, and the first scan PASSes.
+func TestUnreadLocalDenylistBesideAFeedIsNotTested(t *testing.T) {
+	bad := filepath.Join(t.TempDir(), "denylist.txt")
+	if err := os.WriteFile(bad, []byte("garbage\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("SOCAIR_DENYLIST", bad)
+	dir := modelRepo(t, nil)
+	signedFeed(t, map[string]string{"denylist.txt": strings.Repeat("aa", 32) + "  unrelated\n"})
+	d, err := Scan(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if r := row(d, "Known-bad hash match"); r.Status != report.StatusNotTested || !strings.Contains(r.Notes, "not a SHA-256") {
+		t.Fatalf("denylist row %s (%s), want NOT_TESTED naming the unread list", r.Status, r.Notes)
+	}
+
+	digest, _, err := modeldir.Hash(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	signedFeed(t, map[string]string{"denylist.txt": digest + "  known trojaned build\n"})
+	if d, err = Scan(dir); err != nil {
+		t.Fatal(err)
+	}
+	if r := row(d, "Known-bad hash match"); r.Status != report.StatusFail {
+		t.Fatalf("a feed match must still FAIL beside an unread list, got %s (%s)", r.Status, r.Notes)
+	}
+}
+
 // Canonical tokenizers are informational: a note, never a status change.
 func TestFeedTokenizerMatchIsNoted(t *testing.T) {
 	dir := modelRepo(t, nil)

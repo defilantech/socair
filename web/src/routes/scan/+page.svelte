@@ -66,7 +66,7 @@
 					<option value={l.id} disabled={!l.available}>{l.label}</option>
 				{/each}
 			</select>
-			<p class="hint" id="level-hint">Tier 2 is the paid forward-pass tier and has no checks yet.</p>
+			<p class="hint" id="level-hint">Tier 2 (forward-pass testing) is not part of this release.</p>
 		</div>
 		<div class="row-action">
 			<button type="submit" disabled={busy}>{busy ? 'Scanning...' : 'Run the scan'}</button>

@@ -303,6 +303,7 @@ func TestPromoteRefusesWithheld(t *testing.T) {
 	artifact, d := authorizedArtifact(t)
 	// Turn the report into a FAIL: withheld, not clearable here.
 	d.Checks[0].Status = report.StatusFail
+	d.BoundedStatement = report.BoundedStatementFor(d.Checks)
 	d.Findings.Fails = []string{d.Checks[0].Name}
 	d.PromotionAuthorization = report.PromotionAuthorization{State: report.StateWithheld, Level: "Tier 1 only"}
 
@@ -331,6 +332,7 @@ func TestPromoteRefusesWithheld(t *testing.T) {
 func TestPromoteRefusesForgedState(t *testing.T) {
 	artifact, d := authorizedArtifact(t)
 	d.Checks[0].Status = report.StatusFail
+	d.BoundedStatement = report.BoundedStatementFor(d.Checks)
 	d.Findings.Fails = []string{d.Checks[0].Name}
 	// The forgery: the state still claims authorized.
 
@@ -338,6 +340,9 @@ func TestPromoteRefusesForgedState(t *testing.T) {
 	_, err := Promote(s, artifact, writeReport(t, d))
 	if err == nil {
 		t.Fatal("a forged authorized state over a FAIL must not promote")
+	}
+	if !strings.Contains(err.Error(), "over FAIL") {
+		t.Errorf("the refusal must come from the state binding, got %q", err)
 	}
 	if entries, _ := os.ReadDir(s.CleanPath(d.Artifact.SHA256)); len(entries) != 0 {
 		t.Errorf("nothing may cross into the clean store on a forged report, found %d entries", len(entries))

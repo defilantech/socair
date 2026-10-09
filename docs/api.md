@@ -193,7 +193,10 @@ entries a request causes.
 Every error is a non-2xx with `{"error":"<actionable message>"}`.
 
 - `400`: bad input.
-- `404`: a store entry or evidence file that does not exist.
+- `404`: a store entry or evidence file that does not exist, or an `/api` path
+  no route handles. With `--web`, the SPA fallback never answers under `/api`.
+- `405`: a route's path with a method it does not take (including `OPTIONS`);
+  `Allow` lists the methods it does take.
 - `413`: an uploaded attestation over 4 MiB.
 - `422`: understood and refused (a scan failure, an unfilable document, a
   refused promotion, a denied pull, a refused attestation upload).

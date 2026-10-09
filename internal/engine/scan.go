@@ -26,7 +26,7 @@ import (
 )
 
 // CheckSetVersion names the set of checks this engine runs.
-const CheckSetVersion = "tier1/0.6"
+const CheckSetVersion = "tier1/0.7"
 
 // Version is the socair version: "dev" in a source build, the release tag
 // in a release build (scripts/build-release.sh sets it with -ldflags -X).
@@ -261,6 +261,14 @@ func begin(start time.Time, id report.Identity, original string, sig *provenance
 		if m.Source != "" {
 			d.Scope.InputPath = m.Source
 		}
+		// A directory's label otherwise comes from config.json, which the
+		// publisher writes; the repo it was pulled from outranks it.
+		if repo := hubRepo(m.RepoURL); repo != "" && d.Artifact.Format == "model directory" {
+			if strings.HasPrefix(d.Artifact.Name, "adapter ") {
+				repo = "adapter " + repo
+			}
+			d.Artifact.Name, d.Header.ArtifactShort = repo, repo
+		}
 	}
 	// A checked publisher signature outranks a manifest's claim about one.
 	if sig != nil {
@@ -273,9 +281,11 @@ func begin(start time.Time, id report.Identity, original string, sig *provenance
 	return d, provOpts, expires, nil
 }
 
-// finish records the check rows and computes the promotion state.
+// finish records the check rows, picks the bounded statement they support,
+// and computes the promotion state.
 func finish(d *report.Document, results []checks.Result, unparsed []string, expires string) *report.Document {
 	applyResults(d, results)
+	d.BoundedStatement = report.BoundedStatementFor(d.Checks)
 	d.OutOfScope.UnparsedFormats = unparsed
 	d.Scope.ScanEndUTC = time.Now().UTC().Format(time.RFC3339)
 	finalizeFindings(d)
@@ -348,9 +358,10 @@ func acceptancePolicy(start time.Time, rescanDays, expiresEnv string) (rescanDue
 	return rescanDue, t.UTC().Format(time.RFC3339), nil
 }
 
-// promotion computes the promotion state. A FAIL or a LEAD withholds and is
-// clearable only by escalation. A gap (NOT_TESTED) withholds until a named
-// acceptance is supplied, and the accepted surfaces travel with the artifact.
+// promotion computes the promotion state. A FAIL or a LEAD withholds, and no
+// acceptance clears it; Socair has no override, so it needs a person's review
+// outside Socair. A gap (NOT_TESTED) withholds until a named acceptance is
+// supplied, and the accepted surfaces travel with the artifact.
 func promotion(d *report.Document, acceptedBy, expires string) report.PromotionAuthorization {
 	var fails, leads, gaps []string
 	for _, c := range d.Checks {
@@ -364,7 +375,10 @@ func promotion(d *report.Document, acceptedBy, expires string) report.PromotionA
 		}
 	}
 
-	pa := report.PromotionAuthorization{Level: "Tier 1 only", AcceptedSurfaces: gaps, AcceptanceExpires: expires}
+	// Only an acceptance fills accepted_surfaces and its expiry. A withheld
+	// report's gaps are named in its conditions and findings.not_tested, never
+	// as surfaces someone accepted.
+	pa := report.PromotionAuthorization{Level: "Tier 1 only"}
 
 	switch {
 	case len(fails) > 0 || len(leads) > 0:
@@ -378,20 +392,22 @@ func promotion(d *report.Document, acceptedBy, expires string) report.PromotionA
 		pa.State = report.StateWithheld
 		pa.Authorized = false
 		pa.Conditions = "Withheld: " + strings.Join(why, "; ") +
-			". A FAIL or a LEAD is clearable only by escalated review, never by an acceptance."
+			". A FAIL or a LEAD withholds promotion, and no acceptance clears it: it needs a person's review outside Socair."
 	case len(gaps) == 0:
 		pa.State = report.StateAuthorized
 		pa.Authorized = true
-		pa.AcceptedSurfaces = nil
 		pa.Conditions = "Every Tier 1 check PASSed."
 	case strings.TrimSpace(acceptedBy) == "":
 		pa.State = report.StateWithheld
 		pa.Authorized = false
 		pa.Conditions = "Withheld: " + strings.Join(gaps, ", ") +
-			" are NOT_TESTED and no acceptance has been recorded (set SOCAIR_ACCEPTED_BY)."
+			" are NOT_TESTED and no acceptance has been recorded. An acceptor accepts them by signing an acceptance of the signed report (socair accept); " +
+			"a name in SOCAIR_ACCEPTED_BY records an unsigned acceptance, which the airlock does not promote."
 	default:
 		pa.State = report.StateAuthorizedWithConditions
 		pa.Authorized = true
+		pa.AcceptedSurfaces = gaps
+		pa.AcceptanceExpires = expires
 		pa.AcceptedBy = acceptedBy
 		pa.AcceptedAt = time.Now().UTC().Format(time.RFC3339)
 		pa.Conditions = "Authorized with conditions: " + strings.Join(gaps, ", ") +

@@ -3,6 +3,7 @@ package airlock
 import (
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/defilantech/socair/internal/acceptance"
@@ -78,11 +79,31 @@ func (s *Store) Assess(envelope []byte, at time.Time) (*Assessment, error) {
 }
 
 // Admits returns why the attestation does not cross into the clean store, or
-// nil when it does.
+// nil when it does. The reason follows the rows: a FAIL or LEAD needs a
+// person's review outside Socair, since no acceptance clears one; NOT_TESTED
+// rows alone need a signed acceptance and a re-issued attestation.
 func (a *Assessment) Admits() error {
 	switch a.State {
 	case report.StateAuthorized, report.StateAuthorizedWithConditions:
 		return nil
 	}
-	return fmt.Errorf("attestation state %q withholds promotion; a FAIL or LEAD is clearable only by escalated review", a.State)
+	var flagged, gaps []string
+	for _, c := range a.Verified.Document.Checks {
+		switch c.Status {
+		case report.StatusFail, report.StatusLead:
+			flagged = append(flagged, string(c.Status)+" on "+c.Name)
+		case report.StatusNotTested:
+			gaps = append(gaps, c.Name)
+		}
+	}
+	switch {
+	case len(flagged) > 0:
+		return fmt.Errorf("attestation state %q withholds promotion: %s; no acceptance clears a FAIL or LEAD, and it needs a person's review outside Socair",
+			a.State, strings.Join(flagged, "; "))
+	case len(gaps) > 0:
+		return fmt.Errorf("attestation state %q withholds promotion: these rows are NOT_TESTED and have no signed acceptance: %s. "+
+			"An acceptor signs one (socair accept), then the operator re-issues the attestation with it (socair sign --acceptance)",
+			a.State, strings.Join(gaps, ", "))
+	}
+	return fmt.Errorf("attestation state %q withholds promotion", a.State)
 }

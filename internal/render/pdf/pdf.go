@@ -262,10 +262,10 @@ func cover(pdf *fpdf.Fpdf, d *report.Document) {
 	pdf.SetFont("Helvetica", "B", 10)
 	pdf.SetTextColor(stateRGB.r, stateRGB.g, stateRGB.b)
 	pdf.CellFormat(contentW, 6, "Promotion: "+label, "", 1, "L", false, 0, "")
-	if len(d.PromotionAuthorization.AcceptedSurfaces) > 0 {
+	if accepted := d.PromotionAuthorization.Accepted(); len(accepted) > 0 {
 		pdf.SetFont("Helvetica", "", 8)
 		pdf.SetTextColor(122, 90, 0)
-		line := "Accepted, not tested: " + strings.Join(d.PromotionAuthorization.AcceptedSurfaces, ", ")
+		line := "Accepted, not tested: " + strings.Join(accepted, ", ")
 		if d.PromotionAuthorization.AcceptedBy != "" {
 			line += ". Accepted by " + d.PromotionAuthorization.AcceptedBy + " on " + d.PromotionAuthorization.AcceptedAt
 			if d.PromotionAuthorization.Signed() {

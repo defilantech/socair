@@ -62,7 +62,7 @@
   .pill.pass { background: var(--pass-bg); color: var(--pass-ink); border-color: var(--pass-line); }
   .pill.fail { background: var(--fail-bg); color: var(--fail-ink); border-color: var(--fail-line); }
   .pill.not-tested { background: var(--untested-bg); color: var(--untested-ink); border-color: var(--untested-line); }
-  /* LEAD: a suspicious signal for escalation. Amber: not a pass, not a FAIL. */
+  /* LEAD: a suspicious signal that needs review. Amber: not a pass, not a FAIL. */
   .pill.lead { background: var(--lead-bg); color: var(--lead-ink); border-color: var(--lead-line); }
   .tag { display: inline-block; margin-left: 6px; padding: 1px 6px; border-radius: 4px; font-size: 10px;
     text-transform: uppercase; letter-spacing: 0.06em; background: #fff; border: 1px solid var(--untested-line);
@@ -117,9 +117,9 @@
     </div>
     <div class="badge">{{ .Document.Header.AssuranceLevelAwarded }}</div>
     <div class="badge promo {{ promotionClass .Document.PromotionAuthorization.State }}">Promotion: {{ promotionLabel .Document.PromotionAuthorization.State }}</div>
-    {{- if .Document.PromotionAuthorization.AcceptedSurfaces }}
+    {{- if .Document.PromotionAuthorization.Accepted }}
     <div class="accepted">
-      Accepted, not tested: {{ range $i, $s := .Document.PromotionAuthorization.AcceptedSurfaces }}{{ if $i }}, {{ end }}{{ $s }}{{ end }}.
+      Accepted, not tested: {{ range $i, $s := .Document.PromotionAuthorization.Accepted }}{{ if $i }}, {{ end }}{{ $s }}{{ end }}.
       {{- if .Document.PromotionAuthorization.AcceptedBy }}
       Accepted by {{ .Document.PromotionAuthorization.AcceptedBy }} on {{ .Document.PromotionAuthorization.AcceptedAt }}
       {{- if .Document.PromotionAuthorization.Signed }} (signed acceptance{{ if .Document.PromotionAuthorization.AcceptanceExpires }}, until {{ .Document.PromotionAuthorization.AcceptanceExpires }}{{ end }}).{{ else }} <strong>(unsigned: named at scan time, not signed by the acceptor)</strong>.{{ end }}
@@ -147,7 +147,7 @@
         <td>
           <span class="pill {{ statusClass .Status }}">{{ .Status }}</span>
           {{- if isNotTested .Status }}<span class="tag">not tested</span>{{ end }}
-          {{- if isLead .Status }}<span class="tag">escalate</span>{{ end }}
+          {{- if isLead .Status }}<span class="tag">needs review</span>{{ end }}
           {{- if .Severity }}<span class="tag sev">{{ .Severity }}</span>{{ end }}
         </td>
         <td class="evidence">{{ if .Evidence }}{{ .Evidence }}{{ else }}{{ .Notes }}{{ end }}</td>

@@ -3,6 +3,7 @@ package denylist
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/defilantech/socair/internal/checks"
@@ -52,6 +53,38 @@ func TestEmptyListNotTested(t *testing.T) {
 	list := writeList(t, "# nothing yet\n")
 	if got := Check(listed, list).Status; got != checks.NotTested {
 		t.Fatalf("status = %s, want NOT_TESTED", got)
+	}
+}
+
+// TestInvalidLineRefusesTheList: any text was taken as a hash, so a list
+// holding only "garbage" PASSed "among 1 known-bad hashes". As the feed loader
+// does, a line that does not start with a SHA-256 refuses the whole list, and
+// the row is NOT_TESTED naming the line: a list that is partly wrong may be
+// missing the entry that matters. Falsification: accept any first field again
+// and these PASS.
+func TestInvalidLineRefusesTheList(t *testing.T) {
+	for name, body := range map[string]string{
+		"garbage only":   "garbage\n",
+		"mixed":          listed + "  known-bad\nnot-a-hash  oops\n",
+		"short hex":      listed[:63] + "  one digit short\n",
+		"non-hex digits": strings.Repeat("g", 64) + "  not hex\n",
+	} {
+		list := writeList(t, body)
+		if _, err := Load(list); err == nil {
+			t.Errorf("%s: Load must refuse the list", name)
+		}
+		r := Check("0000000000000000000000000000000000000000000000000000000000000000", list)
+		if r.Status != checks.NotTested {
+			t.Errorf("%s: status = %s, want NOT_TESTED: %s", name, r.Status, r.Notes)
+		}
+		if !strings.Contains(r.Notes, "not a SHA-256") || !strings.Contains(r.Notes, "line") {
+			t.Errorf("%s: notes must name the bad line, got %q", name, r.Notes)
+		}
+	}
+	// Case is not a reason to refuse: hashes are compared in lower case.
+	entries, err := Load(writeList(t, strings.ToUpper(listed)+"  upper-case\n"))
+	if err != nil || entries[listed].Label != "upper-case" {
+		t.Fatalf("an upper-case hash should load: %v %v", entries, err)
 	}
 }
 

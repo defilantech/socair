@@ -21,21 +21,45 @@ import (
 // SchemaVersion is the contract version this model emits.
 const SchemaVersion = "socair.report/v1"
 
-// BoundedStatement is the fixed Option A wording. It must not be edited per
-// artifact.
-const BoundedStatement = "For the artifact identified by hash in Section 2, served on the node class named in Section 3, the checks listed in Section 4 found no indicators within their stated scope. Every surface outside that scope is enumerated as NOT_TESTED in Section 8."
+// The bounded statement is one of two fixed sentences, picked from the check
+// rows by BoundedStatementFor. Neither may be edited per artifact.
+const (
+	// BoundedStatementNoIndicators is the statement of a report with no FAIL
+	// and no LEAD row.
+	BoundedStatementNoIndicators = "For the artifact identified by its hash, the Tier 1 checks that returned PASS found no indicators within their stated scope. " +
+		"Rows marked NOT_TESTED were not examined, for the reason each row gives. Tier 1 runs no inference, so no model behavior was tested. " +
+		"Every surface outside that scope is listed under Out of scope."
+	// BoundedStatementIndicators is the statement of a report with any FAIL
+	// or LEAD row.
+	BoundedStatementIndicators = "For the artifact identified by its hash, the Tier 1 checks found the indicators this report lists: " +
+		"each FAIL is positive evidence, and each LEAD is a suspicious signal that needs review. " +
+		"Rows marked NOT_TESTED were not examined, for the reason each row gives. Tier 1 runs no inference, so no model behavior was tested. " +
+		"Every surface outside that scope is listed under Out of scope."
+)
+
+// BoundedStatementFor picks the bounded statement for a report's check rows,
+// so a report with a FAIL or a LEAD never says its checks found no indicators.
+func BoundedStatementFor(checks []CheckResult) string {
+	for _, c := range checks {
+		if c.Status == StatusFail || c.Status == StatusLead {
+			return BoundedStatementIndicators
+		}
+	}
+	return BoundedStatementNoIndicators
+}
 
 // DoesNotCertify is the fixed ceiling sentence.
 const DoesNotCertify = "This attestation does not certify the absence of unknown backdoors."
 
 // Tier1Assurance is the fixed statement of what a Tier 1 attestation means.
-// Like BoundedStatement, it must not be edited per artifact.
+// Like the bounded statement, it must not be edited per artifact.
 func Tier1Assurance() AssuranceLevel {
 	return AssuranceLevel{
 		Awarded:    "Tier 1 (static)",
 		Definition: "Static checks on the artifact's bytes and metadata, run offline. No inference is run, and the weights are not evaluated for behavior.",
 		DoesMean: "Each listed check ran on the exact bytes identified by the artifact hash, and each row states what its PASS means. " +
-			"A FAIL carries positive evidence, a LEAD needs escalated review, and a NOT_TESTED names why it was not tested.",
+			"A FAIL carries positive evidence, a LEAD is a suspicious signal that needs a person's review, and a NOT_TESTED names why it was not tested. " +
+			"A FAIL or a LEAD withholds promotion, and no acceptance clears it.",
 		DoesNotMean: "It is not an assessment of the model's behavior or safety. It does not test the weights for backdoors or poisoning, " +
 			"behavior that appears only after quantization or on particular hardware, or jailbreak susceptibility and harmful capability, " +
 			"and it does not check licensing.",
@@ -79,7 +103,8 @@ const (
 	StatusNotTested Status = "NOT_TESTED"
 	// StatusLead is a suspicious signal that is not conclusive, such as
 	// instruction-override language in a chat template. It is not a gap: an
-	// acceptance clears NOT_TESTED rows, never a LEAD. Only escalation does.
+	// acceptance clears NOT_TESTED rows, never a LEAD. Like a FAIL, it
+	// withholds promotion and needs a person's review outside Socair.
 	StatusLead Status = "LEAD"
 )
 
@@ -250,6 +275,17 @@ type PromotionAuthorization struct {
 // Signed reports whether the acceptance carries the acceptor's signature.
 func (pa PromotionAuthorization) Signed() bool { return pa.Acceptance != "" }
 
+// Accepted returns the surfaces an acceptance covers. Only an
+// authorized_with_conditions report accepts anything, so for every other
+// state it is nil whatever the document lists. Renderers print an acceptance
+// only from it.
+func (pa PromotionAuthorization) Accepted() []string {
+	if pa.State != StateAuthorizedWithConditions {
+		return nil
+	}
+	return pa.AcceptedSurfaces
+}
+
 type Verification struct {
 	DocumentHash      string `json:"document_hash,omitempty"`
 	SigningMethod     string `json:"signing_method"`
@@ -344,7 +380,9 @@ func NewFromIdentity(id Identity) *Document {
 			ExecutionContext: "Tier 1 static, portable",
 			InputPath:        "local path",
 		},
-		BoundedStatement: BoundedStatement,
+		// No check has run, so no row is a FAIL or a LEAD yet; the engine
+		// picks the statement again once the rows are in (BoundedStatementFor).
+		BoundedStatement: BoundedStatementFor(nil),
 		OutOfScope: OutOfScope{
 			DoesNotCertify:      DoesNotCertify,
 			Ceiling:             DefaultCeiling(),
@@ -415,7 +453,9 @@ func Validate(d *Document) []string {
 	req(len(d.Artifact.SHA256) == 64, "artifact.sha256 (64 hex chars)")
 	req(strings.TrimSpace(d.Artifact.Format) != "", "artifact.format")
 	req(len(d.Checks) > 0, "checks (at least one)")
-	req(d.BoundedStatement == BoundedStatement, "bounded_statement (must equal the fixed wording)")
+	// The statement is re-derived from the rows, so neither an edited sentence
+	// nor the no-indicators sentence over a FAIL or LEAD validates.
+	req(d.BoundedStatement == BoundedStatementFor(d.Checks), "bounded_statement (must equal the fixed wording for these check rows)")
 	req(strings.TrimSpace(d.OutOfScope.DoesNotCertify) != "", "out_of_scope.does_not_certify")
 	req(len(d.OutOfScope.Ceiling) > 0, "out_of_scope.ceiling")
 	req(strings.TrimSpace(d.Issuer.Authority) != "", "issuer.authority")
@@ -471,8 +511,16 @@ func validatePromotion(d *Document) []string {
 		}
 	}
 	problems = append(problems, validateAcceptance(d)...)
-	if pa.State == StateAuthorized && len(pa.AcceptedSurfaces) > 0 {
-		problems = append(problems, "promotion_authorization: an authorized report must not carry accepted_surfaces")
+	// Only authorized_with_conditions accepts anything. A withheld report's
+	// gaps are its NOT_TESTED rows; listing them as accepted surfaces would
+	// tell a reader someone accepted them.
+	if pa.State != StateAuthorizedWithConditions {
+		if len(pa.AcceptedSurfaces) > 0 {
+			problems = append(problems, fmt.Sprintf("promotion_authorization: a report in state %q must not carry accepted_surfaces; only authorized_with_conditions accepts", pa.State))
+		}
+		if pa.AcceptedBy != "" || pa.AcceptedAt != "" || pa.AcceptanceExpires != "" {
+			problems = append(problems, fmt.Sprintf("promotion_authorization: a report in state %q must not carry accepted_by, accepted_at, or acceptance_expires", pa.State))
+		}
 	}
 	return append(problems, validateStateAgainstChecks(d)...)
 }
@@ -499,7 +547,7 @@ func validateStateAgainstChecks(d *Document) []string {
 		switch c.Status {
 		case StatusFail, StatusLead:
 			problems = append(problems, fmt.Sprintf(
-				"promotion_authorization: state %q over %s row %q; it clears only by escalation", pa.State, c.Status, c.Name))
+				"promotion_authorization: state %q over %s row %q; a FAIL or LEAD withholds promotion, and no acceptance clears it", pa.State, c.Status, c.Name))
 		case StatusNotTested:
 			if pa.State == StateAuthorized {
 				problems = append(problems, fmt.Sprintf(

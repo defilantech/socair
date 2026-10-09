@@ -1,5 +1,5 @@
-// Package demo carries a fabricated attestation for a first sales
-// conversation. It is sample data and is rendered with the SAMPLE mark; it
+// Package demo carries a fabricated attestation that shows what a report
+// looks like. It is sample data and is rendered with the SAMPLE mark; it
 // must never be presented as a real issuance.
 package demo
 
