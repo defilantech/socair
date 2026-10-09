@@ -294,8 +294,39 @@ type Identification struct {
 	Disagreement string
 }
 
+// mergeBases makes one entry per declared repo, naming every place it was
+// declared: a quantizer's card and its GGUF usually declare the same base.
+func mergeBases(bases []BaseModel) []BaseModel {
+	var out []BaseModel
+	at := map[string]int{}
+	for _, b := range bases {
+		key := strings.ToLower(b.Repo)
+		i, seen := at[key]
+		if key == "" || !seen {
+			if key != "" {
+				at[key] = len(out)
+			}
+			out = append(out, b)
+			continue
+		}
+		m := &out[i]
+		m.Source += "; " + b.Source
+		if m.Name == "" || m.Name == m.Repo {
+			m.Name = b.Name
+		}
+		if m.Organization == "" {
+			m.Organization = b.Organization
+		}
+		if m.URL == "" {
+			m.URL = b.URL
+		}
+	}
+	return out
+}
+
 // Identify combines the claims read from an artifact.
 func Identify(claims []Claim, bases []BaseModel) Identification {
+	bases = mergeBases(bases)
 	id := Identification{Claims: claims, BaseModels: bases}
 	for _, b := range bases {
 		if c, ok := b.inherited(); ok {

@@ -117,6 +117,17 @@ func TestBaseModelLicense(t *testing.T) {
 	if id := Identify(nil, base); id.ID != "" || id.Disagreement != "" || len(id.Claims) != 1 || id.Claims[0].Kind != Inherited {
 		t.Errorf("a base alone: %+v", id)
 	}
+	// A card and its GGUF declaring the same base are one declaration.
+	twice := Identify(nil, []BaseModel{
+		{Name: "meta-llama/Llama-3.1-8B", Repo: "meta-llama/Llama-3.1-8B", Source: "model card base_model"},
+		{Name: "Llama 3.1 8B", Organization: "Meta Llama", Repo: "meta-llama/Llama-3.1-8B", URL: "https://huggingface.co/meta-llama/Llama-3.1-8B", Source: "GGUF general.base_model.0"},
+		{Name: "Unnamed", Source: "GGUF general.base_model.1"},
+	})
+	if len(twice.BaseModels) != 2 || len(twice.Claims) != 1 ||
+		twice.BaseModels[0] != (BaseModel{Name: "Llama 3.1 8B", Organization: "Meta Llama", Repo: "meta-llama/Llama-3.1-8B",
+			URL: "https://huggingface.co/meta-llama/Llama-3.1-8B", Source: "model card base_model; GGUF general.base_model.0"}) {
+		t.Errorf("merged bases %+v, claims %+v", twice.BaseModels, twice.Claims)
+	}
 	if RepoFromURL("https://huggingface.co/google/gemma-3-12b-pt") != "google/gemma-3-12b-pt" || RepoFromURL("https://example.com/a/b") != "" {
 		t.Error("RepoFromURL")
 	}
