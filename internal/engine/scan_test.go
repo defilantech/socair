@@ -115,7 +115,7 @@ func TestPromotionGapsWithAcceptanceAreConditional(t *testing.T) {
 }
 
 func TestScanCleanFixture(t *testing.T) {
-	p := writeFixture(t, "clean-Q5_K_M.gguf", gguftest.BuildGGUF(gguftest.Clean()))
+	p := writeFixture(t, "clean-Q5_K_M.gguf", gguftest.CleanQ5KM())
 	d, err := Scan(p)
 	if err != nil {
 		t.Fatalf("Scan: %v", err)
@@ -133,7 +133,7 @@ func TestScanCleanFixture(t *testing.T) {
 	if got := rowStatus(d, "Tokenizer config"); got != report.StatusNotTested {
 		t.Errorf("tokenizer = %s, want NOT_TESTED (label only)", got)
 	}
-	// The fixture declares Q5_K_M in its name and file type 17, so quant matches.
+	// The fixture is named Q5_K_M and carries a Q5_K tensor, so quant matches.
 	if got := rowStatus(d, "Quant match"); got != report.StatusPass {
 		t.Errorf("quant = %s, want PASS", got)
 	}

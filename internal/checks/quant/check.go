@@ -67,8 +67,9 @@ var canonical = func() map[string]bool {
 	return m
 }()
 
-// Compare reports whether the declared quantization matches the observed file
-// type.
+// Compare checks the declared quantization against the metadata file type
+// when no tensor table was read: a disagreement FAILs, and agreement is
+// NOT_TESTED, because neither label is the tensors.
 func Compare(declared string, fileType *uint32) checks.Result {
 	r := checks.Result{
 		Name:     "Quant match",
@@ -107,9 +108,12 @@ func Compare(declared string, fileType *uint32) checks.Result {
 		return r
 	}
 
+	// Two agreeing labels are not the evidence a PASS names (a tensor of the
+	// declared base type), so a match without a tensor table is a gap. A
+	// disagreement is positive evidence of a mislabel either way.
 	if observed == declared {
-		r.Status = checks.Pass
-		r.Notes = "declared " + declared + " matches the metadata file type " + fmt.Sprint(*fileType) + ". Both are labels; the tensor types were not inspected"
+		r.Status = checks.NotTested
+		r.Notes = "declared " + declared + " matches the metadata file type " + fmt.Sprint(*fileType) + ", but both are labels and no tensor table was read, so the tensor types were not inspected"
 		return r
 	}
 
