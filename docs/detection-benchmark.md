@@ -25,7 +25,7 @@ generated corpus, on 2026-10-04; CI does not re-run them.
   names the file (`SOCAIR_DENYLIST`). No other scanner here was given any of
   them. With Socair's defaults (none of the three), the remapped tokenizer and
   the near-miss template pass and the known-bad file is withheld as a gap, so
-  Socair detects 36 of 40. Scores with the cases that need an input left out
+  Socair detects 39 of 43. Scores with the cases that need an input left out
   follow the comparison table.
 - **The attacks are defanged.** Each case keeps the attack's structure (the
   gadget, the opcodes, the archive trick, the template construct) and swaps its
@@ -49,20 +49,31 @@ generated corpus, on 2026-10-04; CI does not re-run them.
 | File inventory and payloads | 6 | 6 | 0 | 0 |
 | Format and structure | 2 | 2 | 0 | 0 |
 | Known-bad hash match | 1 | 1 | 0 | 0 |
-| Pickle opcode scan | 17 | 17 | 0 | 0 |
+| Pickle opcode scan | 20 | 20 | 0 | 0 |
 | Remote code | 1 | 1 | 0 | 0 |
 | Tokenizer config | 3 | 3 | 0 | 0 |
-| **All** | **40** | **39** | **0** | **1** |
+| **All** | **43** | **42** | **0** | **1** |
 
 Benign controls flagged (FAIL or LEAD on any row): 0 of 5.
 
 Three of these detections depend on a reference input (see "Read this first");
-with Socair's defaults it detects 36 of 40.
+with Socair's defaults it detects 39 of 43.
+
+Check set tier1/0.8 replaced the pickle row's import allowlist with a typed
+grammar (`socair-wo/1`, see [check-set.md](check-set.md)) and added three
+pickle cases. Under tier1/0.7, `pickle-ordereddict-code-string` PASSed (a miss: the
+allowlist accepted `collections.OrderedDict` with any argument),
+`pickle-nested-loader` was a LEAD (an unreviewed global), and
+`pickle-memo-reput` already FAILed (the import scan modelled the memo as
+CPython does). Every earlier case kept its outcome and severity. The
+`control-torch-zip` control now holds a tensor and its storage record: it
+used to hold a plain OrderedDict beside a `data/0` record nothing
+referenced, which the grammar reports as bytes torch.load never reads.
 
 | Case | Format | Technique | Row | Result | Severity |
 |---|---|---|---|---|---|
 | `control-pickle` | pickle | benign state-dict-shaped pickle written by CPython | (control: every row) | PASS |  |
-| `control-torch-zip` | pickle | benign PyTorch zip checkpoint | (control: every row) | PASS |  |
+| `control-torch-zip` | pickle | benign PyTorch zip checkpoint: one float32 tensor and its storage record | (control: every row) | PASS |  |
 | `control-gguf` | gguf | benign GGUF with a plain chat template | (control: every row) | PASS |  |
 | `control-safetensors` | safetensors | benign safetensors | (control: every row) | PASS |  |
 | `control-model-directory` | model directory | benign transformers-style directory | (control: every row) | PASS |  |
@@ -82,6 +93,9 @@ with Socair's defaults it detects 36 of 40.
 | `pickle-torch-zip-bad-crc` | pickle | PyTorch zip with corrupted CRC-32s | Pickle opcode scan | FAIL | critical |
 | `pickle-legacy-tar` | pickle | legacy torch tar checkpoint | Pickle opcode scan | FAIL | critical |
 | `pickle-numpy-load` | pickle | numpy.load on attacker data (allow_pickle chain) | Pickle opcode scan | FAIL | critical |
+| `pickle-ordereddict-code-string` | pickle | collections.OrderedDict, a safe-listed callable, handed a command string | Pickle opcode scan | FAIL | critical |
+| `pickle-nested-loader` | pickle | torch.storage._load_from_bytes unpickling a second pickle carried as bytes | Pickle opcode scan | FAIL | critical |
+| `pickle-memo-reput` | pickle | STACK_GLOBAL module read from a memo slot written twice | Pickle opcode scan | FAIL | critical |
 | `gguf-ssti-globals` | gguf | SSTI through self.__init__.__globals__ to os.popen | Chat template (hero) | FAIL | critical |
 | `gguf-ssti-subclasses` | gguf | SSTI through ''.__class__.__mro__[1].__subclasses__() | Chat template (hero) | FAIL | critical |
 | `gguf-ssti-attr-hex` | gguf | dunder name hidden with \|attr and hex escapes | Chat template (hero) | FAIL | critical |
@@ -124,10 +138,12 @@ Versions:
 
 Each ran with default settings, and its verdict was read as its documentation
 describes. This comparison predates `dir-executable-named-script`, added with
-check set tier1/0.7, and the two rendered-template cases added with tier1/0.8
-(`gguf-template-macro-conditional` and `gguf-template-reviewed-near-miss`), so
-its counts cover the cases before them; the other scanners have not been run on
-those three. A *suspicious* result counts as a finding, as Socair's LEAD does:
+check set tier1/0.7, and the five cases added with tier1/0.8 (the
+rendered-template cases `gguf-template-macro-conditional` and
+`gguf-template-reviewed-near-miss`, and the pickle cases
+`pickle-ordereddict-code-string`, `pickle-nested-loader`, and
+`pickle-memo-reput`), so its counts cover the cases before them; the other
+scanners have not been run on those six. A *suspicious* result counts as a finding, as Socair's LEAD does:
 picklescan's suspicious globals and Fickling's SUSPICIOUS. "Not scanned" means
 the tool skipped the file, could not parse it, or does not support the format.
 
@@ -190,7 +206,7 @@ How to read it:
 
 With the three cases that need a Socair-only input left out
 (`gguf-tokenizer-remapped`, `gguf-template-reviewed-near-miss`, and
-`dir-known-bad-hash`), Socair detects 36 of 37 attacks with check set
+`dir-known-bad-hash`), Socair detects 39 of 40 attacks with check set
 tier1/0.8 (34 of 35 in the 2026-10-04 run, which predates the near-miss case),
 and the two formats they belong to read, from that run:
 
@@ -245,6 +261,9 @@ and the two formats they belong to read, from that run:
 | `pickle-legacy-tar` | finding | finding | clean | finding | could not scan |
 | `pickle-nullifai-broken-stream` | finding | finding | finding | finding | could not scan |
 | `pickle-numpy-load` | finding | finding | finding (suspicious) | finding | clean |
+| `pickle-ordereddict-code-string` | finding | not run | not run | not run | not run |
+| `pickle-nested-loader` | finding | not run | not run | not run | not run |
+| `pickle-memo-reput` | finding | not run | not run | not run | not run |
 | `pickle-os-system-p2` | finding | finding | finding | finding | finding |
 | `pickle-os-system-p4` | finding | finding | finding | finding | finding |
 | `pickle-pip-main` | finding | finding | finding | finding | clean |

@@ -46,7 +46,7 @@ that gap. Nothing passes silently.
 | Chat template | Template code that reaches Python internals; instructions that trigger on message content; hidden or obfuscated text; override and concealment language. Renders the template with Socair's own evaluator and lists the text it adds to the prompt; compares it with reviewed templates when their text is supplied |
 | Tokenizer config | Special-token ids that name no token; tables that disagree; control tokens carrying instructions; normalizers that rewrite input into control tokens |
 | Quant match | A file named for a quantization that holds none of its tensors |
-| Pickle opcode scan | Code execution reachable from a pickle checkpoint |
+| Pickle opcode scan | Code execution reachable from a pickle checkpoint or a NumPy object array. A PASS means every pickle conforms to a typed grammar: it builds only tensors and plain containers, with each call's arguments checked and each storage matched to its record |
 | Remote code | Code a loader would run with `trust_remote_code` (`auto_map`, `.py` files) |
 | Hash, provenance, lineage | An origin bound to this exact hash at an immutable commit, or a verified publisher signature (OpenSSF Model Signing) |
 | Known-bad hash match | The artifact, or any file in it, on a known-bad list |

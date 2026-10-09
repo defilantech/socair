@@ -21,6 +21,8 @@ var patternSeverity = map[string]string{
 	"python-object-escape":    SeverityCritical,
 	"process-execution":       SeverityCritical,
 	"pickle-dangerous-global": SeverityCritical,
+	"pickle-nested-loader":    SeverityCritical,
+	"pickle-code-argument":    SeverityCritical,
 	"embedded-binary":         SeverityCritical,
 	"repo-binary":             SeverityCritical,
 	"denylist-match":          SeverityCritical,
@@ -41,6 +43,9 @@ var patternSeverity = map[string]string{
 	"template-injects-token":        SeverityHigh,
 	"tokenizer-token-changed":       SeverityHigh,
 	"reviewed-template-mismatch":    SeverityHigh,
+	"pickle-storage-layout":         SeverityHigh,
+	"pickle-unaccounted-bytes":      SeverityHigh,
+	"pickle-noncanonical":           SeverityHigh,
 	// Suspicious or inconsistent; needs review.
 	"instruction-override":         SeverityMedium,
 	"secrecy-instruction":          SeverityMedium,
@@ -64,6 +69,9 @@ var patternSeverity = map[string]string{
 	"tokenizer-vocabulary-shorter": SeverityMedium,
 	"pickle-unreviewed-global":     SeverityMedium,
 	"pickle-unreadable":            SeverityMedium,
+	"pickle-grammar":               SeverityMedium,
+	"pickle-backward-hooks":        SeverityMedium,
+	"pickle-reviewed-class-state":  SeverityMedium,
 	"auto_map":                     SeverityMedium,
 	"python-file":                  SeverityMedium,
 	// A license outside the operator's policy: a rule broken, not a

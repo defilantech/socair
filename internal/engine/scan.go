@@ -348,13 +348,15 @@ func readOpaque(path string) (report.Identity, error) {
 		Format:    "unknown",
 	}
 
-	var head [4]byte
+	var head [6]byte
 	n, _ := io.ReadFull(f, head[:])
 	switch {
 	case n >= 1 && head[0] == 0x80:
 		id.Format = "pickle"
-	case n == 4 && string(head[:]) == "PK\x03\x04":
+	case n >= 4 && string(head[:4]) == "PK\x03\x04":
 		id.Format = "zip"
+	case n == 6 && string(head[:]) == "\x93NUMPY":
+		id.Format = "npy"
 	}
 	return id, nil
 }

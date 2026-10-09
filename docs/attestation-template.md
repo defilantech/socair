@@ -85,7 +85,7 @@ Every row also carries a fixed **PASS means** line (`pass_means`): what that che
 
 The chat-template row also renders each template that reaches no code, with Socair's own Jinja evaluator, on fixed probe conversations. Its notes list the text the template adds to the prompt (listed, not judged), quote what each content condition adds, and say whether the template matches a reviewed template: byte for byte, render for render, or not at all. Two rendered signals are LEADs: a content condition that opens a system turn, and a template that renders like a reviewed one on every standard probe but adds a content-conditional branch. A template the evaluator cannot render is not rendered, the notes say why, and the row keeps the static verdict.
 
-The rows that run depend on the format: every report carries structure, inventory, provenance, and the known-bad hash; a GGUF adds the chat template, tokenizer, and quant rows; a model directory adds the chat template, tokenizer, and remote code rows; a pickle checkpoint adds the pickle row. The License policy row runs, for every format, only when the operator configures a policy (`SOCAIR_LICENSE_POLICY`).
+The rows that run depend on the format: every report carries structure, inventory, provenance, and the known-bad hash; a GGUF adds the chat template, tokenizer, and quant rows; a model directory adds the chat template, tokenizer, and remote code rows; a pickle checkpoint or NumPy array adds the pickle row. The License policy row runs, for every format, only when the operator configures a policy (`SOCAIR_LICENSE_POLICY`).
 
 | Check | Looks for | Result | Evidence | Notes |
 |---|---|---|---|---|
@@ -97,7 +97,7 @@ The rows that run depend on the format: every report carries structure, inventor
 | Tokenizer config | Tampered tokenizer tables: special-token ids, token types, control tokens | `[result]` | `[evidence]` | `[notes]` |
 | Quant match (GGUF) | Declared quantization (file name) against the tensor types in the file | `[result]` | `[evidence]` | `[notes]` |
 | Remote code (model directory) | Code a loader would run: auto_map entries and Python files (trust_remote_code) | `[result]` | `[evidence]` | `[notes]` |
-| Pickle opcode scan (pickle) | Imports in pickle-based model files that reach code execution | `[result]` | `[evidence]` | `[notes]` |
+| Pickle opcode scan (pickle) | Imports in pickle-based model files that reach code execution, and pickles that build more than tensors and plain containers | `[result]` | `[evidence]` | `[notes]` |
 | License policy (with a policy) | The license the artifact states, against the operator's allowed list | `[result]` | `[evidence]` | `[notes, with the license's usage-policy obligations listed and not marked met]` |
 
 The License policy row FAILs only when the artifact's statements agree on a license the policy does not allow. Statements that name different licenses, one of them not allowed, are a LEAD: which license governs needs a person. No identified license, or an allowed one beside a statement the catalogue does not recognize, is NOT_TESTED. Its PASS means the identified license is on the operator's list; it is not legal advice.
@@ -199,7 +199,7 @@ This attestation does not certify the absence of unknown backdoors. Within the n
 - Behavioral safety: jailbreak susceptibility, harmful capability, and bias.
 - Malicious behavior that only emerges at runtime under real traffic.
 - Artifact formats we do not parse.
-- Pickle code execution reached only through imports on the reviewed safe list.
+- Pickle code execution through a reviewed class's state, loader bugs, parse differentials, a tampered environment, or code carried as data for a later stage to run.
 - Chat-template instructions written as ordinary guidance (no override or concealment phrase, URL, hidden or obfuscated text, or condition on message content): the text a rendered template adds is listed in the report, not judged, unless the template matches a reviewed template.
 - Legal review of a license, and compliance with its usage policies. The license is identified, and checked only against a policy you configure.
 

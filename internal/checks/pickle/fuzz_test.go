@@ -1,6 +1,7 @@
 package pickle
 
 import (
+	"bytes"
 	"os"
 	"path/filepath"
 	"testing"
@@ -30,6 +31,24 @@ func FuzzPickleInspect(f *testing.F) {
 		}
 		if r.Notes == "" {
 			t.Fatal("a result must carry a reason")
+		}
+	})
+}
+
+// FuzzGrammar feeds arbitrary streams to the grammar in every persistent-id
+// mode. It may not panic or loop, and a stream it accepts must have reached
+// STOP within the bytes given and left its root.
+func FuzzGrammar(f *testing.F) {
+	f.Add(stateDict())
+	f.Add([]byte("\x80\x02\x8a\x02\x05\x00."))
+	f.Add([]byte("\x80\x02ccollections\nOrderedDict\nq\x00X\x03\x00\x00\x00abcq\x01\x85q\x02R."))
+	f.Add([]byte("\x80\x03C\x02hi."))
+	f.Fuzz(func(t *testing.T, data []byte) {
+		for _, mode := range []pidMode{pidNone, pidZip, pidLegacy, pidTar} {
+			g := validate(bytes.NewReader(data), grammarOpts{pids: mode, reviewed: map[string]bool{"x.Y": true}})
+			if g.conforms() && (g.root == nil || g.end > int64(len(data)) || g.end < 3) {
+				t.Fatalf("mode %d: conforms with root %v and end %d of %d bytes", mode, g.root, g.end, len(data))
+			}
 		}
 	})
 }
