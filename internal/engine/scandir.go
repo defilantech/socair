@@ -26,9 +26,11 @@ import (
 	"github.com/defilantech/socair/internal/tier2"
 )
 
-// pickleExt are weight files that are pickle streams or zip/tar containers of
-// them; the pickle check reads both.
-var pickleExt = map[string]bool{".bin": true, ".pt": true, ".pth": true, ".ckpt": true, ".pkl": true, ".pickle": true, ".joblib": true}
+// pickleExt are weight files that are pickle streams, zip/tar containers of
+// them, or NumPy arrays, whose object data is a pickle; the pickle check reads
+// them all.
+var pickleExt = map[string]bool{".bin": true, ".pt": true, ".pth": true, ".ckpt": true, ".pkl": true, ".pickle": true, ".joblib": true,
+	".npy": true, ".npz": true}
 
 // scanDir scans a model directory as one artifact (see internal/modeldir).
 // Every file is snapshotted and hashed; the subject is the manifest digest.

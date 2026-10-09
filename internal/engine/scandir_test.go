@@ -3,6 +3,7 @@ package engine
 import (
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -222,5 +223,35 @@ func TestDirectoryTokenizerIsInspected(t *testing.T) {
 	}
 	if bad.PromotionAuthorization.Authorized {
 		t.Fatal("a tokenizer FAIL must withhold the directory")
+	}
+}
+
+// npyBytes is a float32 .npy of n elements, its header padded as numpy pads
+// it, with extra bytes after the data.
+func npyBytes(n int, extra string) string {
+	h := "{'descr': '<f4', 'fortran_order': False, 'shape': (" + strconv.Itoa(n) + ",), }"
+	h += strings.Repeat(" ", 63-(10+len(h))%64) + "\n"
+	return "\x93NUMPY\x01\x00" + string([]byte{byte(len(h)), byte(len(h) >> 8)}) + h + strings.Repeat("\x00", 4*n) + extra
+}
+
+// TestDirectoryNumPyArraysReachThePickleCheck: .npy and .npz weights were
+// classed as weights but read by nothing ("not a format this scanner
+// parses"). The pickle check reads them, and its grammar covers their
+// pickled object data. Falsification: drop .npy from pickleExt and the row
+// does not cover embeddings.npy, and the bytes after its data go unseen.
+func TestDirectoryNumPyArraysReachThePickleCheck(t *testing.T) {
+	d, err := Scan(modelRepo(t, map[string]string{"embeddings.npy": npyBytes(4, "")}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if r := row(d, "Pickle opcode scan"); r.Status != report.StatusPass || !strings.Contains(r.Notes, "embeddings.npy") {
+		t.Fatalf("pickle row %s (%s), want PASS covering embeddings.npy", r.Status, r.Notes)
+	}
+	d, err = Scan(modelRepo(t, map[string]string{"embeddings.npy": npyBytes(4, "#!/bin/sh\n")}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if r := row(d, "Pickle opcode scan"); r.Status != report.StatusLead {
+		t.Fatalf("pickle row %s (%s), want LEAD on bytes past the array's data", r.Status, r.Notes)
 	}
 }

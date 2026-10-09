@@ -574,3 +574,20 @@ func TestScanWithProvenanceInput(t *testing.T) {
 		t.Fatalf("provenance row %s", got)
 	}
 }
+
+// TestNumPyArtifactIsNamedAndChecked: a .npy was format "unknown", listed as
+// a format no check parsed. It is identified by its magic and read by the
+// pickle check. Falsification: drop the .npy magic from readOpaque and the
+// format is unknown again.
+func TestNumPyArtifactIsNamedAndChecked(t *testing.T) {
+	d, err := Scan(writeFixture(t, "array.npy", []byte(npyBytes(2, ""))))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if d.Artifact.Format != "npy" || len(d.OutOfScope.UnparsedFormats) != 0 {
+		t.Fatalf("format %q, unparsed %q; want npy, none", d.Artifact.Format, d.OutOfScope.UnparsedFormats)
+	}
+	if got := rowStatus(d, "Pickle opcode scan"); got != report.StatusPass {
+		t.Fatalf("pickle row = %s, want PASS for an array with no object dtype", got)
+	}
+}
