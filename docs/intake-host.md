@@ -49,12 +49,23 @@ page puts them in order for this deployment.
 before you run it; see [verify-release.md](verify-release.md). Releases are
 reproducible, so you can also rebuild one from source and compare checksums.
 
-**2. Create the store.**
+**2. Create the store, on a volume with room.** A model is written twice at
+its peak. A scan copies it into a private snapshot beside the staged copy, and
+a promotion copies it into `clean/` before the staged copy is removed. Put the
+scan snapshot on the store's volume too; its default is the system temp
+directory, which is usually too small:
 
 ```
 export SOCAIR_STORE=/srv/socair/store
+export SOCAIR_SCAN_TMP=/srv/socair/scan
 socair airlock init "$SOCAIR_STORE"
+mkdir -p "$SOCAIR_SCAN_TMP"
 ```
+
+Plan for about twice the largest model's size free, beyond what `clean/`
+already holds: a 755 GB model needs roughly 1.5 TB free while it moves
+through. Pull, scan, and promote each check for room before they start and
+refuse with the shortfall, rather than failing partway through a long copy.
 
 **3. Create the signing key, ideally on a different machine.** The operator key
 signs attestations. Keep the private key off the intake host if you can; the
@@ -82,6 +93,18 @@ socair airlock trust add --acceptor ciso.pub
 set `SOCAIR_HF_ENDPOINT` (its host joins the allowlist) and, if it redirects,
 `SOCAIR_EGRESS_ALLOW`.
 
+**7. Optional: a Hugging Face token, for gated repos.** Llama, Gemma, and
+other gated repos refuse an anonymous download and hide their file hashes. Accept
+the repo's terms on the hub with the account, create a read-only token for
+it, and set it on the intake host:
+
+```
+export HF_TOKEN=hf_...
+```
+
+The token is sent only to the hub's own host, never across a redirect to the
+CDN, and never written to the log or an error.
+
 ## Bringing a model in
 
 The console shows each step below as it happens: run
@@ -97,6 +120,29 @@ the hub. The pull verifies every file and prints the scan command to run next.
 ```
 socair airlock pull --repo Qwen/Qwen2.5-7B-Instruct --revision <40-hex commit>
 ```
+
+Large repos often carry more than the serving stack loads: reference code,
+papers, a build for another platform, a second copy of the weights. Leave
+those out with `--exclude`, or name what to keep with `--include`. The patterns
+work like `hf download`'s: `*` crosses directories, and a trailing `/` means
+the whole directory. Flags repeat, or take a comma-separated list.
+
+```
+# 65 GB instead of 195 GB: skip the Metal build and the original checkpoint
+socair airlock pull --repo openai/gpt-oss-120b --revision <commit> \
+  --exclude metal/ --exclude original/
+
+# the weights, configs, tokenizer, and chat template, without the reference code
+socair airlock pull --repo deepseek-ai/DeepSeek-V4.1-Flash --revision <commit> \
+  --exclude inference/,encoding/,evaluation/,assets/ --exclude '*.pdf'
+```
+
+Left-out files are never fetched. The attestation covers exactly the files
+that were pulled, and the provenance manifest and the log name every file left
+out. Leave code out only when the serving stack does not run it: DeepSeek's
+`inference/` scripts are a reference implementation that a serving engine with
+native support never imports. A repo whose `config.json` has an `auto_map`
+entry loads its own code, so it still shows a Remote code LEAD, and it should.
 
 For a single file (one GGUF, for example), name the file and its expected
 SHA-256, which the hub shows on the file's page:
