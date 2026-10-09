@@ -44,7 +44,7 @@ func TestRenderIsByteStable(t *testing.T) {
 
 func TestRenderCarriesFixedLanguage(t *testing.T) {
 	out := renderString(t, loadGolden(t))
-	if !strings.Contains(out, report.BoundedStatement) {
+	if !strings.Contains(out, report.BoundedStatementFor(loadGolden(t).Checks)) {
 		t.Error("rendered report does not carry the bounded statement")
 	}
 	if !strings.Contains(out, report.DoesNotCertify) {

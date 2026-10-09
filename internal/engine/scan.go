@@ -273,9 +273,11 @@ func begin(start time.Time, id report.Identity, original string, sig *provenance
 	return d, provOpts, expires, nil
 }
 
-// finish records the check rows and computes the promotion state.
+// finish records the check rows, picks the bounded statement they support,
+// and computes the promotion state.
 func finish(d *report.Document, results []checks.Result, unparsed []string, expires string) *report.Document {
 	applyResults(d, results)
+	d.BoundedStatement = report.BoundedStatementFor(d.Checks)
 	d.OutOfScope.UnparsedFormats = unparsed
 	d.Scope.ScanEndUTC = time.Now().UTC().Format(time.RFC3339)
 	finalizeFindings(d)

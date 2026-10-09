@@ -3,11 +3,11 @@
 	import { statusPill, promotionLabel, promotionPill, counts, countOrder } from '$lib/report';
 
 	// The engine's report, read-only. Section numbers follow the attestation
-	// template (docs/attestation-template.md), so the bounded statement's
-	// "Section 2/3/4/8" references resolve on this page. `status` shows the
-	// document's promotion state; a page with its own status block (a model
-	// page) passes false so one state, and its accepted gaps, are not shown
-	// twice.
+	// template (docs/attestation-template.md), and the bounded statement's
+	// closing reference, "Out of scope", is section 8's heading here. `status`
+	// shows the document's promotion state; a page with its own status block
+	// (a model page) passes false so one state, and its accepted gaps, are not
+	// shown twice.
 	let {
 		report,
 		signed = false,

@@ -9,10 +9,8 @@
 
 This document is the artifact a security buyer files. Fill the bracketed fields per scan and leave the fixed wording unchanged. Two elements are fixed and must not be edited per artifact:
 
-- The bounded statement in Section 7.
+- The bounded statement in Section 7: one of two fixed sentences, picked from the check rows.
 - The published ceiling in Section 8.
-
-Section references in the bounded statement point at this template's numbering.
 
 ---
 
@@ -138,7 +136,15 @@ What Tier 2 would add, and whether it ran: `[tier2_note]`
 
 ## 7. Bounded statement (fixed)
 
-> For the artifact identified by hash in Section 2, served on the node class named in Section 3, the checks listed in Section 4 found no indicators within their stated scope. Every surface outside that scope is enumerated as NOT_TESTED in Section 8.
+The statement is one of two fixed sentences, picked from the check rows (`report.BoundedStatementFor`). Validation picks it again from the rows and refuses a report whose statement differs, so neither sentence can be edited, and a report with a FAIL or LEAD can never carry the first.
+
+When no row is FAIL or LEAD:
+
+> For the artifact identified by its hash, the Tier 1 checks that returned PASS found no indicators within their stated scope. Rows marked NOT_TESTED were not examined, for the reason each row gives. Tier 1 runs no inference, so no model behavior was tested. Every surface outside that scope is listed under Out of scope.
+
+When any row is FAIL or LEAD:
+
+> For the artifact identified by its hash, the Tier 1 checks found the indicators this report lists: each FAIL is positive evidence, and each LEAD is a suspicious signal that needs review. Rows marked NOT_TESTED were not examined, for the reason each row gives. Tier 1 runs no inference, so no model behavior was tested. Every surface outside that scope is listed under Out of scope.
 
 ## 8. Out of scope and NOT_TESTED (fixed ceiling)
 

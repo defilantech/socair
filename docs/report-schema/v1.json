@@ -143,7 +143,11 @@
       }
     },
     "bounded_statement": {
-      "const": "For the artifact identified by hash in Section 2, served on the node class named in Section 3, the checks listed in Section 4 found no indicators within their stated scope. Every surface outside that scope is enumerated as NOT_TESTED in Section 8."
+      "description": "One of two fixed sentences, picked from the check rows: the first when no row is FAIL or LEAD, the second when any row is. Validation re-derives it from the rows, so neither may be edited per artifact.",
+      "enum": [
+        "For the artifact identified by its hash, the Tier 1 checks that returned PASS found no indicators within their stated scope. Rows marked NOT_TESTED were not examined, for the reason each row gives. Tier 1 runs no inference, so no model behavior was tested. Every surface outside that scope is listed under Out of scope.",
+        "For the artifact identified by its hash, the Tier 1 checks found the indicators this report lists: each FAIL is positive evidence, and each LEAD is a suspicious signal that needs review. Rows marked NOT_TESTED were not examined, for the reason each row gives. Tier 1 runs no inference, so no model behavior was tested. Every surface outside that scope is listed under Out of scope."
+      ]
     },
     "out_of_scope": {
       "type": "object",

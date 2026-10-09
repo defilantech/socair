@@ -21,15 +21,38 @@ import (
 // SchemaVersion is the contract version this model emits.
 const SchemaVersion = "socair.report/v1"
 
-// BoundedStatement is the fixed Option A wording. It must not be edited per
-// artifact.
-const BoundedStatement = "For the artifact identified by hash in Section 2, served on the node class named in Section 3, the checks listed in Section 4 found no indicators within their stated scope. Every surface outside that scope is enumerated as NOT_TESTED in Section 8."
+// The bounded statement is one of two fixed sentences, picked from the check
+// rows by BoundedStatementFor. Neither may be edited per artifact.
+const (
+	// BoundedStatementNoIndicators is the statement of a report with no FAIL
+	// and no LEAD row.
+	BoundedStatementNoIndicators = "For the artifact identified by its hash, the Tier 1 checks that returned PASS found no indicators within their stated scope. " +
+		"Rows marked NOT_TESTED were not examined, for the reason each row gives. Tier 1 runs no inference, so no model behavior was tested. " +
+		"Every surface outside that scope is listed under Out of scope."
+	// BoundedStatementIndicators is the statement of a report with any FAIL
+	// or LEAD row.
+	BoundedStatementIndicators = "For the artifact identified by its hash, the Tier 1 checks found the indicators this report lists: " +
+		"each FAIL is positive evidence, and each LEAD is a suspicious signal that needs review. " +
+		"Rows marked NOT_TESTED were not examined, for the reason each row gives. Tier 1 runs no inference, so no model behavior was tested. " +
+		"Every surface outside that scope is listed under Out of scope."
+)
+
+// BoundedStatementFor picks the bounded statement for a report's check rows,
+// so a report with a FAIL or a LEAD never says its checks found no indicators.
+func BoundedStatementFor(checks []CheckResult) string {
+	for _, c := range checks {
+		if c.Status == StatusFail || c.Status == StatusLead {
+			return BoundedStatementIndicators
+		}
+	}
+	return BoundedStatementNoIndicators
+}
 
 // DoesNotCertify is the fixed ceiling sentence.
 const DoesNotCertify = "This attestation does not certify the absence of unknown backdoors."
 
 // Tier1Assurance is the fixed statement of what a Tier 1 attestation means.
-// Like BoundedStatement, it must not be edited per artifact.
+// Like the bounded statement, it must not be edited per artifact.
 func Tier1Assurance() AssuranceLevel {
 	return AssuranceLevel{
 		Awarded:    "Tier 1 (static)",
@@ -344,7 +367,9 @@ func NewFromIdentity(id Identity) *Document {
 			ExecutionContext: "Tier 1 static, portable",
 			InputPath:        "local path",
 		},
-		BoundedStatement: BoundedStatement,
+		// No check has run, so no row is a FAIL or a LEAD yet; the engine
+		// picks the statement again once the rows are in (BoundedStatementFor).
+		BoundedStatement: BoundedStatementFor(nil),
 		OutOfScope: OutOfScope{
 			DoesNotCertify:      DoesNotCertify,
 			Ceiling:             DefaultCeiling(),
@@ -415,7 +440,9 @@ func Validate(d *Document) []string {
 	req(len(d.Artifact.SHA256) == 64, "artifact.sha256 (64 hex chars)")
 	req(strings.TrimSpace(d.Artifact.Format) != "", "artifact.format")
 	req(len(d.Checks) > 0, "checks (at least one)")
-	req(d.BoundedStatement == BoundedStatement, "bounded_statement (must equal the fixed wording)")
+	// The statement is re-derived from the rows, so neither an edited sentence
+	// nor the no-indicators sentence over a FAIL or LEAD validates.
+	req(d.BoundedStatement == BoundedStatementFor(d.Checks), "bounded_statement (must equal the fixed wording for these check rows)")
 	req(strings.TrimSpace(d.OutOfScope.DoesNotCertify) != "", "out_of_scope.does_not_certify")
 	req(len(d.OutOfScope.Ceiling) > 0, "out_of_scope.ceiling")
 	req(strings.TrimSpace(d.Issuer.Authority) != "", "issuer.authority")

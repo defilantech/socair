@@ -19,6 +19,14 @@ describe('report contract', () => {
 		expect([...CHECK_STATUSES].sort()).toEqual([...enumInSchema].sort());
 	});
 
+	it('the golden and demo bounded statements are the schema sentence for their rows', () => {
+		const [noIndicators, indicators] = schema.properties.bounded_statement.enum;
+		for (const [name, d] of Object.entries(docs)) {
+			const flagged = d.checks.some((c) => c.status === 'FAIL' || c.status === 'LEAD');
+			expect(d.bounded_statement, name).toBe(flagged ? indicators : noIndicators);
+		}
+	});
+
 	it('the golden and demo documents fit the wizard type', () => {
 		for (const [name, d] of Object.entries(docs)) {
 			expect(d.schema_version, name).toBe('socair.report/v1');

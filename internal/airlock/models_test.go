@@ -68,6 +68,7 @@ func TestStageReadyNeedsAcceptanceBlocked(t *testing.T) {
 	lead := *d
 	lead.Checks = append([]report.CheckResult(nil), d.Checks...)
 	lead.Checks[0].Status = report.StatusLead
+	lead.BoundedStatement = report.BoundedStatementFor(lead.Checks)
 	lead.Findings.Leads = []string{lead.Checks[0].Name}
 	lead.PromotionAuthorization = report.PromotionAuthorization{State: report.StateWithheld, Level: "Tier 1 only",
 		Conditions: "Withheld: " + lead.Checks[0].Name + " is a LEAD."}

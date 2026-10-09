@@ -3,8 +3,10 @@ package report
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/defilantech/socair/internal/gguf"
@@ -104,6 +106,74 @@ func TestValidateCatchesAlteredBoundedStatement(t *testing.T) {
 	}
 }
 
+// TestBoundedStatementFollowsTheRows: one fixed sentence was printed on every
+// report, so a report with a FAIL said its checks "found no indicators". The
+// sentence is now picked from the rows. Falsification: return the
+// no-indicators sentence whatever the rows say and this fails.
+func TestBoundedStatementFollowsTheRows(t *testing.T) {
+	rows := func(ss ...Status) []CheckResult {
+		var out []CheckResult
+		for i, s := range ss {
+			out = append(out, CheckResult{Name: fmt.Sprintf("c%d", i), Status: s})
+		}
+		return out
+	}
+	for _, c := range []struct {
+		rows []CheckResult
+		want string
+	}{
+		{rows(StatusPass), BoundedStatementNoIndicators},
+		{rows(StatusPass, StatusNotTested), BoundedStatementNoIndicators},
+		{rows(StatusNotTested), BoundedStatementNoIndicators},
+		{rows(StatusPass, StatusFail), BoundedStatementIndicators},
+		{rows(StatusNotTested, StatusLead), BoundedStatementIndicators},
+		{rows(StatusFail, StatusLead, StatusNotTested), BoundedStatementIndicators},
+	} {
+		if got := BoundedStatementFor(c.rows); got != c.want {
+			t.Errorf("%v: got %q, want %q", c.rows, got, c.want)
+		}
+	}
+	if strings.Contains(BoundedStatementIndicators, "found no indicators") {
+		t.Error("the indicators sentence must not say no indicators were found")
+	}
+	if strings.Contains(BoundedStatementNoIndicators, "node class") || strings.Contains(BoundedStatementIndicators, "node class") {
+		t.Error("Tier 1 runs on no node class; the bounded statement must not name one")
+	}
+}
+
+// TestValidateBindsTheBoundedStatementToTheRows: Validate re-derives the
+// sentence from the check rows, so the clean sentence over a FAIL or LEAD, or
+// the indicators sentence over clean rows, is refused even though each is one
+// of the fixed sentences. Falsification: accept either fixed sentence in
+// Validate and a report claiming "no indicators" over a FAIL validates.
+func TestValidateBindsTheBoundedStatementToTheRows(t *testing.T) {
+	boundedProblem := func(problems []string) bool {
+		for _, p := range problems {
+			if strings.Contains(p, "bounded_statement") {
+				return true
+			}
+		}
+		return false
+	}
+	for _, s := range []Status{StatusFail, StatusLead} {
+		d, _ := loadGolden(t)
+		d.Checks[0].Status = s
+		d.BoundedStatement = BoundedStatementNoIndicators
+		if !boundedProblem(Validate(d)) {
+			t.Errorf("the no-indicators sentence over a %s row must fail validation", s)
+		}
+		d.BoundedStatement = BoundedStatementIndicators
+		if problems := Validate(d); boundedProblem(problems) {
+			t.Errorf("the indicators sentence over a %s row should validate, got %v", s, problems)
+		}
+	}
+	d, _ := loadGolden(t)
+	d.BoundedStatement = BoundedStatementIndicators
+	if !boundedProblem(Validate(d)) {
+		t.Error("the indicators sentence over rows with no FAIL or LEAD must fail validation")
+	}
+}
+
 func TestPromotionStateRules(t *testing.T) {
 	t.Run("unknown state", func(t *testing.T) {
 		d, _ := loadGolden(t)
@@ -157,10 +227,13 @@ func TestPromotionStateRules(t *testing.T) {
 // validate. Falsification: drop the binding in validatePromotion and a forged
 // report crosses into the clean store.
 func TestPromotionStateBoundToChecks(t *testing.T) {
+	// setStatus keeps the bounded statement in step with the rows, so the
+	// only thing wrong with each forged document is its promotion state.
 	setStatus := func(d *Document, name string, s Status) {
 		for i := range d.Checks {
 			if d.Checks[i].Name == name {
 				d.Checks[i].Status = s
+				d.BoundedStatement = BoundedStatementFor(d.Checks)
 				return
 			}
 		}
@@ -254,8 +327,8 @@ func TestNewFromManifest(t *testing.T) {
 	if len(d.Checks) != 0 {
 		t.Fatalf("a seeded document runs no checks yet, got %d rows", len(d.Checks))
 	}
-	if d.BoundedStatement != BoundedStatement {
-		t.Error("bounded statement not set from the fixed constant")
+	if d.BoundedStatement != BoundedStatementNoIndicators {
+		t.Error("a seeded document has no FAIL or LEAD, so it carries the no-indicators sentence")
 	}
 	if d.Artifact.SHA256 != m.SHA256 {
 		t.Error("artifact hash not carried into the report")
