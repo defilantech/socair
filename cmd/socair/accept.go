@@ -79,8 +79,38 @@ func acceptCmd(args []string) error {
 	if err != nil {
 		return err
 	}
-	fmt.Printf("%s accepted %d untested surface(s) of %s until %s, with key %s\n  %s\n  %s\nre-issue it: socair sign --attestation %s --acceptance %s --key <operator.key>\n",
+	fmt.Printf("%s accepted %d untested surface(s) of %s until %s, with key %s\n  %s\n  %s\nthe operator re-issues it with their key:\n  %s\n",
 		by, len(a.AcceptedSurfaces), v.Document.Header.DocumentID, expires.UTC().Format(time.RFC3339), attest.ShortID(k.ID),
-		strings.Join(a.AcceptedSurfaces, ", "), out, in, out)
+		strings.Join(a.AcceptedSurfaces, ", "), out, reissueHint(fs, keyPath, in, out))
 	return nil
+}
+
+// reissueHint is the sign command that re-issues the reviewed attestation
+// with the acceptance just written. It carries the trust source accept used,
+// the store or the trusted keys, and for trusted keys the acceptor's public
+// key beside their private one, so it runs as printed once the operator puts
+// in their key. Placeholders carry no shell metacharacters.
+func reissueHint(fs *flagSet, keyPath, in, out string) string {
+	cmd := "socair sign --key OPERATOR_KEY --attestation " + shellQuote(in) + " --acceptance " + shellQuote(out)
+	if t := fs.val("trusted"); t == "" || t == "true" {
+		return cmd + " --store " + shellQuote(fs.val("store"))
+	}
+	acceptors := "ACCEPTOR_PUB"
+	if base, ok := strings.CutSuffix(keyPath, ".key"); ok {
+		if _, err := os.Stat(base + ".pub"); err == nil {
+			acceptors = base + ".pub"
+		}
+	}
+	return cmd + " --trusted " + shellQuote(fs.val("trusted")) + " --acceptors " + shellQuote(acceptors)
+}
+
+// shellQuote quotes p for a POSIX shell when it holds anything but plain path
+// characters, as the console quotes the commands it shows.
+func shellQuote(p string) string {
+	if p != "" && strings.IndexFunc(p, func(r rune) bool {
+		return !(r == '/' || r == '.' || r == '-' || r == '_' || r >= '0' && r <= '9' || r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z')
+	}) < 0 {
+		return p
+	}
+	return "'" + strings.ReplaceAll(p, "'", `'\''`) + "'"
 }
