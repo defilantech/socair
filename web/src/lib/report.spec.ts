@@ -8,6 +8,7 @@ import {
 	counts,
 	countOrder,
 	availableLevels,
+	licenseLabel,
 	measurementPill,
 	measurementSummary,
 	nodeClassFacts,
@@ -168,6 +169,29 @@ describe('Tier 2 measurements', () => {
 	it('abbreviates a digest', () => {
 		expect(shortHash('sha256:' + 'c'.repeat(64))).toBe('sha256:' + 'c'.repeat(12));
 		expect(shortHash('abc')).toBe('abc');
+	});
+});
+
+describe('license label', () => {
+	const withLicense = (license: Document['artifact']['license']): Document => {
+		const d = doc('withheld', []);
+		d.artifact.license = license;
+		return d;
+	};
+	it('names the identified license from the document', () => {
+		expect(licenseLabel(withLicense({ id: 'mit', name: 'MIT License', sources: [] }))).toEqual({
+			text: 'MIT License (mit)',
+			tone: 'plain'
+		});
+	});
+	it('shows a disagreement in amber and never as an identified license', () => {
+		const l = licenseLabel(withLicense({ disagreement: 'the sources name different licenses: ...', sources: [] }));
+		expect(l).toEqual({ text: 'The sources disagree', tone: 'amber' });
+	});
+	it('never invents a license the engine did not identify', () => {
+		expect(licenseLabel(withLicense({ sources: [{ source: 'LICENSE', value: 'ACME' }] }))?.text).toBe('Not identified');
+		expect(licenseLabel(withLicense({}))?.text).toBe('None stated');
+		expect(licenseLabel(doc('withheld', []))).toBeUndefined();
 	});
 });
 

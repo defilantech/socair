@@ -15,6 +15,7 @@ import (
 	"github.com/defilantech/socair/internal/checks"
 	"github.com/defilantech/socair/internal/checks/chattemplate"
 	"github.com/defilantech/socair/internal/checks/inventory"
+	"github.com/defilantech/socair/internal/checks/license"
 	"github.com/defilantech/socair/internal/checks/pickle"
 	"github.com/defilantech/socair/internal/checks/provenance"
 	"github.com/defilantech/socair/internal/checks/quant"
@@ -27,7 +28,7 @@ import (
 )
 
 // CheckSetVersion names the set of checks this engine runs.
-const CheckSetVersion = "tier1/0.7"
+const CheckSetVersion = "tier1/0.8"
 
 // Version is the socair version: "dev" in a source build, the release tag
 // in a release build (scripts/build-release.sh sets it with -ldflags -X).
@@ -120,6 +121,8 @@ func ScanWith(path string, mode Mode, in Inputs) (*report.Document, error) {
 	var quantDeclared string
 	var fileType *uint32
 	var observedTypes []gguf.TypeShare
+	var licClaims []license.Claim
+	var licBases []license.BaseModel
 
 	if safetensors.IsSafetensors(path) {
 		m, err := safetensors.ReadHeader(path)
@@ -185,6 +188,7 @@ func ScanWith(path string, mode Mode, in Inputs) (*report.Document, error) {
 		tok = m.Tokenizer
 		quantDeclared = m.Quant.Declared
 		fileType = m.Quant.FileType
+		licClaims, licBases = ggufLicense(m, "")
 	}
 
 	if id.Name == "" {
@@ -204,6 +208,8 @@ func ScanWith(path string, mode Mode, in Inputs) (*report.Document, error) {
 		return nil, err
 	}
 	d.Scope.ReferenceData = refs.scope()
+	ident := license.Identify(licClaims, licBases)
+	d.Artifact.License, d.Artifact.BaseModels = licenseIdentity(ident)
 
 	// The check set is per format: a GGUF carries metadata checks that a pickle
 	// checkpoint does not, and vice versa. The report lists only what ran.
@@ -235,8 +241,24 @@ func ScanWith(path string, mode Mode, in Inputs) (*report.Document, error) {
 	if id.Format != "GGUF" && id.Format != "safetensors" {
 		results = append(results, pickle.Inspect(path))
 	}
+	if row, ok := refs.licenseRow(ident, singleFileLicenseNote(id.Format, ggufErr)); ok {
+		results = append(results, row)
+	}
 	measureTier2(d, t2, path)
 	return finish(d, results, unparsedFormats(id), expires), nil
+}
+
+// singleFileLicenseNote says where a single file would state its license, for
+// a License policy row that identified none.
+func singleFileLicenseNote(format string, ggufErr error) string {
+	switch {
+	case ggufErr != nil:
+		return "GGUF metadata could not be read, so general.license was not inspected: " + ggufErr.Error()
+	case format == "GGUF":
+		return "A GGUF states its license in general.license; this one has none that names a license."
+	default:
+		return "A single " + format + " file has no license field; scan the model directory to read its model card and LICENSE file."
+	}
 }
 
 // begin seeds the document every scan path fills: header, re-scan policy,

@@ -45,6 +45,39 @@ export interface Artifact {
 	split?: string;
 	quant_declared?: string;
 	files?: ArtifactFile[];
+	/** The license the artifact states. Identity, not a check. */
+	license?: License;
+	/** The base models the artifact declares; claims, not verified lineage. */
+	base_models?: BaseModel[];
+}
+
+/**
+ * The license the artifact states: id and name when its statements name one
+ * license, disagreement (and no id) when they name more, neither when none
+ * was identified.
+ */
+export interface License {
+	id?: string;
+	name?: string;
+	sources?: LicenseSource[];
+	disagreement?: string;
+}
+
+/** One statement of the license, and where it was read. */
+export interface LicenseSource {
+	source: string;
+	value: string;
+	/** The license it names; absent when it names none. */
+	id?: string;
+	note?: string;
+}
+
+export interface BaseModel {
+	name: string;
+	organization?: string;
+	repo?: string;
+	url?: string;
+	source: string;
 }
 
 /** One file of a model directory; artifact.sha256 is the digest of their manifest. */

@@ -39,6 +39,10 @@
   .promo.withheld { background: var(--untested-bg); color: var(--untested-ink); border-color: var(--untested-line); }
   .accepted { margin-top: 12px; font-size: 13px; color: #7a5a00; background: #fffdf5;
     border: 1px solid #f0d68a; border-radius: 8px; padding: 10px 12px; }
+  /* A license disagreement is a fact about the artifact's own statements,
+     shown in amber like any signal that needs a person, never as a FAIL. */
+  .disagree { margin-top: 12px; font-size: 13px; color: var(--lead-ink); background: var(--lead-bg);
+    border: 1px solid var(--lead-line); border-radius: 8px; padding: 10px 12px; }
   .counts { display: flex; gap: 22px; margin-top: 16px; }
   .counts .n { font-size: 22px; font-weight: 700; display: block; line-height: 1.1; }
   .counts .l { font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; }
@@ -117,7 +121,16 @@
       {{- if .Document.Artifact.Split }} &middot; <strong>{{ .Document.Artifact.Split }}</strong>{{ end }}
       <br>Document {{ .Document.Header.DocumentID }} &middot; Issuer {{ .Document.Issuer.Authority }}
       {{- if .Document.Header.SignerName }} &middot; Signer {{ .Document.Header.SignerName }}{{ end }}
+      {{- with .Document.Artifact.License }}
+      <br>License: {{ if .ID }}<strong>{{ .Name }}</strong> ({{ .ID }}){{ else if .Disagreement }}<strong>the sources disagree</strong>{{ else if .Sources }}not identified{{ else }}none stated{{ end }}
+      {{- end }}
+      {{- with .Document.Artifact.BaseModels }}
+      <br>Declared base model{{ if gt (len .) 1 }}s{{ end }}: {{ range $i, $b := . }}{{ if $i }}, {{ end }}{{ if $b.Repo }}{{ $b.Repo }}{{ else }}{{ $b.Name }}{{ end }}{{ end }}
+      {{- end }}
     </div>
+    {{- with .Document.Artifact.License }}{{ if .Disagreement }}
+    <div class="disagree">License: {{ .Disagreement }}.</div>
+    {{- end }}{{ end }}
     <div class="badge">{{ .Document.Header.AssuranceLevelAwarded }}</div>
     <div class="badge promo {{ promotionClass .Document.PromotionAuthorization.State }}">Promotion: {{ promotionLabel .Document.PromotionAuthorization.State }}</div>
     {{- if .Document.PromotionAuthorization.Accepted }}
@@ -244,6 +257,17 @@
     Artifact SHA256: <span class="hash">{{ .Document.Verification.ArtifactSHA256 }}</span>
     {{- if .Document.Verification.RerunInstructions }}<br>Re-run: {{ .Document.Verification.RerunInstructions }}{{ end }}
   </p>
+  {{- with .Document.Artifact.License }}{{ if .Sources }}
+
+  <h2>License statements</h2>
+  <p class="evidence">What the artifact says about its license, and where. A license is identified, never reviewed: this is not legal advice{{ if $.Document.Artifact.BaseModels }}, and a declared base model is the artifact's claim, not verified lineage{{ end }}.</p>
+  <table>
+    <tr><th>Source</th><th>Says</th><th>Identified as</th></tr>
+    {{- range .Sources }}
+    <tr><td>{{ .Source }}</td><td>{{ .Value }}</td><td>{{ if .ID }}{{ .ID }}{{ else }}<span class="tag">not identified</span>{{ end }}{{ if .Note }}<div class="evidence">{{ .Note }}</div>{{ end }}</td></tr>
+    {{- end }}
+  </table>
+  {{- end }}{{ end }}
   {{- if .Document.Artifact.Files }}
 
   <h2>Files</h2>

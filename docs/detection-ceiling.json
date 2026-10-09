@@ -1,5 +1,5 @@
 {
-  "version": "v3",
+  "version": "v4",
   "statement": "This attestation does not certify the absence of unknown backdoors.",
   "bullets": [
     "Backdoors, trojans, or poisoning in the model weights. Tier 1 reads the weights' layout, never their behavior.",
@@ -10,7 +10,7 @@
     "Artifact formats we do not parse.",
     "Pickle code execution reached only through imports on the reviewed safe list.",
     "Chat-template instructions written as ordinary guidance (no override or concealment phrase, URL, hidden or obfuscated text, or condition on message content), unless the template matches a reviewed template.",
-    "License and usage-policy compliance."
+    "Legal review of a license, and compliance with its usage policies. The license is identified, and checked only against a policy you configure."
   ],
   "notes": [
     "The ceiling is the detection boundary of the current check set. It is not a confidence statement about the artifact.",

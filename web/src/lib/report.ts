@@ -150,6 +150,18 @@ export function shortHash(h: string): string {
 	return h.startsWith('sha256:') && h.length > 19 ? h.slice(0, 19) : h;
 }
 
+// licenseLabel words the license the engine identified. It reads the
+// document's license fields only: a disagreement is amber, like a signal that
+// needs a person, and nothing identified is never shown as a license.
+export function licenseLabel(d: Document): { text: string; tone: 'plain' | 'amber' | 'neutral' } | undefined {
+	const l = d.artifact.license;
+	if (!l) return undefined;
+	if (l.id) return { text: `${l.name ?? l.id} (${l.id})`, tone: 'plain' };
+	if (l.disagreement) return { text: 'The sources disagree', tone: 'amber' };
+	if (l.sources?.length) return { text: 'Not identified', tone: 'neutral' };
+	return { text: 'None stated', tone: 'neutral' };
+}
+
 export interface Level {
 	id: string;
 	label: string;

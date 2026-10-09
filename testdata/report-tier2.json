@@ -19,10 +19,36 @@
     "format": "GGUF",
     "size_bytes": 8444833824,
     "quant_declared": "Q5_K_M",
-    "quant_observed": "file_type=17"
+    "quant_observed": "file_type=17",
+    "license": {
+      "id": "socair-gemma-terms-of-use",
+      "name": "Gemma Terms of Use",
+      "sources": [
+        {
+          "source": "GGUF general.license",
+          "value": "gemma",
+          "id": "socair-gemma-terms-of-use"
+        },
+        {
+          "source": "declared base model google/gemma-3-12b-pt (GGUF general.base_model.0)",
+          "value": "google/gemma-3-12b-pt",
+          "id": "socair-gemma-terms-of-use",
+          "note": "the license its publisher releases that model under; not a statement by this artifact"
+        }
+      ]
+    },
+    "base_models": [
+      {
+        "name": "Gemma 3 12b Pt",
+        "organization": "Google",
+        "repo": "google/gemma-3-12b-pt",
+        "url": "https://huggingface.co/google/gemma-3-12b-pt",
+        "source": "GGUF general.base_model.0"
+      }
+    ]
   },
   "scope": {
-    "check_set_version": "tier1/0.7",
+    "check_set_version": "tier1/0.8",
     "tool_versions": "socair 0.1.0-dev",
     "execution_context": "Tier 1 static, portable; Tier 2 on node class sha256:239cf1890707, as the probe helper reported it",
     "input_path": "local path",
@@ -359,7 +385,7 @@
     "awarded": "Tier 1 (static)",
     "definition": "Static checks on the artifact's bytes and metadata, run offline. No inference is run, and the weights are not evaluated for behavior.",
     "does_mean": "Each listed check ran on the exact bytes identified by the artifact hash, and each row states what its PASS means. A FAIL carries positive evidence, a LEAD is a suspicious signal that needs a person's review, and a NOT_TESTED names why it was not tested. A FAIL or a LEAD withholds promotion, and no acceptance clears it.",
-    "does_not_mean": "It is not an assessment of the model's behavior or safety. It does not test the weights for backdoors or poisoning, behavior that appears only after quantization or on particular hardware, or jailbreak susceptibility and harmful capability, and it does not check licensing.",
+    "does_not_mean": "It is not an assessment of the model's behavior or safety. It does not test the weights for backdoors or poisoning, behavior that appears only after quantization or on particular hardware, or jailbreak susceptibility and harmful capability, and it is not a legal review of the model's license.",
     "tier2_note": "Tier 2 measurements ran (see Tier 2 measurements). They can withhold promotion through the LEAD or FAIL rows they raise, but never authorize it, and no Tier 2 level is awarded."
   },
   "bounded_statement": "For the artifact identified by its hash, the checks found the indicators this report lists: each FAIL is positive evidence, and each LEAD is a suspicious signal that needs review; a row marked (Tier 2) was raised by a measurement made by running the model. Rows marked NOT_TESTED were not examined, for the reason each row gives. Tier 2 ran the model only on the node classes and probe sets its measurements name, and a measurement that found nothing is not a PASS. Every surface outside that scope is listed under Out of scope.",
@@ -374,7 +400,7 @@
       "Artifact formats we do not parse.",
       "Pickle code execution reached only through imports on the reviewed safe list.",
       "Chat-template instructions written as ordinary guidance (no override or concealment phrase, URL, hidden or obfuscated text, or condition on message content), unless the template matches a reviewed template.",
-      "License and usage-policy compliance."
+      "Legal review of a license, and compliance with its usage policies. The license is identified, and checked only against a policy you configure."
     ],
     "untested_node_classes": [
       "every node class other than sha256:239cf1890707ccdd02c74c1312ce1d7bc2289034ccbab9e5a2bdff68c0a31370: Tier 1 is static, and Tier 2 measured only the node classes its measurements name; a change to any field of a node class makes a different class"

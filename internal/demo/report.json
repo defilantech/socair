@@ -26,10 +26,21 @@
     "quant_declared": "Q5_K_M",
     "quant_observed": "Q5_K 71%, Q6_K 21%, Q8_0 8%, F32 <1% (tensor data by type)",
     "tokenizer_hash": "",
-    "chat_template_hash": "7de1c58e208eda46"
+    "chat_template_hash": "7de1c58e208eda46",
+    "license": {
+      "id": "apache-2.0",
+      "name": "Apache License 2.0",
+      "sources": [
+        {
+          "source": "GGUF general.license",
+          "value": "apache-2.0",
+          "id": "apache-2.0"
+        }
+      ]
+    }
   },
   "scope": {
-    "check_set_version": "tier1/0.7",
+    "check_set_version": "tier1/0.8",
     "tool_versions": "socair 0.1.0-dev",
     "execution_context": "Tier 1 static, portable",
     "input_path": "airlock pull",
@@ -210,7 +221,7 @@
     "awarded": "Tier 1 (static)",
     "definition": "Static checks on the artifact's bytes and metadata, run offline. No inference is run, and the weights are not evaluated for behavior.",
     "does_mean": "Each listed check ran on the exact bytes identified by the artifact hash, and each row states what its PASS means. A FAIL carries positive evidence, a LEAD is a suspicious signal that needs a person's review, and a NOT_TESTED names why it was not tested. A FAIL or a LEAD withholds promotion, and no acceptance clears it.",
-    "does_not_mean": "It is not an assessment of the model's behavior or safety. It does not test the weights for backdoors or poisoning, behavior that appears only after quantization or on particular hardware, or jailbreak susceptibility and harmful capability, and it does not check licensing.",
+    "does_not_mean": "It is not an assessment of the model's behavior or safety. It does not test the weights for backdoors or poisoning, behavior that appears only after quantization or on particular hardware, or jailbreak susceptibility and harmful capability, and it is not a legal review of the model's license.",
     "tier2_note": "Tier 2 (inference on the production node class) did not run."
   },
   "bounded_statement": "For the artifact identified by its hash, the Tier 1 checks found the indicators this report lists: each FAIL is positive evidence, and each LEAD is a suspicious signal that needs review. Rows marked NOT_TESTED were not examined, for the reason each row gives. Tier 1 runs no inference, so no model behavior was tested. Every surface outside that scope is listed under Out of scope.",
@@ -225,7 +236,7 @@
       "Artifact formats we do not parse.",
       "Pickle code execution reached only through imports on the reviewed safe list.",
       "Chat-template instructions written as ordinary guidance (no override or concealment phrase, URL, hidden or obfuscated text, or condition on message content), unless the template matches a reviewed template.",
-      "License and usage-policy compliance."
+      "Legal review of a license, and compliance with its usage policies. The license is identified, and checked only against a policy you configure."
     ],
     "untested_node_classes": [
       "every node class: Tier 1 is static and ran no inference on any hardware"
