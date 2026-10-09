@@ -50,6 +50,7 @@ that gap. Nothing passes silently.
 | Remote code | Code a loader would run with `trust_remote_code` (`auto_map`, `.py` files) |
 | Hash, provenance, lineage | An origin bound to this exact hash at an immutable commit, or a verified publisher signature (OpenSSF Model Signing) |
 | Known-bad hash match | The artifact, or any file in it, on a known-bad list |
+| License policy (opt-in) | A license outside the allowed list you configure (`SOCAIR_LICENSE_POLICY`); without one, the report still names the license the artifact states and any disagreement between its model card, LICENSE file, and GGUF metadata |
 
 Every result is a bounded statement. Socair says what it inspected and lists
 what it cannot see in its
@@ -180,7 +181,7 @@ checks that run the model on your own GPUs, is built here in the open.
 | [tier2.md](docs/tier2.md) | Tier 2, opt-in: measurements made by running the model, the node-class record, the probe-helper protocol, isolation, and the roadmap |
 | [airlock.md](docs/airlock.md) | The airlock: pull, ingest, promote, the trust policy, the log, the signed inventory export |
 | [intake-host.md](docs/intake-host.md) | Running Socair as the model intake host for an on-prem GPU cluster |
-| [provenance-bundle.md](docs/provenance-bundle.md) | The inputs that move each row: mirrors, denylists, provenance, signatures, acceptances |
+| [provenance-bundle.md](docs/provenance-bundle.md) | The inputs that move each row: mirrors, denylists, provenance, signatures, a license policy, acceptances |
 | [feed.md](docs/feed.md) | Signed reference feeds: format, verification, building one |
 | [api.md](docs/api.md), [wizard.md](docs/wizard.md) | The local HTTP API, the click-through wizard, and the airlock console (wizard.md) |
 | [false-positive-baseline.md](docs/false-positive-baseline.md) | How each detector was measured against real models |

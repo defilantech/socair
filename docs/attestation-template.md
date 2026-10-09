@@ -46,7 +46,19 @@ This document is the artifact a security buyer files. Fill the bracketed fields 
 | Quantization, observed weight layout | `[quant_observed]` |
 | Tokenizer version hash | `[tokenizer_hash]` (SHA-256 of `tokenizer.json` for a model directory; of the vocabulary, tokens in id order, for a GGUF) |
 | Chat-template version hash | `[chat_template_hash]` |
+| License | `[license id and name / the sources disagree / not identified / none stated]` |
+| License statements | `[source, what it says, identified as, per statement: model card license, license_name, license_link; each top-level LICENSE file; GGUF general.license keys; a declared base model's publisher license]` |
+| Declared base models | `[base_model / general.base_model.N, as declared]` |
 | Files (model directory only) | `[path, role, size, sha256 per file]` |
+
+The license is identity, not a check. The scan reads every statement the
+artifact makes about its license and identifies each against a fixed
+catalogue (`internal/checks/license`): an unrecognized text is listed with its
+first line and never guessed, and statements that name different licenses
+are shown as a disagreement. Without a license policy, nothing about the
+license changes a row or the promotion state. It is identified, never
+reviewed: this is not legal advice. Declared base models are the artifact's
+claim, not verified lineage.
 
 A model directory (a Hugging Face repo checkout or cache snapshot) is one
 artifact: every file is hashed, and the artifact SHA256 is the digest of the
@@ -71,7 +83,7 @@ Each row returns PASS, FAIL, LEAD, or NOT_TESTED. FAIL is positive evidence. LEA
 
 Every row also carries a fixed **PASS means** line (`pass_means`): what that check's PASS establishes and where it stops, for example that the tokenizer check tests internal consistency and does not compare against a canonical copy. The wording is fixed per check (`report.PassMeaning`), never per artifact.
 
-The rows that run depend on the format: every report carries structure, inventory, provenance, and the known-bad hash; a GGUF adds the chat template, tokenizer, and quant rows; a model directory adds the chat template, tokenizer, and remote code rows; a pickle checkpoint adds the pickle row.
+The rows that run depend on the format: every report carries structure, inventory, provenance, and the known-bad hash; a GGUF adds the chat template, tokenizer, and quant rows; a model directory adds the chat template, tokenizer, and remote code rows; a pickle checkpoint adds the pickle row. The License policy row runs, for every format, only when the operator configures a policy (`SOCAIR_LICENSE_POLICY`).
 
 | Check | Looks for | Result | Evidence | Notes |
 |---|---|---|---|---|
@@ -84,6 +96,9 @@ The rows that run depend on the format: every report carries structure, inventor
 | Quant match (GGUF) | Declared quantization (file name) against the tensor types in the file | `[result]` | `[evidence]` | `[notes]` |
 | Remote code (model directory) | Code a loader would run: auto_map entries and Python files (trust_remote_code) | `[result]` | `[evidence]` | `[notes]` |
 | Pickle opcode scan (pickle) | Imports in pickle-based model files that reach code execution | `[result]` | `[evidence]` | `[notes]` |
+| License policy (with a policy) | The license the artifact states, against the operator's allowed list | `[result]` | `[evidence]` | `[notes, with the license's usage-policy obligations listed and not marked met]` |
+
+The License policy row FAILs only when the artifact's statements agree on a license the policy does not allow. Statements that name different licenses, one of them not allowed, are a LEAD: which license governs needs a person. No identified license, or an allowed one beside a statement the catalogue does not recognize, is NOT_TESTED. Its PASS means the identified license is on the operator's list; it is not legal advice.
 
 Tier 2 checks run the model and are opt-in ([tier2.md](tier2.md)). When Tier 2 did not run, the report lists them in Section 8 as not run, never as rows. When it ran, see Tier 2 measurements below.
 
@@ -103,7 +118,7 @@ Node classes: `[sha256:hash]`, reported by the probe helper (not observed by Soc
 
 ### Severity and framework mapping
 
-A FAIL or LEAD row carries a **severity** (`critical`, `high`, `medium`, `low`), the highest of its findings' patterns, fixed per pattern in `report.patternSeverity`. It is for triage: any FAIL or LEAD withholds promotion whatever its severity. Code a loader or template would execute, and a known-bad hash, are critical. Positive evidence of tampering is high. A suspicious or inconsistent signal is medium. A mislabelled quantization is low.
+A FAIL or LEAD row carries a **severity** (`critical`, `high`, `medium`, `low`), the highest of its findings' patterns, fixed per pattern in `report.patternSeverity`. It is for triage: any FAIL or LEAD withholds promotion whatever its severity. Code a loader or template would execute, and a known-bad hash, are critical. Positive evidence of tampering is high. A suspicious or inconsistent signal, and a license outside the operator's policy, are medium. A mislabelled quantization, and license statements that disagree, are low.
 
 Every row names what it **addresses** (`maps_to`), against MITRE ATLAS 5.6.0 and the OWASP Top 10 for LLM Applications 2025. A mapping is a claim about what the check inspects, never the wider threat:
 
@@ -118,6 +133,7 @@ Every row names what it **addresses** (`maps_to`), against MITRE ATLAS 5.6.0 and
 | Remote code | AML.T0011.000, AML.T0010.001 | LLM03 |
 | Hash, provenance, lineage | AML.T0010.003, AML.T0058 | LLM03 |
 | Known-bad hash match | AML.T0058, AML.T0010.003 | LLM03 |
+| License policy | (none: no ATLAS technique is a license) | LLM03 (licensing risk) |
 
 The SARIF output carries both: each rule's `security-severity` (critical 9.5, high 8.0, medium 5.5, low 3.0) and tags such as `external/atlas/AML.T0011.000` and `external/owasp-llm/LLM03`.
 
@@ -183,7 +199,7 @@ This attestation does not certify the absence of unknown backdoors. Within the n
 - Artifact formats we do not parse.
 - Pickle code execution reached only through imports on the reviewed safe list.
 - Chat-template instructions written as ordinary guidance (no override or concealment phrase, URL, hidden or obfuscated text, or condition on message content), unless the template matches a reviewed template.
-- License and usage-policy compliance.
+- Legal review of a license, and compliance with its usage policies. The license is identified, and checked only against a policy you configure.
 
 The same list is `docs/detection-ceiling.json` and `report.DefaultCeiling()`; a test holds them equal.
 

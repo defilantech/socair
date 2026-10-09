@@ -308,6 +308,8 @@ The intake host makes sure the GPU servers run only bytes that were pulled
 from a pinned source, checked, signed for, and recorded. It does not tell you
 how the model behaves. Tier 1 checks the file: it does not test the weights for
 backdoors or poisoning, behavior that appears only after quantization or on
-particular hardware, or jailbreak susceptibility, and it does not check
-licensing. Every attestation states this, and the full list is the
+particular hardware, or jailbreak susceptibility, and it is not a legal
+review of the model's license: it names the license the artifact states, and
+checks it only against an allowed list you configure
+(`SOCAIR_LICENSE_POLICY`). Every attestation states this, and the full list is the
 [detection ceiling](detection-ceiling.json).

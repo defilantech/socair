@@ -454,6 +454,158 @@ by the range rule; an id at or above zero that names no token still FAILs.
 The change only removes a FAIL, so it cannot add a false positive on the
 corpus above.
 
+## License identification (2026-10-09, check set tier1/0.8)
+
+The license is identity, read from the model card's front matter, the
+top-level LICENSE files, and GGUF `general.license` keys, and graded only
+under a policy (`SOCAIR_LICENSE_POLICY`). It was measured three ways:
+
+```
+SOCAIR_LICENSE_CORPUS=<dir of repos> [SOCAIR_LICENSE_POLICY=<file>] \
+  go test ./internal/engine -run RealLicenses -v
+```
+
+**Real repos.** The model card and every top-level LICENSE file of 51 public
+repos, fetched from the Hub at `main` on 2026-10-09 (text files only), plus
+the metadata header of one GGUF from each of the 8 quantizer repos (fetched by
+HTTP range, no tensor data): Llama 2, 3, 3.1, 3.2, 3.3, and 4; Gemma 2, 3,
+and 3n; Qwen 2, 2.5, and 3; DeepSeek V3, V3-0324, R1, and two R1 distills;
+Mistral 7B, Small 3.1, Large 2411, and Codestral; Phi 3.5 and 4; gpt-oss;
+GLM 4 and 4.5; Kimi K2; MiniMax M2 and Text-01; two Nemotrons; OLMo 2;
+Granite 3.3; SmolLM2; Falcon 3; Command R7B; BLOOM; StarCoder2; SDXL;
+Hunyuan 7B; and bartowski and unsloth GGUF repos of Llama 3.1 and 3.3,
+Gemma 3, Qwen 2.5 and 3, Mistral Small, gpt-oss, and the R1 Llama distill.
+
+Identification: 48 identified, 1 disagreement, 2 not identified, 0 with no
+statement. Every identified license was checked by hand against the card's
+tag and the LICENSE file's title: none is wrong. Two policies were run, a
+permissive one (`apache-2.0`, `mit`, `bsd-new`, `bsd-simplified`,
+`cc-by-4.0`) and a broad one that adds Llama 3.1 to 4, Gemma, Qwen, DeepSeek,
+and NVIDIA's open model license:
+
+| Repo | Identified | Permissive policy | Broad policy |
+|---|---|---|---|
+| allenai/OLMo-2-1124-7B-Instruct | `apache-2.0` | PASS | PASS |
+| bartowski/google_gemma-3-12b-it-GGUF | `socair-gemma-terms-of-use` | FAIL | PASS |
+| bartowski/Meta-Llama-3.1-8B-Instruct-GGUF | `llama-3.1-license-2024` | FAIL | PASS |
+| bartowski/mistralai_Mistral-Small-3.1-24B-Instruct-2503-GGUF | `apache-2.0` | PASS | PASS |
+| bartowski/Qwen2.5-72B-Instruct-GGUF | `qwen-2024` | FAIL | PASS |
+| bigcode/starcoder2-15b | `bigcode-open-rail-m-v1` | FAIL | FAIL |
+| bigscience/bloom | `bigscience-rail-1.0` | FAIL | FAIL |
+| CohereLabs/c4ai-command-r7b-12-2024 | `cc-by-nc-4.0` | FAIL | FAIL |
+| deepseek-ai/DeepSeek-R1 | `mit` | PASS | PASS |
+| deepseek-ai/DeepSeek-R1-Distill-Llama-8B | `mit` | PASS | PASS |
+| deepseek-ai/DeepSeek-R1-Distill-Qwen-7B | `mit` | PASS | PASS |
+| deepseek-ai/DeepSeek-V3 | `deepseek-la-1.0` | FAIL | PASS |
+| deepseek-ai/DeepSeek-V3-0324 | `mit` | PASS | PASS |
+| google/gemma-2-9b-it | `socair-gemma-terms-of-use` | FAIL | PASS |
+| google/gemma-3-12b-it | `socair-gemma-terms-of-use` | FAIL | PASS |
+| google/gemma-3n-E4B-it | `socair-gemma-terms-of-use` | FAIL | PASS |
+| HuggingFaceTB/SmolLM2-1.7B-Instruct | `apache-2.0` | PASS | PASS |
+| ibm-granite/granite-3.3-8b-instruct | `apache-2.0` | PASS | PASS |
+| meta-llama/Llama-2-7b-chat-hf | `llama-2-license-2023` | FAIL | FAIL |
+| meta-llama/Llama-3.1-8B-Instruct | `llama-3.1-license-2024` | FAIL | PASS |
+| meta-llama/Llama-3.2-3B-Instruct | `llama-3.2-license-2024` | FAIL | PASS |
+| meta-llama/Llama-3.3-70B-Instruct | `llama-3.3-license-2024` | FAIL | PASS |
+| meta-llama/Llama-4-Scout-17B-16E-Instruct | `llama-4-cla-2025` | FAIL | PASS |
+| meta-llama/Meta-Llama-3-8B-Instruct | `socair-llama-3-license-2024` | FAIL | FAIL |
+| microsoft/Phi-3.5-mini-instruct | `mit` | PASS | PASS |
+| microsoft/phi-4 | `mit` | PASS | PASS |
+| MiniMaxAI/MiniMax-M2 | not identified | NOT_TESTED | NOT_TESTED |
+| MiniMaxAI/MiniMax-Text-01 | not identified | NOT_TESTED | NOT_TESTED |
+| mistralai/Codestral-22B-v0.1 | `socair-mistral-non-production-0.1` | FAIL | FAIL |
+| mistralai/Mistral-7B-Instruct-v0.3 | `apache-2.0` | PASS | PASS |
+| mistralai/Mistral-Large-Instruct-2411 | `socair-mistral-research-0.1` | FAIL | FAIL |
+| mistralai/Mistral-Small-3.1-24B-Instruct-2503 | `apache-2.0` | PASS | PASS |
+| moonshotai/Kimi-K2-Instruct | `moonshot-ai-modified-mit-2025` | FAIL | FAIL |
+| nvidia/Llama-3.1-Nemotron-Nano-8B-v1 | `socair-nvidia-open-model` | FAIL | PASS |
+| nvidia/NVIDIA-Nemotron-Nano-9B-v2 | `socair-nvidia-open-model` | FAIL | PASS |
+| openai/gpt-oss-20b | `apache-2.0` | PASS | PASS |
+| Qwen/Qwen2-72B-Instruct | `tongyi-qianwen-2023` | FAIL | FAIL |
+| Qwen/Qwen2.5-3B-Instruct | `socair-qwen-research-2024` | FAIL | FAIL |
+| Qwen/Qwen2.5-72B-Instruct | `qwen-2024` | FAIL | PASS |
+| Qwen/Qwen2.5-7B-Instruct | `apache-2.0` | PASS | PASS |
+| Qwen/Qwen3-30B-A3B | `apache-2.0` | PASS | PASS |
+| Qwen/Qwen3-8B | `apache-2.0` | PASS | PASS |
+| stabilityai/stable-diffusion-xl-base-1.0 | `bigscience-open-rail-m2` | FAIL | FAIL |
+| tencent/Hunyuan-7B-Instruct | `socair-tencent-hunyuan-community` | FAIL | FAIL |
+| THUDM/glm-4-9b-chat | `socair-glm-4` | FAIL | FAIL |
+| tiiuae/Falcon3-7B-Instruct | `socair-tii-falcon-license` | FAIL | FAIL |
+| unsloth/DeepSeek-R1-Distill-Llama-8B-GGUF | disagreement | LEAD | PASS |
+| unsloth/gpt-oss-20b-GGUF | `apache-2.0` | PASS | PASS |
+| unsloth/Llama-3.3-70B-Instruct-GGUF | `llama-3.3-license-2024` | FAIL | PASS |
+| unsloth/Qwen3-8B-GGUF | `apache-2.0` | PASS | PASS |
+| zai-org/GLM-4.5 | `mit` | PASS | PASS |
+
+Totals: permissive, 19 PASS, 29 FAIL, 1 LEAD, 2 NOT_TESTED; broad, 35 PASS,
+14 FAIL, 0 LEAD, 2 NOT_TESTED. Every FAIL is a license the policy leaves out,
+stated consistently by the repo. LEAD volume is 1 of 51 under the permissive
+policy and 0 under the broad one.
+
+The disagreement, examined by hand: unsloth's card for
+DeepSeek-R1-Distill-Llama-8B says `llama3.1`, and its GGUF's
+`general.license` says `mit`, carried over from DeepSeek's card at
+conversion. DeepSeek's own repo states MIT, and its README prose says the
+model "is derived from Llama3.1-8B-Base and is originally licensed under
+llama3.1 license". Neither statement is wrong: MIT is DeepSeek's license for
+its work, and the Llama 3.1 license is the base model's. Which one governs a
+deployment is a legal question, which is why a disagreement is a LEAD and
+never a FAIL. It also shows a limit: DeepSeek's repo declares no
+`base_model` in its front matter, so a scan of it identifies MIT and sees no
+disagreement. The lineage is in prose, which is not read.
+
+Not identified: MiniMax-M2 (`license: other`, `license_name: modified-mit`,
+and a link to a LICENSE on GitHub; the Hub repo ships no LICENSE file), and
+MiniMax-Text-01 (its LICENSE-MODEL, "MINIMAX MODEL LICENSE" released 15
+January 2025, is a revision the catalogue does not hold). Both are NOT_TESTED
+under a policy.
+
+Rules this corpus shaped:
+
+- `license: other` (13 cards) names nothing: the `license_name`, link, or
+  LICENSE file says which license it is. A `license_name` the catalogue does
+  not know under `other` (`modified-mit`) is a pointer, not an unrecognized
+  statement, so Kimi K2 is identified from its LICENSE file.
+- DeepSeek-V3 and MiniMax-Text-01 ship LICENSE-CODE (MIT) beside
+  LICENSE-MODEL. Read as two statements, DeepSeek-V3 was a disagreement
+  between MIT and the DeepSeek license; a code license beside a model license
+  is now listed as the code's, and the model file identifies the model.
+- Phi's LICENSE opens "Microsoft." above its copyright line: a short
+  paragraph holding a copyright statement is dropped whole as the notice.
+- Llama 3.3's card declares a Llama 3.1 base: a revision of the same
+  publisher's license is not a disagreement.
+
+**Reference texts.** 41 license and policy texts: ScanCode LicenseDB's texts
+for every key the catalogue uses and some it does not, and the Mistral
+research and non-production licenses, CreativeML OpenRAIL-M, and the Gemma,
+NVIDIA, and Falcon terms pages, from their publishers. 33 are identified as
+the license they are and none as another. The 8 not identified are licenses
+the catalogue does not hold (EXAONE 1.2 NC, GLM-130B, the original 2023
+LLaMA license, MiniMax M2.5), policies that are not licenses (the Gemma
+prohibited use policy, the Llama 3.2 and 4 acceptable use policies), and the
+Falcon terms page, which holds several Falcon licenses and so matches two
+entries.
+
+**Edited copies.** A permissive license is identified by its whole text, in
+order. 18 edited copies of the MIT, BSD, and Apache texts measured what
+that tolerates. Identified: a title and copyright notice added, BSD's holder
+filled in (up to a ten-word name), numbered clauses, https URLs, Apache with
+its appendix dropped or filled in, the Apache notice alone, and BSD 3-Clause
+with clause 3 removed (as BSD 2-Clause). Not identified: MIT with one word
+removed ("sell", "sublicense"), a sentence appended to MIT or inserted into
+Apache (non-commercial use, attribution, a user cap), "NON-COMMERCIAL USE
+ONLY" above MIT, terms appended to Apache's appendix, Apache without its
+patent clause, and a fourth clause in BSD. The first matcher compared
+unordered shingle sets with a tolerance of 12 extra shingles, and it
+identified MIT with a one-sentence non-commercial clause as MIT. It was
+replaced before release by the in-order matcher, which allows a change only
+in a marked placeholder (a holder's name) or an omittable appendix.
+
+Not measured: a license stated only in README prose, a license linked but
+not shipped (`license_link` is listed, never followed), a safetensors
+header's own metadata, and license texts in other languages beyond the GLM-4
+title.
+
 ## Follow-ups from the first run, since done
 
 1. The GGML file-type mapping follows llama.cpp's `llama_ftype` enum, and the

@@ -193,6 +193,72 @@ The tokenizer row compares the model's vocabulary, token by token, with the
 table of its family; see [feed.md](feed.md) for how a family is matched and
 graded. A path that cannot be read stops the scan.
 
+## 7. A license policy, `SOCAIR_LICENSE_POLICY`
+
+Every report names the license the artifact states, in its identity section
+(`artifact.license`), whether or not a policy is set. The scan reads it from
+the model card's front matter (`license`, `license_name`, `license_link`),
+the LICENSE files at a directory's top level, and a GGUF's `general.license`
+keys, and lists every statement it read and what each was identified as. A
+LICENSE text is identified only when it is a license the catalogue
+(`internal/checks/license/catalogue.go`) holds: a permissive license must be
+its whole text with nothing added (a title and a copyright line aside), and a
+model license must carry its title phrases. Anything else is reported as not
+identified, with its first line, never guessed. Statements that name
+different licenses are reported as a disagreement. A declared base model
+(`base_model`, `general.base_model.N`) is listed too; when its publisher
+releases every model under one license (Meta Llama, Google Gemma), a stated
+license of another family is a disagreement.
+
+Without a policy, none of this changes a row or the promotion state. With
+one, the report adds a **License policy** row:
+
+```
+# allowed licenses, one per line: a catalogue id, an SPDX id, or a model-card tag
+apache-2.0
+MIT
+llama3.1
+```
+
+| What the artifact states | License policy row |
+|---|---|
+| One license, on the list | PASS, with the license's usage-policy obligations listed and not marked met |
+| One license, not on the list | FAIL (`license-not-allowed`), naming where it is stated |
+| Different licenses, one of them not on the list | LEAD (`license-disagreement`): which governs needs a person |
+| Different licenses, all on the list | PASS, saying they disagree |
+| A license on the list beside a statement the catalogue does not recognize | NOT_TESTED: the license is not established |
+| Nothing identified (no statement, only `other`, an unrecognized text, a single safetensors or pickle file) | NOT_TESTED |
+
+- A name the catalogue does not know, or a policy that allows nothing, stops
+  the scan: a misspelled id would otherwise fail every model.
+- The row is not legal advice. Usage-policy obligations (Llama's acceptable
+  use policy and 700-million-user clause, Gemma's prohibited use policy, a
+  non-commercial term) are listed in the notes, never marked complied with.
+- A disagreement is common on real repos, and a quantizer's card often names
+  a different license from the original (see
+  [false-positive-baseline.md](false-positive-baseline.md)), so it is a LEAD
+  for review, never a FAIL.
+- The report's `scope.reference_data` names the policy file and its ids.
+
+Catalogue ids are ScanCode LicenseDB keys where ScanCode has one, and
+`socair-` keys otherwise:
+
+| Id | License | Also matched as |
+|---|---|---|
+| `apache-2.0`, `mit`, `bsd-new`, `bsd-simplified` | Apache 2.0, MIT, BSD 3-Clause, BSD 2-Clause | SPDX ids; `bsd-3-clause`, `bsd-2-clause` |
+| `cc-by-4.0`, `cc-by-sa-4.0`, `cc-by-nc-4.0`, `cc-by-nc-sa-4.0` | Creative Commons 4.0 | SPDX ids |
+| `openmdw-1.0` | OpenMDW 1.0 | `OpenMDW-1.0` |
+| `llama-2-license-2023`, `socair-llama-3-license-2024`, `llama-3.1-license-2024`, `llama-3.2-license-2024`, `llama-3.3-license-2024`, `llama-4-cla-2025` | Llama 2, 3, 3.1, 3.2, 3.3, 4 community licenses | `llama2`, `llama3`, `llama3.1`, `llama3.2`, `llama3.3`, `llama4` |
+| `socair-gemma-terms-of-use` | Gemma Terms of Use | `gemma` |
+| `qwen-2024`, `tongyi-qianwen-2023`, `socair-qwen-research-2024` | Qwen, Tongyi Qianwen, Qwen Research licenses | `qwen`, `tongyi-qianwen`, `qwen-research` |
+| `deepseek-la-1.0` | DeepSeek License Agreement 1.0 | `deepseek` |
+| `socair-nvidia-open-model` | NVIDIA Open Model License | `nvidia-open-model-license` |
+| `socair-mistral-research-0.1`, `socair-mistral-non-production-0.1` | Mistral AI Research, Non-Production licenses | `mrl`, `mnpl` |
+| `falcon-2-11b-1.0`, `socair-tii-falcon-license` | Falcon 2 11B TII License, TII Falcon License | `falcon-llm-license` |
+| `bigscience-rail-1.0`, `bigscience-open-rail-m`, `bigcode-open-rail-m-v1`, `socair-creativeml-openrail-m`, `bigscience-open-rail-m2`, `socair-openrail` | RAIL licenses (BLOOM, BigScience, BigCode, CreativeML, CreativeML RAIL++, unnamed Open RAIL) | `bigscience-bloom-rail-1.0`, `bigscience-openrail-m`, `bigcode-openrail-m`, `creativeml-openrail-m`, `openrail++`, `openrail` |
+| `moonshot-ai-modified-mit-2025`, `minimax-mit-variant-2025` | Kimi and MiniMax modified MIT licenses (never identified as MIT) | |
+| `socair-tencent-hunyuan-community`, `socair-glm-4` | Tencent Hunyuan Community, GLM-4 licenses | `tencent-hunyuan-community`, `glm-4` |
+
 ## What each input buys, in one table
 
 | Input | Row it moves | Without it |
@@ -201,6 +267,7 @@ graded. A path that cannot be read stops the scan.
 | `SOCAIR_DENYLIST`, or a denylist in a feed | Known-bad hash match | NOT_TESTED |
 | `SOCAIR_PROVENANCE`, or an OMS signature from a trusted publisher | Hash, provenance, lineage | NOT_TESTED |
 | `SOCAIR_TOKENIZER_REFERENCE`, or tables in a feed | Tokenizer config: a changed ordinary token becomes a LEAD | PASS on internal consistency only, and the row says no reference was compared |
+| `SOCAIR_LICENSE_POLICY` | Adds the License policy row: PASS, FAIL, LEAD, or NOT_TESTED against your allowed list | no row; the license is still named in the identity section |
 | A signed acceptance (`socair accept`) | the promotion state | withheld on any gap |
 | `SOCAIR_TIER2_HELPER` and `SOCAIR_TIER2_ENDPOINT` ([tier2.md](tier2.md)) | Adds Tier 2 measurements; one that raises a LEAD or FAIL adds a row that withholds, and one that finds nothing adds no row | No Tier 2 section; its checks are listed as not run, which is not a gap |
 
@@ -217,4 +284,8 @@ remove the input and the row returns to NOT_TESTED.
   operator's claim, and the row says so. Publisher signatures are verified
   only as OMS bundles (section 3a), against keys and roots you configure.
 - It does not fetch anything. The manifest, the mirror, and the list are all
-  local, which is what makes the whole path air-gap safe.
+  local, which is what makes the whole path air-gap safe. A `license_link` is
+  listed, never followed.
+- It does not review a license. The License policy row checks the license the
+  artifact states against your list; it is not legal advice, and it does not
+  check that anyone meets the license's usage terms.
