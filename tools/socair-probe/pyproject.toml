@@ -1,0 +1,20 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "socair-probe"
+version = "0.1.0"
+description = "Tier 2 probe helper for Socair: drives an OpenAI-compatible engine and returns measurements"
+readme = "README.md"
+license = { text = "Apache-2.0" }
+requires-python = ">=3.10"
+# Standard library only. A suite that needs more brings it in its own
+# container, with pinned wheels and an offline wheelhouse.
+dependencies = []
+
+[project.scripts]
+socair-probe = "socair_probe.__main__:main"
+
+[tool.setuptools]
+packages = ["socair_probe"]

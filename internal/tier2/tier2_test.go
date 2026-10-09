@@ -153,6 +153,28 @@ func TestHelperGetsNoSecrets(t *testing.T) {
 	}
 }
 
+// The Python helper's example answer (tools/socair-probe), which its own
+// tests hold to the shape it writes, decodes strictly and forms a valid
+// section. Falsification: rename a field on either side and one of the two
+// tests fails.
+func TestPythonHelperExampleIsAccepted(t *testing.T) {
+	b, err := os.ReadFile(filepath.Join("..", "..", "tools", "socair-probe", "testdata", "example-response.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp, err := tier2.Decode(b)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sec, err := tier2.Section(resp)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if sec.Helper != "socair-probe 0.1.0" || len(sec.NodeClasses) != 2 || sec.Measurements[0].Outcome != report.OutcomeMeasured {
+		t.Fatalf("section %+v", sec)
+	}
+}
+
 func TestDecodeIsStrict(t *testing.T) {
 	for name, body := range map[string]string{
 		"nested unknown field": `{"protocol":"socair.tier2/v1","helper":{"name":"x","version":"1","build":"y"},"node_classes":[],"measurements":[]}`,
