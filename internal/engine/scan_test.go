@@ -272,7 +272,7 @@ func TestUnknownArtifactIsNotTested(t *testing.T) {
 // TestLeadIsNotClearedByAcceptance: a chat-template lead used to be a
 // NOT_TESTED row, so SOCAIR_ACCEPTED_BY accepted it with every other gap and a
 // detected "ignore previous instructions" became authorized_with_conditions.
-// A LEAD is a suspicious signal, not a gap: only escalation clears it.
+// A LEAD is a suspicious signal, not a gap: no acceptance clears it.
 // Falsification: map the lead back to NOT_TESTED and this report authorizes.
 func TestLeadIsNotClearedByAcceptance(t *testing.T) {
 	supplyInputs(t)
@@ -293,8 +293,8 @@ func TestLeadIsNotClearedByAcceptance(t *testing.T) {
 	if pa.Authorized || pa.State != report.StateWithheld {
 		t.Fatalf("a lead must withhold even with an acceptance, got state=%s", pa.State)
 	}
-	if !strings.Contains(pa.Conditions, "escalat") {
-		t.Errorf("the withholding must point at escalation, got %q", pa.Conditions)
+	if !strings.Contains(pa.Conditions, "no acceptance clears it") {
+		t.Errorf("the withholding must say no acceptance clears it, got %q", pa.Conditions)
 	}
 	if len(d.Findings.Leads) != 1 || d.Findings.Leads[0] != "Chat template (hero)" {
 		t.Errorf("findings.leads = %v, want the hero row", d.Findings.Leads)

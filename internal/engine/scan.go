@@ -350,9 +350,10 @@ func acceptancePolicy(start time.Time, rescanDays, expiresEnv string) (rescanDue
 	return rescanDue, t.UTC().Format(time.RFC3339), nil
 }
 
-// promotion computes the promotion state. A FAIL or a LEAD withholds and is
-// clearable only by escalation. A gap (NOT_TESTED) withholds until a named
-// acceptance is supplied, and the accepted surfaces travel with the artifact.
+// promotion computes the promotion state. A FAIL or a LEAD withholds, and no
+// acceptance clears it; Socair has no override, so it needs a person's review
+// outside Socair. A gap (NOT_TESTED) withholds until a named acceptance is
+// supplied, and the accepted surfaces travel with the artifact.
 func promotion(d *report.Document, acceptedBy, expires string) report.PromotionAuthorization {
 	var fails, leads, gaps []string
 	for _, c := range d.Checks {
@@ -383,7 +384,7 @@ func promotion(d *report.Document, acceptedBy, expires string) report.PromotionA
 		pa.State = report.StateWithheld
 		pa.Authorized = false
 		pa.Conditions = "Withheld: " + strings.Join(why, "; ") +
-			". A FAIL or a LEAD is clearable only by escalated review, never by an acceptance."
+			". A FAIL or a LEAD withholds promotion, and no acceptance clears it: it needs a person's review outside Socair."
 	case len(gaps) == 0:
 		pa.State = report.StateAuthorized
 		pa.Authorized = true

@@ -81,17 +81,17 @@ func TestFailRendersAsFail(t *testing.T) {
 	}
 }
 
-// A LEAD reads as a call to escalate: its own pill and an "escalate" tag,
+// A LEAD reads as a call for review: its own pill and a "needs review" tag,
 // never the pass or the not-tested look.
-func TestLeadRendersForEscalation(t *testing.T) {
+func TestLeadRendersForReview(t *testing.T) {
 	d := loadGolden(t)
 	d.Checks[0].Status = report.StatusLead
 	out := renderString(t, d)
 	if !strings.Contains(out, `class="pill lead">LEAD`) {
 		t.Error("a LEAD row must render with the lead pill class")
 	}
-	if !strings.Contains(out, `<span class="tag">escalate</span>`) {
-		t.Error("a LEAD row must carry the escalate tag")
+	if !strings.Contains(out, `<span class="tag">needs review</span>`) {
+		t.Error("a LEAD row must carry the needs review tag")
 	}
 	if strings.Contains(out, `class="pill pass">LEAD`) || strings.Contains(out, `class="pill not-tested">LEAD`) {
 		t.Error("a LEAD must never look like a pass or a gap")

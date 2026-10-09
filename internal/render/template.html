@@ -62,7 +62,7 @@
   .pill.pass { background: var(--pass-bg); color: var(--pass-ink); border-color: var(--pass-line); }
   .pill.fail { background: var(--fail-bg); color: var(--fail-ink); border-color: var(--fail-line); }
   .pill.not-tested { background: var(--untested-bg); color: var(--untested-ink); border-color: var(--untested-line); }
-  /* LEAD: a suspicious signal for escalation. Amber: not a pass, not a FAIL. */
+  /* LEAD: a suspicious signal that needs review. Amber: not a pass, not a FAIL. */
   .pill.lead { background: var(--lead-bg); color: var(--lead-ink); border-color: var(--lead-line); }
   .tag { display: inline-block; margin-left: 6px; padding: 1px 6px; border-radius: 4px; font-size: 10px;
     text-transform: uppercase; letter-spacing: 0.06em; background: #fff; border: 1px solid var(--untested-line);
@@ -147,7 +147,7 @@
         <td>
           <span class="pill {{ statusClass .Status }}">{{ .Status }}</span>
           {{- if isNotTested .Status }}<span class="tag">not tested</span>{{ end }}
-          {{- if isLead .Status }}<span class="tag">escalate</span>{{ end }}
+          {{- if isLead .Status }}<span class="tag">needs review</span>{{ end }}
           {{- if .Severity }}<span class="tag sev">{{ .Severity }}</span>{{ end }}
         </td>
         <td class="evidence">{{ if .Evidence }}{{ .Evidence }}{{ else }}{{ .Notes }}{{ end }}</td>

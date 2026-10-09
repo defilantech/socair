@@ -67,7 +67,7 @@ canonical manifest of those hashes (`socair.modeldir/v1`, see
 
 ## 4. Checks performed
 
-Each row returns PASS, FAIL, LEAD, or NOT_TESTED. FAIL is positive evidence. LEAD is a suspicious signal that is not conclusive, such as instruction-override language in a chat template; it is not a gap, so a named acceptance never clears it, only escalated review. An ambiguous or unverifiable result is recorded as NOT_TESTED with a named reason, never as a silent pass.
+Each row returns PASS, FAIL, LEAD, or NOT_TESTED. FAIL is positive evidence. LEAD is a suspicious signal that is not conclusive, such as instruction-override language in a chat template; it is not a gap, so no acceptance clears it. A FAIL or a LEAD withholds promotion and needs a person's review outside Socair. An ambiguous or unverifiable result is recorded as NOT_TESTED with a named reason, never as a silent pass.
 
 Every row also carries a fixed **PASS means** line (`pass_means`): what that check's PASS establishes and where it stops, for example that the tokenizer check tests internal consistency and does not compare against a canonical copy. The wording is fixed per check (`report.PassMeaning`), never per artifact.
 
@@ -112,7 +112,7 @@ No Tier 1 check addresses AML.T0018 (Manipulate AI Model) or LLM04 (Data and Mod
 
   `[fail_entries]`
 
-- LEAD entries: the suspicious signal, where it was found, and the escalation it needs.
+- LEAD entries: the suspicious signal, where it was found, and what a reviewer should look at.
 
   `[lead_entries]`
 
@@ -176,20 +176,13 @@ Level: `[Tier 1 only / Tier 2]`
 
 Conditions: `[conditions]`
 
-## 10. Escalation path
+## 10. Review of a FAIL or LEAD
 
-A FAIL is actionable, not terminal. This attestation explains the FAIL in Section 5 and records how the artifact can be submitted for escalated review.
+A FAIL or a LEAD withholds promotion, and no acceptance clears it. Socair has no override: the airlock admits only an authorized report. Section 5 explains each FAIL and LEAD and where it was found, so a person can review the artifact and this report outside Socair.
 
-Summary: `[escalation_summary]`
+Review summary: `[review_summary]`
 
-Available escalated review:
-
-- Automated Tier 2 battery: forward-pass probes on the production node class. `[tier2_available]`
-- Human analyst addendum: a person reviews the artifact and this report and signs an addendum. `[analyst_available]`
-
-Service levels: `[sla_tiers]`
-
-Escalated review is part of the paid assurance program.
+A chat template a person has reviewed can be added to the reviewed templates of a signed reference-data feed (`docs/feed.md`); a re-scan then treats that template's language as reviewed. Code reach is never cleared that way.
 
 ## 11. Verification and reproducibility
 

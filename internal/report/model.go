@@ -58,7 +58,8 @@ func Tier1Assurance() AssuranceLevel {
 		Awarded:    "Tier 1 (static)",
 		Definition: "Static checks on the artifact's bytes and metadata, run offline. No inference is run, and the weights are not evaluated for behavior.",
 		DoesMean: "Each listed check ran on the exact bytes identified by the artifact hash, and each row states what its PASS means. " +
-			"A FAIL carries positive evidence, a LEAD needs escalated review, and a NOT_TESTED names why it was not tested.",
+			"A FAIL carries positive evidence, a LEAD is a suspicious signal that needs a person's review, and a NOT_TESTED names why it was not tested. " +
+			"A FAIL or a LEAD withholds promotion, and no acceptance clears it.",
 		DoesNotMean: "It is not an assessment of the model's behavior or safety. It does not test the weights for backdoors or poisoning, " +
 			"behavior that appears only after quantization or on particular hardware, or jailbreak susceptibility and harmful capability, " +
 			"and it does not check licensing.",
@@ -102,7 +103,8 @@ const (
 	StatusNotTested Status = "NOT_TESTED"
 	// StatusLead is a suspicious signal that is not conclusive, such as
 	// instruction-override language in a chat template. It is not a gap: an
-	// acceptance clears NOT_TESTED rows, never a LEAD. Only escalation does.
+	// acceptance clears NOT_TESTED rows, never a LEAD. Like a FAIL, it
+	// withholds promotion and needs a person's review outside Socair.
 	StatusLead Status = "LEAD"
 )
 
@@ -545,7 +547,7 @@ func validateStateAgainstChecks(d *Document) []string {
 		switch c.Status {
 		case StatusFail, StatusLead:
 			problems = append(problems, fmt.Sprintf(
-				"promotion_authorization: state %q over %s row %q; it clears only by escalation", pa.State, c.Status, c.Name))
+				"promotion_authorization: state %q over %s row %q; a FAIL or LEAD withholds promotion, and no acceptance clears it", pa.State, c.Status, c.Name))
 		case StatusNotTested:
 			if pa.State == StateAuthorized {
 				problems = append(problems, fmt.Sprintf(

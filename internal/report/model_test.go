@@ -30,6 +30,10 @@ func TestGoldenValidates(t *testing.T) {
 	if problems := Validate(d); len(problems) != 0 {
 		t.Fatalf("golden has validation problems: %v", problems)
 	}
+	// The golden is hand-written, so it is held to the fixed wording here.
+	if d.AssuranceLevel != Tier1Assurance() {
+		t.Errorf("golden assurance level %+v is not the fixed Tier 1 wording", d.AssuranceLevel)
+	}
 }
 
 // TestGoldenMatchesSchemaRequired checks the golden carries every top-level key
@@ -304,7 +308,7 @@ func TestPromotionStateBoundToChecks(t *testing.T) {
 		d.PromotionAuthorization.Authorized = true
 		d.PromotionAuthorization.AcceptedBy = "ciso@example.com"
 		if len(Validate(d)) == 0 {
-			t.Fatal("authorized_with_conditions over a FAIL must fail validation; a FAIL clears only by escalation")
+			t.Fatal("authorized_with_conditions over a FAIL must fail validation; no acceptance clears a FAIL")
 		}
 	})
 	t.Run("conditions must accept every gap", func(t *testing.T) {
@@ -325,7 +329,7 @@ func TestPromotionStateBoundToChecks(t *testing.T) {
 		d.PromotionAuthorization.AcceptedBy = "ciso@example.com"
 		d.PromotionAuthorization.AcceptedSurfaces = append(d.Findings.NotTested, "Format and structure")
 		if len(Validate(d)) == 0 {
-			t.Fatal("an acceptance over a LEAD must fail validation; a LEAD clears only by escalation")
+			t.Fatal("an acceptance over a LEAD must fail validation; no acceptance clears a LEAD")
 		}
 	})
 	t.Run("all PASS authorizes", func(t *testing.T) {

@@ -38,7 +38,7 @@ describe('status treatment', () => {
 		expect(statusPill('PASS')).toBe('pass');
 		expect(statusPill('FAIL')).toBe('fail');
 	});
-	it('gives LEAD its own escalation treatment, never pass or the gap look', () => {
+	it('gives LEAD its own treatment, never pass or the gap look', () => {
 		expect(statusPill('LEAD')).toBe('lead');
 		expect(statusPill('LEAD')).not.toBe('pass');
 		expect(statusPill('LEAD')).not.toBe('not-tested');

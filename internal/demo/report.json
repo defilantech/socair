@@ -222,7 +222,7 @@
   "assurance_level": {
     "awarded": "Tier 1 (static)",
     "definition": "Static checks on the artifact's bytes and metadata, run offline. No inference is run, and the weights are not evaluated for behavior.",
-    "does_mean": "Each listed check ran on the exact bytes identified by the artifact hash, and each row states what its PASS means. A FAIL carries positive evidence, a LEAD needs escalated review, and a NOT_TESTED names why it was not tested.",
+    "does_mean": "Each listed check ran on the exact bytes identified by the artifact hash, and each row states what its PASS means. A FAIL carries positive evidence, a LEAD is a suspicious signal that needs a person's review, and a NOT_TESTED names why it was not tested. A FAIL or a LEAD withholds promotion, and no acceptance clears it.",
     "does_not_mean": "It is not an assessment of the model's behavior or safety. It does not test the weights for backdoors or poisoning, behavior that appears only after quantization or on particular hardware, or jailbreak susceptibility and harmful capability, and it does not check licensing.",
     "tier2_note": "Tier 2 (inference on the production node class) did not run."
   },
@@ -250,7 +250,7 @@
     "authorized": false,
     "state": "withheld",
     "level": "Tier 1 only",
-    "conditions": "Withheld: the hero check FAILED and two checks are NOT_TESTED. Submit for escalated review."
+    "conditions": "Withheld: positive evidence on Chat template (hero). A FAIL or a LEAD withholds promotion, and no acceptance clears it: it needs a person's review outside Socair."
   },
   "verification": {
     "document_hash": "",

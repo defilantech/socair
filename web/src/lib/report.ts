@@ -2,7 +2,7 @@
 //
 // These read the document. They never invent a status, a count, or a badge the
 // engine did not return. NOT_TESTED is a deliberate non-signal and must never
-// render with the pass treatment. LEAD is a suspicious signal for escalation
+// render with the pass treatment. LEAD is a suspicious signal that needs review,
 // with its own treatment, never pass and never the neutral gap look.
 
 import type { CheckStatus, Document } from './api';
@@ -97,8 +97,8 @@ export interface Level {
 }
 
 // availableLevels lists the assurance levels the wizard offers. Only Tier 1 is
-// runnable today; Tier 2 is the paid forward-pass tier and has no checks, so it
-// must not be selectable.
+// runnable; Tier 2 (forward-pass testing) is not part of this release and has
+// no checks, so it must not be selectable.
 export function availableLevels(): Level[] {
 	return [
 		{ id: 'tier1', label: 'Tier 1 (static)', available: true },

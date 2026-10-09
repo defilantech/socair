@@ -37,7 +37,7 @@ func Accept(reviewed *Verified, k *PrivateKey, by string, expires time.Time, rat
 	}
 	surfaces, ok := gaps(d)
 	if !ok {
-		return nil, errors.New("the report has a FAIL or LEAD, which only escalated review clears, never an acceptance")
+		return nil, errors.New("the report has a FAIL or LEAD, which no acceptance clears; it needs a person's review outside Socair")
 	}
 	if len(surfaces) == 0 {
 		return nil, errors.New("the report has no NOT_TESTED rows to accept")

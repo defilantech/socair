@@ -8,7 +8,7 @@
 //     cannot override it: the allowlist clears language, never code.
 //   - A template whose SHA256 is on the reviewed allowlist returns PASS.
 //   - Instruction-language phrases are a LEAD, never a FAIL and never a gap an
-//     acceptance can clear: only escalation clears it. The patterns are
+//     acceptance can clear: it needs a person's review. The patterns are
 //     narrow: they require concealment of something sensitive, because a
 //     corpus sweep proved that ordinary templates contain bare "do not tell"
 //     and that a loose "requests" pattern matches inside PULL_REQUESTS.
@@ -36,7 +36,7 @@ type pattern struct {
 	detail string
 }
 
-// lead patterns are a signal to escalate, never a FAIL. They require
+// lead patterns are a signal for a person to review, never a FAIL. They require
 // concealment of something sensitive, or a real code call, not a bare phrase.
 var leads = []pattern{
 	{
@@ -205,7 +205,7 @@ func inspect(template string, allow map[string]struct{}) checks.Result {
 	}
 	if len(leadHits) > 0 {
 		r.Status = checks.Lead
-		r.Notes = "suspicious template structure or language, not conclusive; escalate: " + strings.Join(leadHits, "; ")
+		r.Notes = "suspicious template structure or language, not conclusive; needs review: " + strings.Join(leadHits, "; ")
 		return r
 	}
 
