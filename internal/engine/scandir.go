@@ -157,17 +157,18 @@ func scanDir(dir string, start time.Time, refs *references, in Inputs) (*report.
 }
 
 // denylistRow checks the manifest digest and every file's hash. With no list
-// configured it is one NOT_TESTED, not one per file.
+// loaded it is one NOT_TESTED, not one per file, and a configured list that
+// could not be read is named once on the merged row.
 func denylistRow(files []modeldir.File, digest string, refs *references) checks.Result {
-	whole := refs.denylist(digest)
-	if !refs.configured() {
+	whole := refs.match(digest)
+	if !refs.loaded() {
 		return whole
 	}
 	parts := []checks.Part{{File: "(directory manifest)", Result: whole}}
 	for _, f := range files {
-		parts = append(parts, checks.Part{File: f.Path, Result: refs.denylist(f.SHA256)})
+		parts = append(parts, checks.Part{File: f.Path, Result: refs.match(f.SHA256)})
 	}
-	return checks.Merge(whole.Name, whole.LooksFor, parts)
+	return refs.withUnread(checks.Merge(whole.Name, whole.LooksFor, parts))
 }
 
 // repoName matches a Hugging Face repo id, org/name.

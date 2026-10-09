@@ -101,8 +101,11 @@ func loadReferences(now time.Time) (*references, error) {
 	return r, nil
 }
 
-// denylist matches one hash against every configured list.
-func (r *references) denylist(sha string) checks.Result {
+// denylist is the known-bad row for one hash.
+func (r *references) denylist(sha string) checks.Result { return r.withUnread(r.match(sha)) }
+
+// match matches one hash against every list that loaded.
+func (r *references) match(sha string) checks.Result {
 	if r.denyErr != "" && len(r.denySrc) == 0 {
 		return checks.Result{Name: "Known-bad hash match", LooksFor: "Match against the known-bad artifact denylist",
 			Status: checks.NotTested, Notes: r.denyErr}
@@ -113,8 +116,20 @@ func (r *references) denylist(sha string) checks.Result {
 	return denylist.Match(sha, r.deny, strings.Join(r.denySrc, " + "))
 }
 
-// configured reports whether any denylist is in use.
-func (r *references) configured() bool { return len(r.denySrc) > 0 || r.denyErr != "" }
+// withUnread keeps a row from passing over a configured local list that could
+// not be read, even when a feed's list was matched: no one read the list the
+// operator named. A match on another list still FAILs on its evidence.
+func (r *references) withUnread(row checks.Result) checks.Result {
+	if r.denyErr == "" || len(r.denySrc) == 0 || row.Status == checks.Fail {
+		return row
+	}
+	row.Status = checks.NotTested
+	row.Notes += "; " + r.denyErr
+	return row
+}
+
+// loaded reports whether any denylist was read.
+func (r *references) loaded() bool { return len(r.denySrc) > 0 }
 
 // reviewedTemplates are the feed's reviewed chat-template hashes.
 func (r *references) reviewedTemplates() map[string]struct{} {

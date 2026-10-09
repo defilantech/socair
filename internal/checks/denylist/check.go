@@ -7,6 +7,7 @@ package denylist
 
 import (
 	"bufio"
+	"encoding/hex"
 	"fmt"
 	"os"
 	"strings"
@@ -21,7 +22,9 @@ type Entry struct {
 }
 
 // Load reads a denylist file. Each line is "<sha256>  <label>"; blank lines and
-// lines starting with # are ignored.
+// lines starting with # are ignored. A line that does not start with a SHA-256
+// refuses the whole list, as the feed loader does: a list that is partly
+// wrong may be missing the entry that matters, so it is not matched against.
 func Load(path string) (map[string]Entry, error) {
 	f, err := os.Open(path)
 	if err != nil {
@@ -31,16 +34,18 @@ func Load(path string) (map[string]Entry, error) {
 
 	entries := map[string]Entry{}
 	sc := bufio.NewScanner(f)
+	n := 0
 	for sc.Scan() {
+		n++
 		line := strings.TrimSpace(sc.Text())
 		if line == "" || strings.HasPrefix(line, "#") {
 			continue
 		}
 		fields := strings.Fields(line)
-		if len(fields) == 0 {
-			continue
-		}
 		sha := strings.ToLower(fields[0])
+		if _, err := hex.DecodeString(sha); err != nil || len(sha) != 64 {
+			return nil, fmt.Errorf("%s line %d: %q is not a SHA-256", path, n, fields[0])
+		}
 		label := strings.Join(fields[1:], " ")
 		entries[sha] = Entry{SHA256: sha, Label: label}
 	}

@@ -35,6 +35,9 @@ A text file of known-bad artifact hashes.
 ```
 
 - Blank lines and lines starting with `#` are ignored.
+- Every other line must start with a SHA-256. One that does not refuses the
+  whole list, as a feed is refused: the row is NOT_TESTED and names the line,
+  even beside a feed's denylist, unless a listed hash matches.
 - Moves `Known-bad hash match` from NOT_TESTED to PASS (no match) or FAIL (match).
 - An empty file is NOT_TESTED, not a pass: "nothing was matched against" is not
   cleared.
