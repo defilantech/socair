@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 	"sort"
 	"strings"
 	"time"
@@ -20,19 +21,21 @@ import (
 // references is the reference data the checks compare against: a verified
 // signed feed (SOCAIR_FEED, checked against SOCAIR_FEED_KEYS) and a local
 // denylist file (SOCAIR_DENYLIST). Either, both, or neither. Canonical
-// tokenizer tables come from the feed and from SOCAIR_TOKENIZER_REFERENCE.
+// tokenizer tables come from the feed and from SOCAIR_TOKENIZER_REFERENCE;
+// reviewed template texts from the feed and from SOCAIR_TEMPLATE_REFERENCE.
 //
 // The operator's allowed licenses (SOCAIR_LICENSE_POLICY) are read here too:
 // the License policy row compares against them, and with no policy (nil) the
 // row is not added.
 type references struct {
-	feed     *feed.Feed
-	deny     map[string]denylist.Entry
-	denySrc  []string
-	denyErr  string
-	tables   []tokenizer.Table
-	policy   *license.Policy
-	describe []string
+	feed      *feed.Feed
+	deny      map[string]denylist.Entry
+	denySrc   []string
+	denyErr   string
+	tables    []tokenizer.Table
+	templates []chattemplate.Reference
+	policy    *license.Policy
+	describe  []string
 }
 
 // loadReferences reads and verifies the reference data. A feed that is
@@ -57,6 +60,17 @@ func loadReferences(now time.Time) (*references, error) {
 		r.describe = append(r.describe, f.Describe())
 		if n := len(f.TokenizerTables); n > 0 {
 			r.describe = append(r.describe, fmt.Sprintf("%d tokenizer table(s) from that feed", n))
+		}
+		if n := len(f.TemplateTexts); n > 0 {
+			r.describe = append(r.describe, fmt.Sprintf("%d reviewed template text(s) from that feed", n))
+		}
+		hashes := make([]string, 0, len(f.TemplateTexts))
+		for h := range f.TemplateTexts {
+			hashes = append(hashes, h)
+		}
+		sort.Strings(hashes)
+		for _, h := range hashes {
+			r.templates = append(r.templates, chattemplate.Reference{Label: f.Templates[h], Text: f.TemplateTexts[h]})
 		}
 		for h, label := range f.Denylist {
 			r.deny[h] = denylist.Entry{SHA256: h, Label: label + " (feed " + f.Issuer + " " + f.Version + ")"}
@@ -88,6 +102,17 @@ func loadReferences(now time.Time) (*references, error) {
 		}
 		r.tables = append(r.tables, tables...)
 		r.describe = append(r.describe, fmt.Sprintf("%d local tokenizer reference table(s) %s", len(tables), p))
+	}
+	// Local reviewed templates, like local tokenizer tables, are compared
+	// with but never clear a lead: only a signed feed or the embedded
+	// allowlist does that.
+	if p := strings.TrimSpace(os.Getenv("SOCAIR_TEMPLATE_REFERENCE")); p != "" {
+		refs, err := loadTemplateReferences(p)
+		if err != nil {
+			return nil, fmt.Errorf("SOCAIR_TEMPLATE_REFERENCE: %w", err)
+		}
+		r.templates = append(r.templates, refs...)
+		r.describe = append(r.describe, fmt.Sprintf("%d local reviewed template text(s) %s", len(refs), p))
 	}
 	// A license policy that cannot be read, or names a license the catalogue
 	// does not know, stops the scan: a misspelled id would fail every model.
@@ -149,16 +174,53 @@ func (r *references) withUnread(row checks.Result) checks.Result {
 func (r *references) loaded() bool { return len(r.denySrc) > 0 }
 
 // templateOptions are the chat-template check's inputs: the feed's reviewed
-// hashes, which clear language leads, and the artifact's special tokens.
+// hashes (which clear language leads), every reviewed template text (which
+// renders are compared with), and the artifact's special tokens.
 func (r *references) templateOptions(t chattemplate.Tokens) chattemplate.Options {
-	o := chattemplate.Options{Tokens: t}
+	o := chattemplate.Options{References: r.templates, Tokens: t}
 	if r.feed != nil {
-		o.Reviewed = map[string]string{}
-		for h := range r.feed.Templates {
-			o.Reviewed[h] = ""
-		}
+		o.Reviewed = r.feed.Templates
 	}
 	return o
+}
+
+// maxReferenceTemplate bounds a local reviewed template, like the analyser's
+// own limit.
+const maxReferenceTemplate = 1 << 20
+
+// loadTemplateReferences reads reviewed template texts: a .jinja file, or a
+// directory of them, each labelled by its file name.
+func loadTemplateReferences(path string) ([]chattemplate.Reference, error) {
+	info, err := os.Stat(path)
+	if err != nil {
+		return nil, err
+	}
+	files := []string{path}
+	if info.IsDir() {
+		if files, err = filepath.Glob(filepath.Join(path, "*.jinja")); err != nil {
+			return nil, err
+		}
+		sort.Strings(files)
+		if len(files) == 0 {
+			return nil, fmt.Errorf("%s holds no .jinja template", path)
+		}
+	}
+	var out []chattemplate.Reference
+	for _, f := range files {
+		fi, err := os.Stat(f)
+		if err != nil {
+			return nil, err
+		}
+		if fi.Size() > maxReferenceTemplate {
+			return nil, fmt.Errorf("%s is %d bytes, over the %d-byte limit", f, fi.Size(), maxReferenceTemplate)
+		}
+		b, err := os.ReadFile(f)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, chattemplate.Reference{Label: strings.TrimSuffix(filepath.Base(f), ".jinja"), Text: string(b)})
+	}
+	return out, nil
 }
 
 // tokenizerNote is an informational line comparing a tokenizer hash to the

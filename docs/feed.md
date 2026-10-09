@@ -29,7 +29,8 @@ key.
 | Data file | Check | Effect |
 |---|---|---|
 | `denylist.txt` | Known-bad hash match | Combined with any local `SOCAIR_DENYLIST`. A match is a FAIL. In a model directory, the manifest digest and every file's hash are matched. |
-| `templates.txt` | Chat template (hero) | Added to the embedded reviewed-template allowlist. A template whose SHA-256 is listed clears *language* leads to PASS. It never clears structural evidence: code-execution reach still FAILs. |
+| `templates.txt` | Chat template (hero) | Added to the embedded reviewed-template allowlist. A template whose SHA-256 is listed clears *language* leads to PASS, and the row notes it is byte-identical to the reviewed template, by its label. It never clears structural evidence: code-execution reach still FAILs. |
+| `templates/<sha256>.jinja` | Chat template (hero) | A reviewed template's text, listed in `templates.txt` under the same hash. The check renders it beside the artifact's template on the same probe conversations. A template that renders identically on every probe is noted as matching it; one that renders like it on every standard probe but adds a content-conditional branch (it renders differently only when a message carries a literal one of its own conditions tests) is a LEAD with the first difference as evidence; any other template gets no verdict from it, only a note that it matched none. `SOCAIR_TEMPLATE_REFERENCE` (a `.jinja` file or a directory of them, labelled by file name) supplies texts locally, without a feed; those are compared with but never clear a lead. |
 | `tokenizers.txt` | Tokenizer config | Informational. The row notes whether the tokenizer's hash matches a canonical tokenizer, and by name. A hash alone cannot say which tokens changed, so it does not change the row's status. |
 | `tokenizers/<name>.json` | Tokenizer config | A canonical tokenizer table: the family's vocabulary in id order. The check picks the table that agrees with the model's vocabulary on at least 98% of ids (anything less is another family, not compared), then compares every id. A changed ordinary token, or a vocabulary that ends early, is a LEAD with the ids as evidence. Renamed special or reserved tokens and tokens added past the table are notes: fine-tunes do both legitimately. `SOCAIR_TOKENIZER_REFERENCE` supplies the same tables locally, without a feed. |
 
@@ -44,7 +45,13 @@ feed/
   templates.txt     optional
   tokenizers.txt    optional
   tokenizers/       optional: <name>.json canonical tokenizer tables
+  templates/        optional: <sha256>.jinja reviewed template texts
 ```
+
+A reviewed template's text is named by its SHA-256 and must hash to its name,
+and that hash must be listed in `templates.txt`, whose label names it in a
+report. Like a tokenizer table, a text the signature does not cover refuses
+the feed.
 
 A tokenizer table is `{"format": "socair.tokenizer-table/v1", "name": "qwen3",
 "tokens": [...]}`, the vocabulary in id order, or a publisher's
@@ -65,8 +72,8 @@ the feed.
 # denylist.txt: <sha256> <label>
 3f1a…9c  trojaned community quant, reported 2026-09
 
-# templates.txt: <sha256> [note]
-8e0b…41  Qwen3 default template, reviewed 2026-09
+# templates.txt: <sha256> [label]
+8e0b…41  Qwen/Qwen3-8B@a1b2c3d, reviewed 2026-09
 
 # tokenizers.txt: <sha256> <name>
 c038…f2  qwen2.5

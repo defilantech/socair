@@ -22,9 +22,11 @@
 //	tokenizers.txt  <sha256> <name>      canonical tokenizers (Tokenizer config)
 //
 // and canonical tokenizer tables, one per family, that the tokenizer check
-// diffs a model's vocabulary against:
+// diffs a model's vocabulary against, and the text of reviewed templates,
+// which the chat-template check renders beside an artifact's:
 //
-//	tokenizers/<name>.json   socair.tokenizer-table/v1 or a tokenizer.json
+//	tokenizers/<name>.json     socair.tokenizer-table/v1 or a tokenizer.json
+//	templates/<sha256>.jinja   a reviewed template listed in templates.txt
 package feed
 
 import (
@@ -73,9 +75,34 @@ func isTable(name string) bool {
 	return dir == TableDir+"/" && tableName.MatchString(file)
 }
 
+// TemplateDir holds the text of reviewed templates, named <sha256>.jinja.
+const TemplateDir = "templates"
+
+// templateTextName is a reviewed template's file name within TemplateDir.
+var templateTextName = regexp.MustCompile(`^[0-9a-f]{64}\.jinja$`)
+
+// isTemplateText reports whether a subject names a reviewed template's text.
+func isTemplateText(name string) bool {
+	dir, file := path.Split(name)
+	return dir == TemplateDir+"/" && templateTextName.MatchString(file)
+}
+
+// templateHash is the hash a reviewed template's text must have: its name.
+func templateHash(subject string) string { return strings.TrimSuffix(path.Base(subject), ".jinja") }
+
 // tableFiles lists the tokenizer tables present in dir, as subject names.
 func tableFiles(dir string) ([]string, error) {
-	entries, err := os.ReadDir(filepath.Join(dir, TableDir))
+	return subFiles(dir, TableDir, isTable, "a tokenizer table name (lowercase <name>.json)")
+}
+
+// templateFiles lists the reviewed template texts present in dir.
+func templateFiles(dir string) ([]string, error) {
+	return subFiles(dir, TemplateDir, isTemplateText, "a reviewed template name (<sha256>.jinja)")
+}
+
+// subFiles lists the files in dir/sub as subject names, each held to valid.
+func subFiles(dir, sub string, valid func(string) bool, want string) ([]string, error) {
+	entries, err := os.ReadDir(filepath.Join(dir, sub))
 	if errors.Is(err, os.ErrNotExist) {
 		return nil, nil
 	}
@@ -84,9 +111,9 @@ func tableFiles(dir string) ([]string, error) {
 	}
 	var out []string
 	for _, e := range entries {
-		name := TableDir + "/" + e.Name()
-		if e.IsDir() || !isTable(name) {
-			return nil, fmt.Errorf("%s/%s is not a tokenizer table name (lowercase <name>.json)", TableDir, e.Name())
+		name := sub + "/" + e.Name()
+		if e.IsDir() || !valid(name) {
+			return nil, fmt.Errorf("%s/%s is not %s", sub, e.Name(), want)
 		}
 		out = append(out, name)
 	}
@@ -121,8 +148,12 @@ type Feed struct {
 	KeyID string
 	// Denylist maps a known-bad artifact hash to its label.
 	Denylist map[string]string
-	// Templates holds reviewed chat-template hashes.
-	Templates map[string]struct{}
+	// Templates maps each reviewed chat-template hash to its label (the
+	// repo and revision it was reviewed at, by convention; may be "").
+	Templates map[string]string
+	// TemplateTexts holds the text of reviewed templates, by hash. Each is
+	// listed in Templates.
+	TemplateTexts map[string]string
 	// Tokenizers maps a canonical tokenizer hash to its name.
 	Tokenizers map[string]string
 	// TokenizerTables holds each verified tokenizer table's bytes, by name
@@ -172,12 +203,19 @@ func Sign(dir string, info Info, keyID string, sign func([]byte) []byte) error {
 	if err != nil {
 		return err
 	}
-	for _, name := range tables {
+	texts, err := templateFiles(dir)
+	if err != nil {
+		return err
+	}
+	for _, name := range append(tables, texts...) {
 		b, err := readBounded(filepath.Join(dir, filepath.FromSlash(name)))
 		if err != nil {
 			return err
 		}
 		sum := sha256.Sum256(b)
+		if isTemplateText(name) && hex.EncodeToString(sum[:]) != templateHash(name) {
+			return fmt.Errorf("%s does not hash to its name", name)
+		}
 		subjects = append(subjects, subject{Name: name, Digest: map[string]string{"sha256": hex.EncodeToString(sum[:])}})
 	}
 	if len(subjects) == 0 {
@@ -221,11 +259,11 @@ func Load(dir string, keys map[string]ed25519.PublicKey, now time.Time) (*Feed, 
 		return nil, fmt.Errorf("feed %s %s expired at %s; import a current feed", st.Predicate.Issuer, st.Predicate.Version, st.Predicate.Expires)
 	}
 
-	f := &Feed{Info: st.Predicate, KeyID: keyID, Denylist: map[string]string{}, Templates: map[string]struct{}{},
-		Tokenizers: map[string]string{}, TokenizerTables: map[string][]byte{}}
+	f := &Feed{Info: st.Predicate, KeyID: keyID, Denylist: map[string]string{}, Templates: map[string]string{},
+		TemplateTexts: map[string]string{}, Tokenizers: map[string]string{}, TokenizerTables: map[string][]byte{}}
 	listed := map[string]bool{}
 	for _, s := range st.Subject {
-		if !(known(s.Name) || isTable(s.Name)) || listed[s.Name] {
+		if !(known(s.Name) || isTable(s.Name) || isTemplateText(s.Name)) || listed[s.Name] {
 			return nil, fmt.Errorf("feed %s names %q, which is not a feed data file or is named twice", dir, s.Name)
 		}
 		listed[s.Name] = true
@@ -241,6 +279,13 @@ func Load(dir string, keys map[string]ed25519.PublicKey, now time.Time) (*Feed, 
 			f.TokenizerTables[strings.TrimSuffix(path.Base(s.Name), ".json")] = b
 			continue
 		}
+		if isTemplateText(s.Name) {
+			if hex.EncodeToString(sum[:]) != templateHash(s.Name) {
+				return nil, fmt.Errorf("feed %s: %s does not hash to its name", dir, s.Name)
+			}
+			f.TemplateTexts[templateHash(s.Name)] = string(b)
+			continue
+		}
 		entries, err := parse(s.Name, b)
 		if err != nil {
 			return nil, fmt.Errorf("feed %s: %w", dir, err)
@@ -250,7 +295,7 @@ func Load(dir string, keys map[string]ed25519.PublicKey, now time.Time) (*Feed, 
 			case "denylist.txt":
 				f.Denylist[h] = v
 			case "templates.txt":
-				f.Templates[h] = struct{}{}
+				f.Templates[h] = v
 			case "tokenizers.txt":
 				f.Tokenizers[h] = v
 			}
@@ -267,9 +312,20 @@ func Load(dir string, keys map[string]ed25519.PublicKey, now time.Time) (*Feed, 
 	if err != nil {
 		return nil, fmt.Errorf("feed %s: %w", dir, err)
 	}
-	for _, name := range tables {
+	texts, err := templateFiles(dir)
+	if err != nil {
+		return nil, fmt.Errorf("feed %s: %w", dir, err)
+	}
+	for _, name := range append(tables, texts...) {
 		if !listed[name] {
 			return nil, fmt.Errorf("feed %s holds %s, which its signature does not cover", dir, name)
+		}
+	}
+	// A template's text counts as reviewed only as an entry of
+	// templates.txt, which labels it.
+	for h := range f.TemplateTexts {
+		if _, ok := f.Templates[h]; !ok {
+			return nil, fmt.Errorf("feed %s: %s/%s.jinja is not listed in templates.txt", dir, TemplateDir, h)
 		}
 	}
 	return f, nil
