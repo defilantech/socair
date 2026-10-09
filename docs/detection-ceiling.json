@@ -9,7 +9,7 @@
     "Malicious behavior that only emerges at runtime under real traffic.",
     "Artifact formats we do not parse.",
     "Pickle code execution reached only through imports on the reviewed safe list.",
-    "Chat-template instructions written as ordinary guidance (no override or concealment phrase, URL, hidden or obfuscated text, or condition on message content), unless the template matches a reviewed template.",
+    "Chat-template instructions written as ordinary guidance (no override or concealment phrase, URL, hidden or obfuscated text, or condition on message content): the text a rendered template adds is listed in the report, not judged, unless the template matches a reviewed template.",
     "Legal review of a license, and compliance with its usage policies. The license is identified, and checked only against a policy you configure."
   ],
   "notes": [

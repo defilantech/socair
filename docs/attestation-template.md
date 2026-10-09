@@ -83,6 +83,8 @@ Each row returns PASS, FAIL, LEAD, or NOT_TESTED. FAIL is positive evidence. LEA
 
 Every row also carries a fixed **PASS means** line (`pass_means`): what that check's PASS establishes and where it stops, for example that the tokenizer check tests internal consistency and does not compare against a canonical copy. The wording is fixed per check (`report.PassMeaning`), never per artifact.
 
+The chat-template row also renders each template that reaches no code, with Socair's own Jinja evaluator, on fixed probe conversations. Its notes list the text the template adds to the prompt (listed, not judged), quote what each content condition adds, and say whether the template matches a reviewed template: byte for byte, render for render, or not at all. Two rendered signals are LEADs: a content condition that opens a system turn, and a template that renders like a reviewed one on every standard probe but adds a content-conditional branch. A template the evaluator cannot render is not rendered, the notes say why, and the row keeps the static verdict.
+
 The rows that run depend on the format: every report carries structure, inventory, provenance, and the known-bad hash; a GGUF adds the chat template, tokenizer, and quant rows; a model directory adds the chat template, tokenizer, and remote code rows; a pickle checkpoint adds the pickle row. The License policy row runs, for every format, only when the operator configures a policy (`SOCAIR_LICENSE_POLICY`).
 
 | Check | Looks for | Result | Evidence | Notes |
@@ -91,7 +93,7 @@ The rows that run depend on the format: every report carries structure, inventor
 | File inventory and payloads | Hidden files, embedded payloads, unexpected executables | `[result]` | `[evidence]` | `[notes]` |
 | Hash, provenance, lineage | Traceable origin: a manifest bound to this hash, from an immutable upstream commit | `[result]` | `[evidence]` | `[notes]` |
 | Known-bad hash match | Match against the known-bad artifact denylist | `[result]` | `[evidence]` | `[notes]` |
-| Chat template (hero) | Code reach, hidden or obfuscated text, and override or content-triggered instructions in the chat template | `[result]` | `[evidence]` | `[notes]` |
+| Chat template (hero) | Code reach, hidden or obfuscated text, override or content-triggered instructions, and the text the rendered template adds to the prompt | `[result]` | `[evidence]` | `[notes]` |
 | Tokenizer config | Tampered tokenizer tables: special-token ids, token types, control tokens | `[result]` | `[evidence]` | `[notes]` |
 | Quant match (GGUF) | Declared quantization (file name) against the tensor types in the file | `[result]` | `[evidence]` | `[notes]` |
 | Remote code (model directory) | Code a loader would run: auto_map entries and Python files (trust_remote_code) | `[result]` | `[evidence]` | `[notes]` |
@@ -198,7 +200,7 @@ This attestation does not certify the absence of unknown backdoors. Within the n
 - Malicious behavior that only emerges at runtime under real traffic.
 - Artifact formats we do not parse.
 - Pickle code execution reached only through imports on the reviewed safe list.
-- Chat-template instructions written as ordinary guidance (no override or concealment phrase, URL, hidden or obfuscated text, or condition on message content), unless the template matches a reviewed template.
+- Chat-template instructions written as ordinary guidance (no override or concealment phrase, URL, hidden or obfuscated text, or condition on message content): the text a rendered template adds is listed in the report, not judged, unless the template matches a reviewed template.
 - Legal review of a license, and compliance with its usage policies. The license is identified, and checked only against a policy you configure.
 
 The same list is `docs/detection-ceiling.json` and `report.DefaultCeiling()`; a test holds them equal.

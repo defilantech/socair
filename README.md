@@ -43,7 +43,7 @@ that gap. Nothing passes silently.
 |---|---|
 | Format and structure | Malformed containers; tensor data that does not tile the file exactly (where payloads hide); shard indexes that disagree with their shards |
 | File inventory and payloads | Embedded scripts, binaries, or archives in metadata; native executables in a model directory |
-| Chat template | Template code that reaches Python internals; instructions that trigger on message content; hidden or obfuscated text; override and concealment language |
+| Chat template | Template code that reaches Python internals; instructions that trigger on message content; hidden or obfuscated text; override and concealment language. Renders the template with Socair's own evaluator and lists the text it adds to the prompt; compares it with reviewed templates when their text is supplied |
 | Tokenizer config | Special-token ids that name no token; tables that disagree; control tokens carrying instructions; normalizers that rewrite input into control tokens |
 | Quant match | A file named for a quantization that holds none of its tensors |
 | Pickle opcode scan | Code execution reachable from a pickle checkpoint |

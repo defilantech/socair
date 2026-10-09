@@ -166,7 +166,7 @@ const maxTemplateBytes = 1 << 20
 
 const (
 	resultName     = "Chat template (hero)"
-	resultLooksFor = "Code reach, hidden or obfuscated text, and override or content-triggered instructions in the chat template"
+	resultLooksFor = "Code reach, hidden or obfuscated text, override or content-triggered instructions, and the text the rendered template adds to the prompt"
 )
 
 // reviewed reports whether a template hash is on the embedded allowlist or
