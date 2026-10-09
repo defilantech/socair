@@ -133,6 +133,36 @@ func TestQuantFromFileName(t *testing.T) {
 	}
 }
 
+// The license keys and the general.base_model.N declarations are what the
+// file says about its license and lineage; the identity section reports
+// them. Indexes out of order are kept by index, and an index past the bound
+// is not read.
+func TestLicenseAndBaseModelKeys(t *testing.T) {
+	kvs := append(gguftest.Clean(),
+		gguftest.Str("general.license", "other"),
+		gguftest.Str("general.license.name", "qwen"),
+		gguftest.Str("general.license.link", "https://huggingface.co/Qwen/Qwen2.5-72B/blob/main/LICENSE"),
+		gguftest.U32("general.base_model.count", 2),
+		gguftest.Str("general.base_model.1.name", "Second"),
+		gguftest.Str("general.base_model.0.name", "Qwen2.5 72B"),
+		gguftest.Str("general.base_model.0.organization", "Qwen"),
+		gguftest.Str("general.base_model.0.repo_url", "https://huggingface.co/Qwen/Qwen2.5-72B"),
+		gguftest.Str("general.base_model.99.name", "past the bound"),
+		gguftest.U32("general.base_model.0.version", 3),
+	)
+	m, err := ReadHeader(writeFixture(t, "m-Q8_0.gguf", gguftest.BuildGGUF(kvs)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if m.License != "other" || m.LicenseName != "qwen" || !strings.HasSuffix(m.LicenseLink, "/LICENSE") {
+		t.Errorf("license %q name %q link %q", m.License, m.LicenseName, m.LicenseLink)
+	}
+	want := []BaseModel{{Name: "Qwen2.5 72B", Organization: "Qwen", RepoURL: "https://huggingface.co/Qwen/Qwen2.5-72B"}, {Name: "Second"}}
+	if len(m.BaseModels) != len(want) || m.BaseModels[0] != want[0] || m.BaseModels[1] != want[1] {
+		t.Errorf("base models %+v, want %+v", m.BaseModels, want)
+	}
+}
+
 func TestSplitMetadata(t *testing.T) {
 	kvs := append(gguftest.Clean(),
 		gguftest.U32("split.no", 1),

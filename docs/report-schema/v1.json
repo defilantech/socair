@@ -72,6 +72,46 @@
               "role": { "type": "string", "enum": ["weights", "config", "tokenizer", "chat_template", "code", "adapter", "other"] }
             }
           }
+        },
+        "license": {
+          "description": "The license the artifact states: id and name when its statements name one license, disagreement (and no id) when they name more, neither when none was identified. Identity, not a check; only a configured license policy grades it.",
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "id": { "type": "string", "description": "A ScanCode LicenseDB key, or a socair- key for a license ScanCode does not key." },
+            "name": { "type": "string" },
+            "sources": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["source", "value"],
+                "properties": {
+                  "source": { "type": "string" },
+                  "value": { "type": "string" },
+                  "id": { "type": "string" },
+                  "note": { "type": "string" }
+                }
+              }
+            },
+            "disagreement": { "type": "string" }
+          }
+        },
+        "base_models": {
+          "description": "The base models the artifact declares (model card base_model, GGUF general.base_model.N), as declared; claims, not verified lineage.",
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["name", "source"],
+            "properties": {
+              "name": { "type": "string" },
+              "organization": { "type": "string" },
+              "repo": { "type": "string" },
+              "url": { "type": "string" },
+              "source": { "type": "string" }
+            }
+          }
         }
       }
     },

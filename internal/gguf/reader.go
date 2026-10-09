@@ -87,6 +87,14 @@ type Manifest struct {
 	// check.
 	DuplicateKeys []string `json:"duplicate_keys,omitempty"`
 
+	// License is general.license, LicenseName general.license.name, and
+	// LicenseLink general.license.link: what the file says its license is.
+	License     string `json:"license,omitempty"`
+	LicenseName string `json:"license_name,omitempty"`
+	LicenseLink string `json:"license_link,omitempty"`
+	// BaseModels are the general.base_model.N declarations, by N.
+	BaseModels []BaseModel `json:"base_models,omitempty"`
+
 	Quant Quant  `json:"quant"`
 	Split *Split `json:"split,omitempty"`
 
@@ -103,6 +111,55 @@ type Manifest struct {
 
 // defaultAlignment is GGUF's alignment when general.alignment is absent.
 const defaultAlignment = 32
+
+// BaseModel is one general.base_model.N declaration: the model this one was
+// derived from, as the file states it.
+type BaseModel struct {
+	Name         string `json:"name,omitempty"`
+	Organization string `json:"organization,omitempty"`
+	RepoURL      string `json:"repo_url,omitempty"`
+}
+
+// maxBaseModels bounds the general.base_model.N declarations kept.
+const maxBaseModels = 16
+
+// baseModelKey maps general.base_model.<n>.<field> to n and the field, for
+// the fields the report shows.
+func baseModelKey(key string) (int, string, bool) {
+	rest, ok := strings.CutPrefix(key, "general.base_model.")
+	if !ok {
+		return 0, "", false
+	}
+	num, field, ok := strings.Cut(rest, ".")
+	if !ok || (field != "name" && field != "organization" && field != "repo_url") {
+		return 0, "", false
+	}
+	n := 0
+	for _, c := range num {
+		if c < '0' || c > '9' || n >= maxBaseModels {
+			return 0, "", false
+		}
+		n = n*10 + int(c-'0')
+	}
+	if num == "" || n >= maxBaseModels {
+		return 0, "", false
+	}
+	return n, field, true
+}
+
+func (m *Manifest) setBaseModel(n int, field, v string) {
+	for len(m.BaseModels) <= n {
+		m.BaseModels = append(m.BaseModels, BaseModel{})
+	}
+	switch field {
+	case "name":
+		m.BaseModels[n].Name = v
+	case "organization":
+		m.BaseModels[n].Organization = v
+	case "repo_url":
+		m.BaseModels[n].RepoURL = v
+	}
+}
 
 // countingReader counts the bytes read through it, to locate the data section.
 type countingReader struct {
@@ -167,6 +224,9 @@ var wanted = map[string]struct{}{
 	"general.file_type":            {},
 	"general.quantization_version": {},
 	"general.alignment":            {},
+	"general.license":              {},
+	"general.license.name":         {},
+	"general.license.link":         {},
 	"split.no":                     {},
 	"split.count":                  {},
 	"split.tensors.count":          {},
@@ -292,6 +352,10 @@ func readHeader(f io.Reader, m *Manifest) error {
 		if isTmpl {
 			isWanted = vtype == typeString
 		}
+		baseN, baseField, isBase := baseModelKey(key)
+		if isBase {
+			isWanted = vtype == typeString
+		}
 		val, err := scanValue(f, vtype, isWanted)
 		if err != nil {
 			return fmt.Errorf("gguf: reading value for %q: %w", key, err)
@@ -314,6 +378,10 @@ func readHeader(f io.Reader, m *Manifest) error {
 		if !isWanted {
 			continue
 		}
+		if isBase {
+			m.setBaseModel(baseN, baseField, asString(val))
+			continue
+		}
 		applyWanted(m, key, val)
 	}
 	return readTensorInfos(f, m)
@@ -327,6 +395,12 @@ func applyWanted(m *Manifest, key string, val any) {
 		m.Architecture = asString(val)
 	case "general.size_label":
 		m.SizeLabel = asString(val)
+	case "general.license":
+		m.License = asString(val)
+	case "general.license.name":
+		m.LicenseName = asString(val)
+	case "general.license.link":
+		m.LicenseLink = asString(val)
 	case "tokenizer.ggml.model":
 		m.TokenizerModel = asString(val)
 	case "tokenizer.chat_template":

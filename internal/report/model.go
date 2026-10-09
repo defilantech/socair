@@ -102,7 +102,7 @@ func Tier1Assurance() AssuranceLevel {
 			"A FAIL or a LEAD withholds promotion, and no acceptance clears it.",
 		DoesNotMean: "It is not an assessment of the model's behavior or safety. It does not test the weights for backdoors or poisoning, " +
 			"behavior that appears only after quantization or on particular hardware, or jailbreak susceptibility and harmful capability, " +
-			"and it does not check licensing.",
+			"and it is not a legal review of the model's license.",
 		Tier2Note: "Tier 2 (inference on the production node class) did not run.",
 	}
 }
@@ -128,6 +128,8 @@ var passMeaning = map[string]string{
 	"Hash, provenance, lineage": "A trusted publisher signature verified over this artifact, or an operator-supplied manifest binds this hash " +
 		"to a repository at an immutable commit. The notes say which; a manifest is the operator's claim, not a signature.",
 	"Known-bad hash match": "This exact hash is not on the configured denylist. Any changed byte gives a new hash, so it catches only known files.",
+	"License policy": "The license the artifact states (model card, LICENSE file, or GGUF metadata) is on your allowed list. This is not legal advice: " +
+		"usage-policy obligations, such as an acceptable-use policy or a user cap, are listed in the notes and not marked met.",
 }
 
 // PassMeaning returns the fixed PASS statement for a check row, or "" for a
@@ -200,6 +202,50 @@ type ArtifactIdentity struct {
 	// the digest of their canonical manifest (internal/modeldir), so each
 	// file's bytes are bound to the attestation subject.
 	Files []ArtifactFile `json:"files,omitempty"`
+	// License is the license the artifact states, and every statement of it
+	// the scan read (internal/checks/license). It is identity, not a check:
+	// only a configured license policy grades it, in its own row.
+	License *License `json:"license,omitempty"`
+	// BaseModels are the models the artifact says it was derived from, as
+	// it declares them. They are claims, not verified lineage.
+	BaseModels []BaseModel `json:"base_models,omitempty"`
+}
+
+// License is the identified license. ID and Name are set when the artifact's
+// statements name one license; Disagreement is set, and ID is not, when they
+// name more than one. With neither, no license was identified, and Sources
+// says what was read (none at all, when nothing states one).
+type License struct {
+	// ID is a ScanCode LicenseDB key, or a socair- key for a license
+	// ScanCode does not key (internal/checks/license/catalogue.go).
+	ID           string          `json:"id,omitempty"`
+	Name         string          `json:"name,omitempty"`
+	Sources      []LicenseSource `json:"sources,omitempty"`
+	Disagreement string          `json:"disagreement,omitempty"`
+}
+
+// LicenseSource is one statement of the license and where it was read.
+type LicenseSource struct {
+	// Source is where: "model card license", "LICENSE", "GGUF
+	// general.license", or a declared base model.
+	Source string `json:"source"`
+	// Value is what it said: a value, or a file's first line.
+	Value string `json:"value"`
+	// ID is the license it names, absent when it names none.
+	ID string `json:"id,omitempty"`
+	// Note says why it names none, or what kind of statement it is.
+	Note string `json:"note,omitempty"`
+}
+
+// BaseModel is one declared base model.
+type BaseModel struct {
+	Name         string `json:"name"`
+	Organization string `json:"organization,omitempty"`
+	// Repo is the Hugging Face repo id, when the declaration names one.
+	Repo string `json:"repo,omitempty"`
+	// URL is the repository URL as a GGUF declares it.
+	URL    string `json:"url,omitempty"`
+	Source string `json:"source"`
 }
 
 // ArtifactFile is one file of a model directory.
@@ -369,7 +415,7 @@ func DefaultCeiling() []string {
 		"Artifact formats we do not parse.",
 		"Pickle code execution reached only through imports on the reviewed safe list.",
 		"Chat-template instructions written as ordinary guidance (no override or concealment phrase, URL, hidden or obfuscated text, or condition on message content), unless the template matches a reviewed template.",
-		"License and usage-policy compliance.",
+		"Legal review of a license, and compliance with its usage policies. The license is identified, and checked only against a policy you configure.",
 	}
 }
 
@@ -491,6 +537,9 @@ func Validate(d *Document) []string {
 	req(strings.TrimSpace(d.Header.AssuranceLevelAwarded) != "", "header.assurance_level_awarded")
 	req(strings.TrimSpace(d.Artifact.FileName) != "", "artifact.file_name")
 	problems = append(problems, validateFiles(d)...)
+	if l := d.Artifact.License; l != nil && l.Disagreement != "" && l.ID != "" {
+		problems = append(problems, "artifact.license: an identified license beside a disagreement; statements that disagree identify none")
+	}
 	req(len(d.Artifact.SHA256) == 64, "artifact.sha256 (64 hex chars)")
 	req(strings.TrimSpace(d.Artifact.Format) != "", "artifact.format")
 	req(len(d.Checks) > 0, "checks (at least one)")

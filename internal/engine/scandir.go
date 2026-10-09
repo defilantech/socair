@@ -87,6 +87,8 @@ func scanDir(dir string, start time.Time, refs *references, in Inputs, t2 *tier2
 		return nil, err
 	}
 	d.Scope.ReferenceData = refs.scope()
+	ident := dirLicense(root, files)
+	d.Artifact.License, d.Artifact.BaseModels = licenseIdentity(ident)
 	tokRow := tok.Result
 	tokRow.Notes += refs.tokenizerNote(tok.Hash)
 	tokRow = refs.compareTokenizer(tokRow, tok.Tokens, tok.HFSpecial())
@@ -154,6 +156,9 @@ func scanDir(dir string, start time.Time, refs *references, in Inputs, t2 *tier2
 	}
 	if len(pickleParts) > 0 {
 		results = append(results, checks.Merge(pickleParts[0].Result.Name, pickleParts[0].Result.LooksFor, pickleParts))
+	}
+	if row, ok := refs.licenseRow(ident, "A model directory states its license in the model card's front matter (README.md), a LICENSE file, or a GGUF's general.license; this one has none that names a license."); ok {
+		results = append(results, row)
 	}
 	measureTier2(d, t2, root)
 	return finish(d, results, unparsed, expires), nil

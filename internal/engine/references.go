@@ -11,6 +11,7 @@ import (
 	"github.com/defilantech/socair/internal/attest"
 	"github.com/defilantech/socair/internal/checks"
 	"github.com/defilantech/socair/internal/checks/denylist"
+	"github.com/defilantech/socair/internal/checks/license"
 	"github.com/defilantech/socair/internal/checks/tokenizer"
 	"github.com/defilantech/socair/internal/feed"
 )
@@ -19,12 +20,17 @@ import (
 // signed feed (SOCAIR_FEED, checked against SOCAIR_FEED_KEYS) and a local
 // denylist file (SOCAIR_DENYLIST). Either, both, or neither. Canonical
 // tokenizer tables come from the feed and from SOCAIR_TOKENIZER_REFERENCE.
+//
+// The operator's allowed licenses (SOCAIR_LICENSE_POLICY) are read here too:
+// the License policy row compares against them, and with no policy (nil) the
+// row is not added.
 type references struct {
 	feed     *feed.Feed
 	deny     map[string]denylist.Entry
 	denySrc  []string
 	denyErr  string
 	tables   []tokenizer.Table
+	policy   *license.Policy
 	describe []string
 }
 
@@ -81,6 +87,16 @@ func loadReferences(now time.Time) (*references, error) {
 		}
 		r.tables = append(r.tables, tables...)
 		r.describe = append(r.describe, fmt.Sprintf("%d local tokenizer reference table(s) %s", len(tables), p))
+	}
+	// A license policy that cannot be read, or names a license the catalogue
+	// does not know, stops the scan: a misspelled id would fail every model.
+	if p := strings.TrimSpace(os.Getenv("SOCAIR_LICENSE_POLICY")); p != "" {
+		pol, err := license.LoadPolicy(p)
+		if err != nil {
+			return nil, fmt.Errorf("SOCAIR_LICENSE_POLICY: %w", err)
+		}
+		r.policy = pol
+		r.describe = append(r.describe, pol.Describe())
 	}
 	if p := strings.TrimSpace(os.Getenv("SOCAIR_DENYLIST")); p != "" {
 		entries, err := denylist.Load(p)
@@ -158,6 +174,21 @@ func (r *references) compareTokenizer(row checks.Result, tokens []string, specia
 		return row
 	}
 	return tokenizer.ApplyReference(row, tokenizer.Compare(tokens, special, r.tables))
+}
+
+// licenseRow grades the identified license against the operator's policy, or
+// returns false when no policy is configured: the row is opt-in, so without
+// a policy no report carries it and none is withheld for it. why says where a
+// license would have been read, for a row that identified none.
+func (r *references) licenseRow(id license.Identification, why string) (checks.Result, bool) {
+	if r.policy == nil {
+		return checks.Result{}, false
+	}
+	row := r.policy.Check(id)
+	if row.Status == checks.NotTested && len(id.Identified()) == 0 && why != "" {
+		row.Notes += " " + why
+	}
+	return row, true
 }
 
 // scope is the report's reference_data line.

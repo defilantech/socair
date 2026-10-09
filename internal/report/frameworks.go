@@ -63,9 +63,13 @@ var patternSeverity = map[string]string{
 	"pickle-unreadable":            SeverityMedium,
 	"auto_map":                     SeverityMedium,
 	"python-file":                  SeverityMedium,
+	// A license outside the operator's policy: a rule broken, not a
+	// compromise.
+	"license-not-allowed": SeverityMedium,
 	// Integrity of a label, not of the model.
-	"token-prose":    SeverityLow,
-	"quant-mismatch": SeverityLow,
+	"token-prose":          SeverityLow,
+	"quant-mismatch":       SeverityLow,
+	"license-disagreement": SeverityLow,
 }
 
 // PatternSeverity returns a pattern's fixed severity, or "" for a pattern
@@ -131,6 +135,9 @@ var checkMaps = map[string][]FrameworkRef{
 	"Remote code":                 {atlasUnsafeArtifacts, atlasSupplyChainSW, owaspSupplyChain},
 	"Hash, provenance, lineage":   {atlasSupplyChainModel, atlasPoisonedModels, owaspSupplyChain},
 	"Known-bad hash match":        {atlasPoisonedModels, atlasSupplyChainModel, owaspSupplyChain},
+	// LLM03 names licensing risk among supply-chain vulnerabilities; no
+	// ATLAS technique is a license.
+	"License policy": {owaspSupplyChain},
 }
 
 // MapsTo returns the framework entries a check addresses, or nil.
