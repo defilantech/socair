@@ -235,6 +235,58 @@ func TestAPIRoutesAreNotShadowedByTheSPA(t *testing.T) {
 	}
 }
 
+// TestUnknownAPIPathsAnswerJSON: with --web, an /api path no route handles
+// (an unknown path, or a known one with the wrong method) fell through to the
+// SPA fallback and answered 200 text/html, so a client read the wizard's
+// shell as an API answer. Every such request now gets the API's JSON error:
+// 405 with Allow for a known path, 404 otherwise, with or without --web.
+// Falsification: drop the /api/ fallback and the --web cases answer 200 HTML.
+func TestUnknownAPIPathsAnswerJSON(t *testing.T) {
+	web := t.TempDir()
+	if err := os.WriteFile(filepath.Join(web, "200.html"), []byte("<!doctype html><title>spa</title>"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cases := []struct {
+		method, path string
+		code         int
+		allow        string
+	}{
+		{http.MethodGet, "/api/doesnotexist", http.StatusNotFound, ""},
+		{http.MethodGet, "/api/", http.StatusNotFound, ""},
+		{http.MethodGet, "/api/scan", http.StatusMethodNotAllowed, "POST"},
+		{http.MethodOptions, "/api/scan", http.StatusMethodNotAllowed, "POST"},
+		{http.MethodPost, "/api/version", http.StatusMethodNotAllowed, "GET, HEAD"},
+		{http.MethodDelete, "/api/airlock/models/abc", http.StatusMethodNotAllowed, "GET, HEAD"},
+	}
+	for name, opts := range map[string]Options{"with --web": {WebDir: web}, "API alone": {}} {
+		ts := server(t, opts)
+		for _, c := range cases {
+			req, err := http.NewRequest(c.method, ts.URL+c.path, strings.NewReader("{}"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			req.Header.Set("Content-Type", "application/json")
+			resp, err := http.DefaultClient.Do(req)
+			if err != nil {
+				t.Fatal(err)
+			}
+			body, _ := io.ReadAll(resp.Body)
+			resp.Body.Close()
+			var e struct {
+				Error string `json:"error"`
+			}
+			if resp.StatusCode != c.code || !strings.HasPrefix(resp.Header.Get("Content-Type"), "application/json") ||
+				json.Unmarshal(body, &e) != nil || e.Error == "" {
+				t.Errorf("%s: %s %s = %d %q %s, want %d with a JSON error", name, c.method, c.path,
+					resp.StatusCode, resp.Header.Get("Content-Type"), body, c.code)
+			}
+			if got := resp.Header.Get("Allow"); got != c.allow {
+				t.Errorf("%s: %s %s: Allow %q, want %q", name, c.method, c.path, got, c.allow)
+			}
+		}
+	}
+}
+
 func TestSPAFallbackServesTheShellAndStaysInRoot(t *testing.T) {
 	web := t.TempDir()
 	if err := os.WriteFile(filepath.Join(web, "200.html"), []byte("<!doctype html><title>spa</title>"), 0o600); err != nil {

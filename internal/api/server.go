@@ -73,15 +73,49 @@ func (o Options) handler(heavy chan struct{}) http.Handler {
 	}
 
 	mux := http.NewServeMux()
-	for _, rt := range o.routes(limit) {
+	routes := o.routes(limit)
+	for _, rt := range routes {
 		mux.HandleFunc(rt.pattern, authorize(rt.access, rt.handler))
 	}
+	// Anything under /api/ that no route takes is answered here, so the SPA
+	// fallback at / never answers for the API.
+	mux.Handle("/api/", apiFallback(routes))
 
 	if strings.TrimSpace(o.WebDir) != "" {
 		mux.Handle("/", spaHandler(o.WebDir))
 	}
 	guarded := o.guard(mux)
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { guarded.ServeHTTP(w, identify(r)) })
+}
+
+// apiFallback answers an /api request no route handles with the API's JSON
+// error: 405 with Allow when a route has the path but not the method, 404
+// otherwise.
+func apiFallback(routes []route) http.Handler {
+	allow := map[string][]string{}
+	var paths []string
+	for _, rt := range routes {
+		method, path, _ := strings.Cut(rt.pattern, " ")
+		if _, ok := allow[path]; !ok {
+			paths = append(paths, path)
+		}
+		allow[path] = append(allow[path], method)
+		if method == http.MethodGet {
+			allow[path] = append(allow[path], http.MethodHead)
+		}
+	}
+	mux := http.NewServeMux()
+	for _, p := range paths {
+		methods := strings.Join(allow[p], ", ")
+		mux.HandleFunc(p, func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Allow", methods)
+			writeError(w, http.StatusMethodNotAllowed, r.Method+" is not allowed on "+r.URL.Path+"; it takes "+methods)
+		})
+	}
+	mux.HandleFunc("/api/", func(w http.ResponseWriter, r *http.Request) {
+		writeError(w, http.StatusNotFound, "no API route "+r.URL.Path)
+	})
+	return mux
 }
 
 // guard refuses requests a browser could send on another site's behalf. The
