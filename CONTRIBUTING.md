@@ -23,6 +23,18 @@ git commit -s -m "Describe the change"
 This adds `Signed-off-by: Your Name <you@example.com>`. We do not ask for a
 contributor license agreement.
 
+A `dco` check runs on every pull request (`scripts/check-dco.sh`): each commit
+needs a `Signed-off-by:` line with its author's name and email, so a missing
+or mismatched sign-off blocks the merge. To fix one, sign off the commits in
+your branch and force-push:
+
+```
+git rebase --signoff main
+git push --force-with-lease
+```
+
+Commits made in GitHub's web editor are signed off there too.
+
 ## Build and test
 
 The Go build is air-gapped: dependencies are vendored and nothing is fetched.
