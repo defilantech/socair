@@ -120,10 +120,11 @@ func TestHandWrittenReportsMatchSchema(t *testing.T) {
 	}
 }
 
-// TestSchemaBoundedStatementIsTheFixedPair: the schema admits exactly the two
-// fixed sentences, so the published contract and the engine cannot drift.
-// Falsification: edit either sentence in one place only and this fails.
-func TestSchemaBoundedStatementIsTheFixedPair(t *testing.T) {
+// TestSchemaBoundedStatementIsTheFixedSet: the schema admits exactly the
+// fixed sentences, the Tier 1 pair then the Tier 2 pair, so the published
+// contract and the engine cannot drift. Falsification: edit any sentence in
+// one place only and this fails.
+func TestSchemaBoundedStatementIsTheFixedSet(t *testing.T) {
 	raw, err := os.ReadFile(filepath.Join("..", "..", "docs", "report-schema", "v1.json"))
 	if err != nil {
 		t.Fatal(err)
@@ -138,7 +139,7 @@ func TestSchemaBoundedStatementIsTheFixedPair(t *testing.T) {
 	if err := json.Unmarshal(raw, &schema); err != nil {
 		t.Fatal(err)
 	}
-	want := []string{BoundedStatementNoIndicators, BoundedStatementIndicators}
+	want := []string{BoundedStatementNoIndicators, BoundedStatementIndicators, BoundedStatementTier2NoIndicators, BoundedStatementTier2Indicators}
 	if got := schema.Properties.BoundedStatement.Enum; !reflect.DeepEqual(got, want) {
 		t.Fatalf("schema bounded_statement enum = %q, want %q", got, want)
 	}

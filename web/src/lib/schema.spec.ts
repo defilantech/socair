@@ -1,5 +1,11 @@
 import { describe, it, expect } from 'vitest';
-import { CHECK_STATUSES, type CheckResult, type Document } from './api';
+import {
+	CHECK_STATUSES,
+	MEASUREMENT_OUTCOMES,
+	type CheckResult,
+	type Document,
+	type NodeClass
+} from './api';
 import schema from '../../../docs/report-schema/v1.json';
 import golden from '../../../testdata/report.json';
 import demo from '../../../internal/demo/report.json';
@@ -17,6 +23,25 @@ describe('report contract', () => {
 	it('the wizard status enum is the schema enum', () => {
 		const enumInSchema = schema.properties.checks.items.properties.status.enum;
 		expect([...CHECK_STATUSES].sort()).toEqual([...enumInSchema].sort());
+	});
+
+	it('the wizard measurement outcomes are the schema enum, with no pass', () => {
+		const enumInSchema = schema.properties.tier2.properties.measurements.items.properties.outcome.enum;
+		expect([...MEASUREMENT_OUTCOMES].sort()).toEqual([...enumInSchema].sort());
+		expect(MEASUREMENT_OUTCOMES as readonly string[]).not.toContain('pass');
+	});
+
+	it('the wizard node class names every field of the schema record', () => {
+		const fields = schema.properties.tier2.properties.node_classes.items.properties.facts.required;
+		const sample: Record<keyof NodeClass, unknown> = {
+			schema: '', gpu_model: '', compute_capability: '', gpu_count: 0, interconnect: '', driver: '', vbios: '',
+			ecc: null, mig: '', cc_mode: '', cuda: '', cublas: '', cudnn: '', nccl: '', container_image_digest: '',
+			engine_name: '', engine_version: '', engine_commit: '', dtype: '', weight_quantization: '',
+			kv_cache_quantization: '', tensor_parallel_size: 0, pipeline_parallel_size: 0, expert_parallel_size: 0,
+			attention_backend: '', cuda_graphs: null, torch_compile: null, eager: null, batch_invariant: null,
+			prefix_caching: null, chunked_prefill: null, speculative_decoding: '', env: null
+		};
+		expect(Object.keys(sample).sort()).toEqual([...fields].sort());
 	});
 
 	it('the golden and demo bounded statements are the schema sentence for their rows', () => {

@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://socair.ai/schema/report/v1.json",
   "title": "Socair Model Assurance Attestation",
-  "description": "The cross-stack report contract. The engine produces it, the CLI prints it, the SvelteKit wizard renders it, and the MCP wrapper serves it. Versioned; breaking changes publish a new $id. v1 is frozen at the public release; before it, v1 changed in place with no external consumers (2026-10-02: the LEAD check status and findings.leads were added).",
+  "description": "The cross-stack report contract. The engine produces it, the CLI prints it, the SvelteKit wizard renders it, and the MCP wrapper serves it. Versioned; breaking changes publish a new $id. v1 is frozen at the public release; before it, v1 changed in place with no external consumers (2026-10-02: the LEAD check status and findings.leads were added; 2026-10-09: the optional tier2 section and the Tier 2 pair of bounded statements were added).",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -121,6 +121,114 @@
         }
       }
     },
+    "tier2": {
+      "description": "Measurements made by running the model (docs/tier2.md). Absent when Tier 2 did not run. A measurement is never a verdict: one that raised a LEAD or FAIL has a check row (named with the suffix ' (Tier 2)') with that status, which withholds promotion; one that found nothing adds no row and authorizes nothing.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["statement", "helper", "node_classes", "measurements"],
+      "properties": {
+        "statement": { "const": "Tier 2 measurements ran the model through the endpoints the operator named, on the node classes listed here as the probe helper reported them; Socair did not observe the hardware or verify that an endpoint served the bytes identified by the artifact hash. A measurement is not a verdict: a LEAD or FAIL it raises is a check row and withholds promotion, and a measurement that found nothing adds no row, is not a PASS, and authorizes nothing." },
+        "helper": { "type": "string", "minLength": 1, "description": "The probe helper's name and version, as it reports them." },
+        "node_classes": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["hash", "reported_by", "facts"],
+            "properties": {
+              "hash": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$", "description": "sha256 over the canonical JSON of facts: every field present, keys sorted, no whitespace, no HTML escaping. Any field change changes it." },
+              "reported_by": { "enum": ["probe helper (not observed by Socair)"] },
+              "facts": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "schema", "gpu_model", "compute_capability", "gpu_count", "interconnect", "driver", "vbios", "ecc", "mig", "cc_mode",
+                  "cuda", "cublas", "cudnn", "nccl", "container_image_digest", "engine_name", "engine_version", "engine_commit",
+                  "dtype", "weight_quantization", "kv_cache_quantization", "tensor_parallel_size", "pipeline_parallel_size", "expert_parallel_size",
+                  "attention_backend", "cuda_graphs", "torch_compile", "eager", "batch_invariant", "prefix_caching", "chunked_prefill",
+                  "speculative_decoding", "env"
+                ],
+                "properties": {
+                  "schema": { "const": "socair.nodeclass/v1" },
+                  "gpu_model": { "type": "string" },
+                  "compute_capability": { "type": "string" },
+                  "gpu_count": { "type": "integer", "minimum": 0 },
+                  "interconnect": { "type": "string" },
+                  "driver": { "type": "string" },
+                  "vbios": { "type": "string" },
+                  "ecc": { "type": ["boolean", "null"] },
+                  "mig": { "type": "string" },
+                  "cc_mode": { "type": "string" },
+                  "cuda": { "type": "string" },
+                  "cublas": { "type": "string" },
+                  "cudnn": { "type": "string" },
+                  "nccl": { "type": "string" },
+                  "container_image_digest": { "type": "string" },
+                  "engine_name": { "type": "string" },
+                  "engine_version": { "type": "string" },
+                  "engine_commit": { "type": "string" },
+                  "dtype": { "type": "string" },
+                  "weight_quantization": { "type": "string" },
+                  "kv_cache_quantization": { "type": "string" },
+                  "tensor_parallel_size": { "type": "integer", "minimum": 0 },
+                  "pipeline_parallel_size": { "type": "integer", "minimum": 0 },
+                  "expert_parallel_size": { "type": "integer", "minimum": 0 },
+                  "attention_backend": { "type": "string" },
+                  "cuda_graphs": { "type": ["boolean", "null"] },
+                  "torch_compile": { "type": ["boolean", "null"] },
+                  "eager": { "type": ["boolean", "null"] },
+                  "batch_invariant": { "type": ["boolean", "null"] },
+                  "prefix_caching": { "type": ["boolean", "null"] },
+                  "chunked_prefill": { "type": ["boolean", "null"] },
+                  "speculative_decoding": { "type": "string" },
+                  "env": { "type": ["object", "null"], "additionalProperties": { "type": "string" } }
+                }
+              }
+            }
+          }
+        },
+        "measurements": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["check", "suite", "suite_version", "dataset_digest", "scorer", "n", "decoding", "engine", "node_class", "started_utc", "ended_utc", "outcome"],
+            "properties": {
+              "check": { "type": "string", "pattern": "^.*\\S.* \\(Tier 2\\)$" },
+              "suite": { "type": "string", "minLength": 1 },
+              "suite_version": { "type": "string", "minLength": 1 },
+              "dataset_digest": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
+              "scorer": { "type": "string", "pattern": "^(deterministic|llm-judge:sha256:[0-9a-f]{64})$" },
+              "n": { "type": "integer", "minimum": 0 },
+              "score": { "type": "number" },
+              "metrics": { "type": "object", "additionalProperties": { "type": "number" } },
+              "ci95": { "type": "array", "minItems": 2, "maxItems": 2, "items": { "type": "number" } },
+              "decoding": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["temperature", "top_p", "max_tokens"],
+                "properties": {
+                  "temperature": { "type": "number", "minimum": 0 },
+                  "top_p": { "type": "number", "exclusiveMinimum": 0, "maximum": 1 },
+                  "max_tokens": { "type": "integer", "minimum": 1 },
+                  "seed": { "type": "integer" }
+                }
+              },
+              "engine": { "type": "string", "minLength": 1 },
+              "node_class": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
+              "reference_node_class": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
+              "started_utc": { "type": "string", "format": "date-time" },
+              "ended_utc": { "type": "string", "format": "date-time" },
+              "outcome": { "enum": ["measured", "lead", "fail", "error"], "description": "There is no pass. measured: completed and raised nothing, which is not evidence of absence. lead: a statistical or judged signal. fail: deterministic, matcher-confirmed evidence, named in evidence. error: did not complete." },
+              "evidence": { "type": "string" },
+              "notes": { "type": "string" }
+            }
+          }
+        }
+      }
+    },
     "findings": {
       "type": "object",
       "additionalProperties": false,
@@ -143,10 +251,12 @@
       }
     },
     "bounded_statement": {
-      "description": "One of two fixed sentences, picked from the check rows: the first when no row is FAIL or LEAD, the second when any row is. Validation re-derives it from the rows, so neither may be edited per artifact.",
+      "description": "One of four fixed sentences. A report without a tier2 section takes the first pair, one with it the second; within a pair, the first when no row is FAIL or LEAD, the second when any row is. Validation re-derives it from the document, so none may be edited per artifact.",
       "enum": [
         "For the artifact identified by its hash, the Tier 1 checks that returned PASS found no indicators within their stated scope. Rows marked NOT_TESTED were not examined, for the reason each row gives. Tier 1 runs no inference, so no model behavior was tested. Every surface outside that scope is listed under Out of scope.",
-        "For the artifact identified by its hash, the Tier 1 checks found the indicators this report lists: each FAIL is positive evidence, and each LEAD is a suspicious signal that needs review. Rows marked NOT_TESTED were not examined, for the reason each row gives. Tier 1 runs no inference, so no model behavior was tested. Every surface outside that scope is listed under Out of scope."
+        "For the artifact identified by its hash, the Tier 1 checks found the indicators this report lists: each FAIL is positive evidence, and each LEAD is a suspicious signal that needs review. Rows marked NOT_TESTED were not examined, for the reason each row gives. Tier 1 runs no inference, so no model behavior was tested. Every surface outside that scope is listed under Out of scope.",
+        "For the artifact identified by its hash, the Tier 1 checks that returned PASS found no indicators within their stated scope, and the Tier 2 measurements raised none. Rows marked NOT_TESTED were not examined, for the reason each row gives. Tier 2 ran the model only on the node classes and probe sets its measurements name, and a measurement that found nothing is not a PASS. Every surface outside that scope is listed under Out of scope.",
+        "For the artifact identified by its hash, the checks found the indicators this report lists: each FAIL is positive evidence, and each LEAD is a suspicious signal that needs review; a row marked (Tier 2) was raised by a measurement made by running the model. Rows marked NOT_TESTED were not examined, for the reason each row gives. Tier 2 ran the model only on the node classes and probe sets its measurements name, and a measurement that found nothing is not a PASS. Every surface outside that scope is listed under Out of scope."
       ]
     },
     "out_of_scope": {
