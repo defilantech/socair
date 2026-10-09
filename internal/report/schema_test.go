@@ -91,7 +91,7 @@ func orRoot(p string) string {
 }
 
 // TestHandWrittenReportsMatchSchema: the engine's output is the Go model, so
-// TestSchemaMatchesModel covers it. The golden and the sales demo are written
+// TestSchemaMatchesModel covers it. The golden and the sample report are written
 // by hand, so their keys are checked against the closed schema directly.
 func TestHandWrittenReportsMatchSchema(t *testing.T) {
 	raw, err := os.ReadFile(filepath.Join("..", "..", "docs", "report-schema", "v1.json"))

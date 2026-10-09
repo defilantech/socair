@@ -145,6 +145,6 @@ Usage:
   socair airlock export --out <dir> [--key <k>]   write a shareable, signed snapshot of the store
   socair inventory verify <dir> --trusted <key.pub|dir>   verify an exported inventory snapshot
   socair serve             run the engine HTTP/JSON API for the click-ops wizard
-  socair demo              write the SAMPLE attestation for sales
+  socair demo              write a SAMPLE attestation that shows what a report looks like
 `)
 }

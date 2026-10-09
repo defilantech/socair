@@ -51,8 +51,8 @@ func Render(w io.Writer, d *report.Document) error {
 
 // Options controls optional rendering behavior.
 type Options struct {
-	// Sample marks the document as fabricated sample data. It is set for the
-	// sales demo and must never be set for a real issuance.
+	// Sample marks the document as fabricated sample data. It is set by
+	// socair demo and must never be set for a real issuance.
 	Sample bool
 }
 
