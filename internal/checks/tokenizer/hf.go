@@ -36,6 +36,25 @@ type HFResult struct {
 	// Nil when tokenizer.json was not read.
 	Tokens []string
 	Added  map[int]bool
+	// Special holds the special tokens the tokenizer config names
+	// (bos_token, eos_token, ...), by name: what a chat template reads.
+	Special map[string]string
+}
+
+// AddedTexts are the added tokens' text, in id order.
+func (h HFResult) AddedTexts() []string {
+	ids := make([]int, 0, len(h.Added))
+	for id := range h.Added {
+		if id < len(h.Tokens) {
+			ids = append(ids, id)
+		}
+	}
+	sort.Ints(ids)
+	out := make([]string, 0, len(ids))
+	for _, id := range ids {
+		out = append(out, h.Tokens[id])
+	}
+	return out
 }
 
 // hfTokenizer is the part of a tokenizer.json this check reads.
@@ -75,7 +94,7 @@ var specialNameKeys = []string{"bos_token", "eos_token", "unk_token", "pad_token
 // when tokenizer.json was read and every rule ran; without it (a sentencepiece
 // or slow-tokenizer-only repo) the row is NOT_TESTED, naming what is there.
 func InspectHF(root string, files []modeldir.File) HFResult {
-	out := HFResult{Result: checks.Result{Name: resultName, LooksFor: looksFor}}
+	out := HFResult{Result: checks.Result{Name: resultName, LooksFor: looksFor}, Special: map[string]string{}}
 	r := &out.Result
 	at := func(rel string) string { return filepath.Join(root, filepath.FromSlash(rel)) }
 
@@ -225,6 +244,9 @@ func InspectHF(root string, files []modeldir.File) HFResult {
 		}
 		for _, k := range specialNameKeys {
 			if s := tokenText(cfg[k]); s != "" {
+				if _, ok := out.Special[k]; !ok {
+					out.Special[k] = s
+				}
 				declared[s] = true
 				if !contents[s] {
 					fail("special-token-missing", fmt.Sprintf("%s %s = %q", name, k, excerpt(s)), "a declared special token is not in the vocabulary")

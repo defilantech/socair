@@ -38,6 +38,7 @@ var patternSeverity = map[string]string{
 	"normalizer-injects-special":    SeverityHigh,
 	"template-injects-token":        SeverityHigh,
 	"tokenizer-token-changed":       SeverityHigh,
+	"reviewed-template-mismatch":    SeverityHigh,
 	// Suspicious or inconsistent; needs review.
 	"instruction-override":         SeverityMedium,
 	"secrecy-instruction":          SeverityMedium,

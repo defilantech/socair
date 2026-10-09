@@ -50,7 +50,7 @@ func (p *parser) body(stops ...string) ([]Node, string, error) {
 		p.i++
 		switch s.kind {
 		case segText:
-			out = append(out, Text{S: s.text})
+			out = append(out, Text{S: s.text, Out: s.out})
 		case segOutput:
 			e := p.exprs(s)
 			x, err := e.tuple(true)
@@ -253,9 +253,11 @@ func (p *parser) setStmt(e *exprParser) (Node, error) {
 	}
 	if e.accept(tOp, "|") {
 		e.i--
-		if _, err := e.filterChain(Name{N: ""}); err != nil {
+		f, err := e.filterChain(Name{N: ""})
+		if err != nil {
 			return nil, err
 		}
+		n.Filter = f
 	}
 	if err := e.end(); err != nil {
 		return nil, err
@@ -531,12 +533,17 @@ func (e *exprParser) unary(withFilter bool) (Expr, error) {
 		return nil, err
 	}
 	if t, ok := e.peek(); ok && t.kind == tOp && (t.v == "-" || t.v == "+") {
+		// As in Jinja, a filter applies to the signed value: -3|abs is 3.
 		e.i++
-		x, err := e.unary(withFilter)
+		x, err := e.unary(false)
 		if err != nil {
 			return nil, err
 		}
-		return Unary{Op: t.v, X: x}, nil
+		var u Expr = Unary{Op: t.v, X: x}
+		if withFilter {
+			return e.filterChain(u)
+		}
+		return u, nil
 	}
 	x, err := e.primary()
 	if err != nil {

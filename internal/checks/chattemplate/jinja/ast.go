@@ -1,5 +1,9 @@
 // Package jinja parses the Jinja subset that chat templates use into a syntax
-// tree, for static analysis. It never renders or executes a template.
+// tree, for static analysis, and evaluates that tree (Render) on given
+// variables. The evaluator is Socair's own: values are Go values with no
+// Python object model behind them, a dunder name is refused, and every
+// render is bounded. A construct it does not model stops the render with an
+// *UnsupportedError; nothing is ever handed to another Jinja engine.
 //
 // The subset covers what Hugging Face and llama.cpp chat templates use: text,
 // output, comments, raw blocks, if/elif/else, for (with else, a filter
@@ -14,8 +18,11 @@ type Node interface{ node() }
 // Expr is a template expression.
 type Expr interface{ expr() }
 
-// Text is literal template text, emitted as written.
-type Text struct{ S string }
+// Text is literal template text. S is the text as written, which the static
+// analysis reads. Out is what a render emits: S after whitespace control
+// ({%- -%}) and the settings Hugging Face renders with (trim_blocks and
+// lstrip_blocks on, newlines normalized, no trailing newline).
+type Text struct{ S, Out string }
 
 // Output is an {{ expression }}.
 type Output struct{ X Expr }
@@ -41,11 +48,14 @@ type For struct {
 	Else    []Node
 }
 
-// Set assigns an expression, or with Body set, a captured block.
+// Set assigns an expression, or with Body set, a captured block. Filter is a
+// captured block's filter chain ({% set x | trim %}), applied to a Name with
+// an empty N; nil when absent.
 type Set struct {
 	Targets []Expr
 	X       Expr
 	Body    []Node
+	Filter  Expr
 }
 
 // Macro defines a macro.

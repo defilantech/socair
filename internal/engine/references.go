@@ -10,6 +10,7 @@ import (
 
 	"github.com/defilantech/socair/internal/attest"
 	"github.com/defilantech/socair/internal/checks"
+	"github.com/defilantech/socair/internal/checks/chattemplate"
 	"github.com/defilantech/socair/internal/checks/denylist"
 	"github.com/defilantech/socair/internal/checks/license"
 	"github.com/defilantech/socair/internal/checks/tokenizer"
@@ -147,12 +148,17 @@ func (r *references) withUnread(row checks.Result) checks.Result {
 // loaded reports whether any denylist was read.
 func (r *references) loaded() bool { return len(r.denySrc) > 0 }
 
-// reviewedTemplates are the feed's reviewed chat-template hashes.
-func (r *references) reviewedTemplates() map[string]struct{} {
-	if r.feed == nil {
-		return nil
+// templateOptions are the chat-template check's inputs: the feed's reviewed
+// hashes, which clear language leads, and the artifact's special tokens.
+func (r *references) templateOptions(t chattemplate.Tokens) chattemplate.Options {
+	o := chattemplate.Options{Tokens: t}
+	if r.feed != nil {
+		o.Reviewed = map[string]string{}
+		for h := range r.feed.Templates {
+			o.Reviewed[h] = ""
+		}
 	}
-	return r.feed.Templates
+	return o
 }
 
 // tokenizerNote is an informational line comparing a tokenizer hash to the

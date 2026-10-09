@@ -136,7 +136,7 @@ func scanDir(dir string, start time.Time, refs *references, in Inputs, t2 *tier2
 	}
 
 	templates, nonString, unread := modeldir.ChatTemplates(root, files)
-	tmplRow := chattemplate.InspectAllWith(templates, nonString, refs.reviewedTemplates())
+	tmplRow := chattemplate.InspectAllWith(templates, nonString, refs.templateOptions(chattemplate.TokensFromHF(tok.Special, tok.AddedTexts())))
 	if len(templates) == 0 && len(nonString) == 0 {
 		tmplRow.Notes = "no chat template in tokenizer_config.json, chat_template.json, or a .jinja file"
 	}
