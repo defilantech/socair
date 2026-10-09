@@ -34,7 +34,7 @@ func IngestLocal(path string) (string, error) {
 }
 
 // ResolveCache maps a Hugging Face hub cache to a local artifact, for
-// air-gapped customers who ship a cache in rather than pull. The layout is
+// air-gapped sites who ship a cache in rather than pull. The layout is
 // <cache>/models--<org>--<name>/snapshots/<commit>/<file>, with a branch or
 // tag name resolved through <cache>/models--<org>--<name>/refs/<name>. An
 // empty file resolves the whole snapshot directory, for a directory scan.

@@ -155,21 +155,13 @@ Sign and verify:
   attestation. The verifier it uses is the small, dependency-free
   [`socair-verify`](https://github.com/defilantech/socair-verify) module.
 
-## Open source and commercial
+## Open source
 
-This repository is the complete, open Socair, under the Apache License 2.0:
-the engine and every check, the report format, signing and verification, the
-airlock, signed acceptances and feeds, the wizard, and the integrations.
-
-Defilan Technologies is building commercial offerings on top of it:
-
-- a **curated intelligence feed**, maintained and signed for air-gapped import;
-- **Defilan-issued attestations**, with analyst review of findings, and a
-  catalog of pre-attested popular models;
-- **Tier 2 testing**, which exercises models on the hardware they will run on;
-- **Socair Enterprise**, for multi-site fleets: a central registry, policy,
-  approval workflows, and compliance reporting;
-- **support** and hardened builds.
+Socair is open source under the Apache License 2.0, all of it: the engine and
+every check, the report format, signing and verification, the airlock, signed
+acceptances and feeds, the wizard and console, and the integrations. There is
+no paid edition and no feature held back. The work still to come, including
+checks that run the model on your own GPUs, is built here in the open.
 
 ## Documentation
 

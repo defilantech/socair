@@ -19,13 +19,9 @@ Socair and the cairn logo are trademarks of Defilan Technologies.
 
 ## Positioning
 
-Socair is a Defilan Technologies product, open core. The repository is the
-complete, open Socair under Apache-2.0. Defilan sells what builds on it:
-- a curated, signed intelligence feed;
-- Defilan-issued attestations and a pre-attested model catalog;
-- Tier 2 testing;
-- Socair Enterprise;
-- support.
+Socair is an open-source project from Defilan Technologies, under
+Apache-2.0, with no paid edition. The trademark keeps the name: anyone may use,
+change, and ship the code, but only the project ships something called Socair.
 
 LLMKube remains the open-source serving platform. Socair carries its own name
 under Defilan, not an LLMKube prefix, which leaves room for a product family

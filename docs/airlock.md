@@ -376,7 +376,7 @@ periodic checkpoints would make this automatic and are not built yet.
 Entries written before chaining have no `prev`. They are counted and reported
 as not covered; the chain starts from the last of them.
 
-## Offline and air-gapped customers
+## Offline and air-gapped sites
 
 - A local artifact path is ingested directly; there is no network call.
 - An offline Hugging Face cache is resolved by repo, revision, and file. The

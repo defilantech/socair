@@ -5,9 +5,8 @@ hashes, reviewed known-good chat templates, and canonical tokenizers. A
 **feed** delivers that data as a signed bundle, so an air-gapped site can
 import it and know who vouched for it and until when.
 
-The format is open. Anyone can build and sign a feed with the `socair` CLI.
-Defilan Technologies is building a curated, maintained feed as a commercial
-offering.
+The format is open, and so is the data: anyone can build and sign a feed with
+the `socair` CLI, and the project's own reference data is built in the open.
 
 ## Using a feed
 

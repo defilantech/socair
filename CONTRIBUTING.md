@@ -70,11 +70,10 @@ negotiable:
 
 ## What belongs in this repository
 
-This repository is the complete, open Socair: the engine and checks, the report
-format, signing and verification, the airlock, and the integrations. Defilan's
-commercial offerings (a curated intelligence feed, Defilan-issued attestations,
-Tier 2 testing, and Socair Enterprise) are built on top of it, not inside it.
-Open interfaces such as the feed format are here, so anyone can build on them.
+Everything. Socair is developed entirely in the open, with no closed or paid
+edition: the engine and checks, the report format, signing and verification,
+the airlock, the integrations, and the reference data a feed carries. Checks
+that need GPUs or the network land here too, behind an explicit opt-in.
 
 ## Code of conduct
 
