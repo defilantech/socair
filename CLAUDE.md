@@ -70,4 +70,4 @@ npm run build     # static output in web/build
 - A rule change (check packages, GGUF/safetensors parsers) needs a row in `docs/check-set.md`, and a `CheckSetVersion` bump if it can alter a verdict; `TestCheckSetVersionTracksRules` fails until then.
 - `vendor/` is committed on purpose for air-gap builds. After changing deps, run `go mod vendor`.
 - The CLI is a harness, not the product surface. Product behavior belongs in `internal/`.
-- `docs/overnight/status*.md` are historical slice reports, not current specs.
+- Build output never goes in the tree: `go build -o bin/<name>` (ignored) or a scratch dir. A bare `go build` in `tools/socair-sigstore` writes a binary next to the source, which is how one was once committed.
