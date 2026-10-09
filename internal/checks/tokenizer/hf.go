@@ -163,7 +163,8 @@ func InspectHF(root string, files []modeldir.File) HFResult {
 	}
 
 	// Special-token ids in config.json and generation_config.json must name
-	// a token.
+	// a token. A negative id is transformers' "unset" sentinel (LlamaConfig
+	// defaulted pad_token_id to -1), which no loader reads as a token.
 	for _, name := range []string{"config.json", "generation_config.json"} {
 		cfg, ok := readObject(root, files, name)
 		if !ok {
@@ -171,7 +172,7 @@ func InspectHF(root string, files []modeldir.File) HFResult {
 		}
 		for _, k := range specialIDKeys {
 			for _, id := range intsOf(cfg[k]) {
-				if _, ok := full[id]; !ok {
+				if _, ok := full[id]; !ok && id >= 0 {
 					fail("special-token-out-of-range", fmt.Sprintf("%s %s = %d", name, k, id),
 						fmt.Sprintf("the id names no token in the %d-entry tokenizer", size))
 				}

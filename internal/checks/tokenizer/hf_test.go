@@ -76,6 +76,19 @@ func TestCleanHFTokenizerPasses(t *testing.T) {
 	}
 }
 
+// A negative special-token id is the "unset" sentinel transformers wrote for
+// years (LlamaConfig defaulted pad_token_id to -1), not an id pointing outside
+// the tokenizer. Found on hf-internal-testing/tiny-random-LlamaForCausalLM.
+// Falsification: drop the sentinel case from the range rule and this FAILs.
+func TestHFUnsetSpecialTokenIDPasses(t *testing.T) {
+	f := cleanTokenizer()
+	f["config.json"].(map[string]any)["pad_token_id"] = -1
+	f["generation_config.json"].(map[string]any)["pad_token_id"] = -1
+	if r := inspect(t, f); r.Status != checks.Pass {
+		t.Fatalf("status %s findings %v, want PASS (%s)", r.Status, r.Findings, r.Notes)
+	}
+}
+
 // Each inconsistency FAILs. Falsification: neuter the rule that names it and
 // its case passes.
 func TestHFTokenizerInconsistenciesFail(t *testing.T) {
