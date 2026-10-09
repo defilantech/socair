@@ -265,7 +265,7 @@ func getJSONPage(ctx context.Context, client *http.Client, pol EgressPolicy, u s
 	}
 	cctx, cancel := context.WithTimeout(ctx, 4*pol.Timeout)
 	defer cancel()
-	req, err := http.NewRequestWithContext(cctx, http.MethodGet, u, nil)
+	req, err := pol.newRequest(cctx, u)
 	if err != nil {
 		return "", err
 	}
@@ -275,7 +275,7 @@ func getJSONPage(ctx context.Context, client *http.Client, pol EgressPolicy, u s
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("the hub returned HTTP %d for %s", resp.StatusCode, u)
+		return "", pol.statusError("the hub", resp.StatusCode, u)
 	}
 	b, err := io.ReadAll(io.LimitReader(resp.Body, maxAPIResponse+1))
 	if err != nil {
@@ -346,6 +346,9 @@ func listTree(ctx context.Context, client *http.Client, pol EgressPolicy, u stri
 				return nil, nil, fmt.Errorf("%q and %q differ only in case", prev, e.Path)
 			}
 			folded[strings.ToLower(e.Path)] = e.Path
+			if e.LFS != nil && e.LFS.OID != "" && strings.Trim(e.LFS.OID, "*") == "" {
+				return nil, nil, fmt.Errorf("%q has no hash the hub vouches for: the hub masks a gated repo's file hashes from a caller without access (set HF_TOKEN to a token that has accepted the repo's terms)", e.Path)
+			}
 			if e.Size < 0 || (e.LFS == nil && !gitOID.MatchString(e.OID)) || (e.LFS != nil && !hexSHA256.MatchString(e.LFS.OID)) {
 				return nil, nil, fmt.Errorf("%q has no hash the hub vouches for", e.Path)
 			}
@@ -422,7 +425,7 @@ func fetchVerified(ctx context.Context, client *http.Client, pol EgressPolicy, s
 	}
 	cctx, cancel := context.WithCancel(ctx)
 	defer cancel()
-	req, err := http.NewRequestWithContext(cctx, http.MethodGet, src, nil)
+	req, err := pol.newRequest(cctx, src)
 	if err != nil {
 		return "", err
 	}
@@ -432,7 +435,7 @@ func fetchVerified(ctx context.Context, client *http.Client, pol EgressPolicy, s
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("the hub returned HTTP %d", resp.StatusCode)
+		return "", pol.statusError("the hub", resp.StatusCode, src)
 	}
 	body := newStallReader(io.LimitReader(resp.Body, e.Size+1), pol.Timeout, cancel)
 	defer body.stop()
