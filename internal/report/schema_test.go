@@ -104,6 +104,7 @@ func TestHandWrittenReportsMatchSchema(t *testing.T) {
 	}
 	for _, p := range []string{
 		filepath.Join("..", "..", "testdata", "report.json"),
+		filepath.Join("..", "..", "testdata", "report-tier2.json"),
 		filepath.Join("..", "demo", "report.json"),
 	} {
 		b, err := os.ReadFile(p)
@@ -150,8 +151,14 @@ func unknownKeys(path string, v any, node map[string]any) []string {
 	switch v := v.(type) {
 	case map[string]any:
 		props, _ := node["properties"].(map[string]any)
+		// A map (env, metrics) names its values' schema in
+		// additionalProperties and takes any key; every other object is closed.
+		values, isMap := node["additionalProperties"].(map[string]any)
 		for k, sub := range v {
 			sn, ok := props[k].(map[string]any)
+			if !ok && isMap {
+				sn, ok = values, true
+			}
 			if !ok {
 				out = append(out, path+"."+k)
 				continue

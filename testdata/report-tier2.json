@@ -1,0 +1,409 @@
+{
+  "schema_version": "socair.report/v1",
+  "header": {
+    "document_id": "SOCAIR-2026-0002",
+    "template_version": "0.1",
+    "issued_utc": "2026-09-29T00:00:00Z",
+    "rescan_due": "2027-03-29T00:00:00Z",
+    "artifact_short": "Gemma 3 12b It",
+    "assurance_level_awarded": "Tier 1 (static)"
+  },
+  "artifact": {
+    "name": "Gemma 3 12b It",
+    "repo_url": "https://huggingface.co/google/gemma-3-12b-it",
+    "commit_or_tag": "main",
+    "publisher": "google",
+    "publisher_signing_status": "unsigned",
+    "file_name": "google_gemma-3-12b-it-Q5_K_M.gguf",
+    "sha256": "13d44e37860489806f575deb0b219c6058c9421fe1982a9311a0e367c4e8f444",
+    "format": "GGUF",
+    "size_bytes": 8444833824,
+    "quant_declared": "Q5_K_M",
+    "quant_observed": "file_type=17"
+  },
+  "scope": {
+    "check_set_version": "tier1/0.7",
+    "tool_versions": "socair 0.1.0-dev",
+    "execution_context": "Tier 1 static, portable; Tier 2 on node class sha256:239cf1890707, as the probe helper reported it",
+    "input_path": "local path",
+    "scan_start_utc": "2026-09-29T00:00:00Z",
+    "scan_end_utc": "2026-09-29T00:00:01Z",
+    "inference_budget": "Tier 2: 2 measurement(s) over 72 probe(s)"
+  },
+  "checks": [
+    {
+      "name": "Format and structure",
+      "looks_for": "Malformed container structure, unexpected tensors",
+      "status": "PASS",
+      "notes": "GGUF v3 parsed: 626 tensors, 44 metadata pairs",
+      "pass_means": "The container parsed, and its tensor data tiles the data section exactly: no unaccounted bytes, overlapping tensors, or duplicate names.",
+      "maps_to": [
+        {
+          "framework": "MITRE ATLAS",
+          "id": "AML.T0010.003",
+          "name": "AI Supply Chain Compromise: Model"
+        },
+        {
+          "framework": "OWASP LLM Top 10",
+          "id": "LLM03",
+          "name": "Supply Chain"
+        }
+      ]
+    },
+    {
+      "name": "File inventory and payloads",
+      "looks_for": "Hidden files, embedded payloads, unexpected executables",
+      "status": "NOT_TESTED",
+      "notes": "artifact: 44 metadata keys, 1532 string bytes, no payload indicator. Repo mirror not provided, so the repo file listing was not inspected.",
+      "pass_means": "No script, shell command, long encoded blob, or executable signature was found in string metadata values, including every string-array element of 64 bytes or more, and no native executable among the files. Shorter array elements, such as vocabulary tokens, are too short to carry one and are not scanned.",
+      "maps_to": [
+        {
+          "framework": "MITRE ATLAS",
+          "id": "AML.T0011.000",
+          "name": "User Execution: Unsafe AI Artifacts"
+        },
+        {
+          "framework": "MITRE ATLAS",
+          "id": "AML.T0010.003",
+          "name": "AI Supply Chain Compromise: Model"
+        },
+        {
+          "framework": "OWASP LLM Top 10",
+          "id": "LLM03",
+          "name": "Supply Chain"
+        }
+      ]
+    },
+    {
+      "name": "Hash, provenance, lineage",
+      "looks_for": "Traceable origin: a manifest bound to this hash, from an immutable upstream commit",
+      "status": "NOT_TESTED",
+      "notes": "no provenance input: no supplied manifest and no signature sidecar next to the artifact",
+      "pass_means": "A trusted publisher signature verified over this artifact, or an operator-supplied manifest binds this hash to a repository at an immutable commit. The notes say which; a manifest is the operator's claim, not a signature.",
+      "maps_to": [
+        {
+          "framework": "MITRE ATLAS",
+          "id": "AML.T0010.003",
+          "name": "AI Supply Chain Compromise: Model"
+        },
+        {
+          "framework": "MITRE ATLAS",
+          "id": "AML.T0058",
+          "name": "Publish Poisoned Models"
+        },
+        {
+          "framework": "OWASP LLM Top 10",
+          "id": "LLM03",
+          "name": "Supply Chain"
+        }
+      ]
+    },
+    {
+      "name": "Known-bad hash match",
+      "looks_for": "Match against the known-bad artifact denylist",
+      "status": "PASS",
+      "notes": "no denylist entry matched",
+      "pass_means": "This exact hash is not on the configured denylist. Any changed byte gives a new hash, so it catches only known files.",
+      "maps_to": [
+        {
+          "framework": "MITRE ATLAS",
+          "id": "AML.T0058",
+          "name": "Publish Poisoned Models"
+        },
+        {
+          "framework": "MITRE ATLAS",
+          "id": "AML.T0010.003",
+          "name": "AI Supply Chain Compromise: Model"
+        },
+        {
+          "framework": "OWASP LLM Top 10",
+          "id": "LLM03",
+          "name": "Supply Chain"
+        }
+      ]
+    },
+    {
+      "name": "Chat template (hero)",
+      "looks_for": "Code reach, hidden or obfuscated text, and override or content-triggered instructions in the chat template",
+      "status": "PASS",
+      "notes": "no structural indicator and no instruction-language lead matched. Heuristic; not a proof of absence.",
+      "pass_means": "The template parsed and reaches no Python internals or process execution, and carries no override or concealment language, URL, hidden or obfuscated text, or condition on message content. Instructions written as ordinary guidance are not detected.",
+      "maps_to": [
+        {
+          "framework": "MITRE ATLAS",
+          "id": "AML.T0051",
+          "name": "LLM Prompt Injection"
+        },
+        {
+          "framework": "MITRE ATLAS",
+          "id": "AML.T0011.000",
+          "name": "User Execution: Unsafe AI Artifacts"
+        },
+        {
+          "framework": "OWASP LLM Top 10",
+          "id": "LLM01",
+          "name": "Prompt Injection"
+        },
+        {
+          "framework": "OWASP LLM Top 10",
+          "id": "LLM03",
+          "name": "Supply Chain"
+        }
+      ]
+    },
+    {
+      "name": "Tokenizer config",
+      "looks_for": "Tokenizer metadata anomalies",
+      "status": "PASS",
+      "notes": "tokenizer family 'llama' is recognized",
+      "pass_means": "The tokenizer tables are internally consistent, and no control token carries instructions. When a canonical reference table for its family is configured (from a feed or SOCAIR_TOKENIZER_REFERENCE), every token was compared with it and no ordinary token differs; the notes say which reference, or that none was configured or matched.",
+      "maps_to": [
+        {
+          "framework": "MITRE ATLAS",
+          "id": "AML.T0010.003",
+          "name": "AI Supply Chain Compromise: Model"
+        },
+        {
+          "framework": "OWASP LLM Top 10",
+          "id": "LLM03",
+          "name": "Supply Chain"
+        }
+      ]
+    },
+    {
+      "name": "Quant match",
+      "looks_for": "Declared quantization (file name) against the tensor types in the file",
+      "status": "PASS",
+      "notes": "declared Q5_K_M matches observed file type 17",
+      "pass_means": "At least one tensor has the base type the declared quantization requires. This checks labeling, not safety.",
+      "maps_to": [
+        {
+          "framework": "MITRE ATLAS",
+          "id": "AML.T0010.003",
+          "name": "AI Supply Chain Compromise: Model"
+        },
+        {
+          "framework": "OWASP LLM Top 10",
+          "id": "LLM03",
+          "name": "Supply Chain"
+        }
+      ]
+    },
+    {
+      "name": "Serving-stack differential (Tier 2)",
+      "looks_for": "A measurement made by running the model",
+      "status": "LEAD",
+      "notes": "socair-probe/stack-differential 0.1.0 raised a LEAD (score 0.81 (95% CI 0.696 to 0.889), n=64, exact_match_rate 0.81, mean_prefix_agreement 0.93, self_agreement_floor 1) on node class sha256:239cf1890707: 12 of 64 greedy continuations differ from the fp32 reference on the same node, beyond the self-against-self floor of 64 of 64. Sample data.",
+      "severity": "medium"
+    }
+  ],
+  "tier2": {
+    "statement": "Tier 2 measurements ran the model through the endpoints the operator named, on the node classes listed here as the probe helper reported them; Socair did not observe the hardware or verify that an endpoint served the bytes identified by the artifact hash. A measurement is not a verdict: a LEAD or FAIL it raises is a check row and withholds promotion, and a measurement that found nothing adds no row, is not a PASS, and authorizes nothing.",
+    "helper": "socair-probe 0.1.0",
+    "node_classes": [
+      {
+        "hash": "sha256:239cf1890707ccdd02c74c1312ce1d7bc2289034ccbab9e5a2bdff68c0a31370",
+        "reported_by": "probe helper (not observed by Socair)",
+        "facts": {
+          "schema": "socair.nodeclass/v1",
+          "gpu_model": "NVIDIA H100 80GB HBM3",
+          "compute_capability": "9.0",
+          "gpu_count": 2,
+          "interconnect": "NVLink 4 via NVSwitch",
+          "driver": "570.86.15",
+          "vbios": "",
+          "ecc": true,
+          "mig": "disabled",
+          "cc_mode": "off",
+          "cuda": "12.8",
+          "cublas": "12.8.4.1",
+          "cudnn": "",
+          "nccl": "2.25.1",
+          "container_image_digest": "sha256:3f1d0a6c2e5b7d9f1a3c5e7b9d1f3a5c7e9b1d3f5a7c9e1b3d5f7a9c1e3b5d7f",
+          "engine_name": "llama.cpp",
+          "engine_version": "b6710",
+          "engine_commit": "7fe450e19305b828c199d602c23a8337aaa1f03b",
+          "dtype": "float16",
+          "weight_quantization": "Q5_K_M",
+          "kv_cache_quantization": "f16",
+          "tensor_parallel_size": 2,
+          "pipeline_parallel_size": 0,
+          "expert_parallel_size": 0,
+          "attention_backend": "flash-attn",
+          "cuda_graphs": true,
+          "torch_compile": null,
+          "eager": false,
+          "batch_invariant": null,
+          "prefix_caching": true,
+          "chunked_prefill": true,
+          "speculative_decoding": "off",
+          "env": {
+            "GGML_CUDA_FORCE_MMQ": "1"
+          }
+        }
+      },
+      {
+        "hash": "sha256:79bcbf2ba8a60f0665707c6c9fb27ba47e29b2b88761df728b174407596fe0f9",
+        "reported_by": "probe helper (not observed by Socair)",
+        "facts": {
+          "schema": "socair.nodeclass/v1",
+          "gpu_model": "NVIDIA H100 80GB HBM3",
+          "compute_capability": "9.0",
+          "gpu_count": 2,
+          "interconnect": "",
+          "driver": "",
+          "vbios": "",
+          "ecc": null,
+          "mig": "",
+          "cc_mode": "",
+          "cuda": "",
+          "cublas": "",
+          "cudnn": "",
+          "nccl": "",
+          "container_image_digest": "",
+          "engine_name": "llama.cpp",
+          "engine_version": "b6710",
+          "engine_commit": "",
+          "dtype": "float32",
+          "weight_quantization": "F16",
+          "kv_cache_quantization": "",
+          "tensor_parallel_size": 0,
+          "pipeline_parallel_size": 0,
+          "expert_parallel_size": 0,
+          "attention_backend": "",
+          "cuda_graphs": null,
+          "torch_compile": null,
+          "eager": null,
+          "batch_invariant": null,
+          "prefix_caching": null,
+          "chunked_prefill": null,
+          "speculative_decoding": "off",
+          "env": null
+        }
+      }
+    ],
+    "measurements": [
+      {
+        "check": "Serving-stack differential (Tier 2)",
+        "suite": "socair-probe/stack-differential",
+        "suite_version": "0.1.0",
+        "dataset_digest": "sha256:7a540d67ab9c6398198ca4ecee949942ea951755c66d2e30589b98235edabfa3",
+        "scorer": "deterministic",
+        "n": 64,
+        "score": 0.81,
+        "metrics": {
+          "exact_match_rate": 0.81,
+          "mean_prefix_agreement": 0.93,
+          "self_agreement_floor": 1
+        },
+        "ci95": [
+          0.696,
+          0.889
+        ],
+        "decoding": {
+          "temperature": 0,
+          "top_p": 1,
+          "max_tokens": 32,
+          "seed": 0
+        },
+        "engine": "llama.cpp b6710",
+        "node_class": "sha256:239cf1890707ccdd02c74c1312ce1d7bc2289034ccbab9e5a2bdff68c0a31370",
+        "reference_node_class": "sha256:79bcbf2ba8a60f0665707c6c9fb27ba47e29b2b88761df728b174407596fe0f9",
+        "started_utc": "2026-09-29T00:00:02Z",
+        "ended_utc": "2026-09-29T00:04:41Z",
+        "outcome": "lead",
+        "notes": "12 of 64 greedy continuations differ from the fp32 reference on the same node, beyond the self-against-self floor of 64 of 64. Sample data."
+      },
+      {
+        "check": "Greedy continuation agreement (Tier 2)",
+        "suite": "socair-probe/greedy-agreement",
+        "suite_version": "0.1.0",
+        "dataset_digest": "sha256:7a540d67ab9c6398198ca4ecee949942ea951755c66d2e30589b98235edabfa3",
+        "scorer": "deterministic",
+        "n": 8,
+        "score": 1,
+        "metrics": {
+          "exact_match_rate": 1,
+          "mean_prefix_agreement": 1
+        },
+        "ci95": [
+          0.675592,
+          1
+        ],
+        "decoding": {
+          "temperature": 0,
+          "top_p": 1,
+          "max_tokens": 32,
+          "seed": 0
+        },
+        "engine": "llama.cpp b6710",
+        "node_class": "sha256:239cf1890707ccdd02c74c1312ce1d7bc2289034ccbab9e5a2bdff68c0a31370",
+        "started_utc": "2026-09-29T00:04:42Z",
+        "ended_utc": "2026-09-29T00:04:44Z",
+        "outcome": "measured",
+        "notes": "Greedy continuations on the endpoint compared with a second pass on the same endpoint; 8 of 8 identical. An uncalibrated plumbing measurement: it raises no LEAD, and agreement is not a PASS."
+      }
+    ]
+  },
+  "findings": {
+    "fails": [],
+    "leads": [
+      "Serving-stack differential (Tier 2)"
+    ],
+    "not_tested": [
+      "File inventory and payloads",
+      "Hash, provenance, lineage"
+    ]
+  },
+  "assurance_level": {
+    "awarded": "Tier 1 (static)",
+    "definition": "Static checks on the artifact's bytes and metadata, run offline. No inference is run, and the weights are not evaluated for behavior.",
+    "does_mean": "Each listed check ran on the exact bytes identified by the artifact hash, and each row states what its PASS means. A FAIL carries positive evidence, a LEAD is a suspicious signal that needs a person's review, and a NOT_TESTED names why it was not tested. A FAIL or a LEAD withholds promotion, and no acceptance clears it.",
+    "does_not_mean": "It is not an assessment of the model's behavior or safety. It does not test the weights for backdoors or poisoning, behavior that appears only after quantization or on particular hardware, or jailbreak susceptibility and harmful capability, and it does not check licensing.",
+    "tier2_note": "Tier 2 measurements ran (see Tier 2 measurements). They can withhold promotion through the LEAD or FAIL rows they raise, but never authorize it, and no Tier 2 level is awarded."
+  },
+  "bounded_statement": "For the artifact identified by its hash, the checks found the indicators this report lists: each FAIL is positive evidence, and each LEAD is a suspicious signal that needs review; a row marked (Tier 2) was raised by a measurement made by running the model. Rows marked NOT_TESTED were not examined, for the reason each row gives. Tier 2 ran the model only on the node classes and probe sets its measurements name, and a measurement that found nothing is not a PASS. Every surface outside that scope is listed under Out of scope.",
+  "out_of_scope": {
+    "does_not_certify": "This attestation does not certify the absence of unknown backdoors.",
+    "ceiling": [
+      "Backdoors, trojans, or poisoning in the model weights. Tier 1 reads the weights' layout, never their behavior.",
+      "Triggered, sleeper, or polymorphic behavior. Tier 1 runs no inference.",
+      "Behavior that appears only after quantization, or only on particular hardware or serving stacks, unless Tier 2 ran on the production node class.",
+      "Behavioral safety: jailbreak susceptibility, harmful capability, and bias.",
+      "Malicious behavior that only emerges at runtime under real traffic.",
+      "Artifact formats we do not parse.",
+      "Pickle code execution reached only through imports on the reviewed safe list.",
+      "Chat-template instructions written as ordinary guidance (no override or concealment phrase, URL, hidden or obfuscated text, or condition on message content), unless the template matches a reviewed template.",
+      "License and usage-policy compliance."
+    ],
+    "untested_node_classes": [
+      "every node class other than sha256:239cf1890707ccdd02c74c1312ce1d7bc2289034ccbab9e5a2bdff68c0a31370: Tier 1 is static, and Tier 2 measured only the node classes its measurements name; a change to any field of a node class makes a different class"
+    ],
+    "not_run": [
+      {
+        "name": "Forward-pass trigger probes (Tier 2)",
+        "looks_for": "Behavior under the production serving stack",
+        "reason": "Tier 2 ran, but the probe helper returned no measurement for this check"
+      }
+    ]
+  },
+  "promotion_authorization": {
+    "authorized": false,
+    "state": "withheld",
+    "level": "Tier 1 only",
+    "conditions": "Withheld: a suspicious lead on Serving-stack differential (Tier 2). A FAIL or a LEAD withholds promotion, and no acceptance clears it: it needs a person's review outside Socair."
+  },
+  "verification": {
+    "signing_method": "unsigned",
+    "artifact_sha256": "13d44e37860489806f575deb0b219c6058c9421fe1982a9311a0e367c4e8f444",
+    "rerun_instructions": "socair inspect \u003cpath\u003e"
+  },
+  "issuer": {
+    "authority": "Unsigned: no issuer has signed this report",
+    "excludes": "No absence guarantee. See the bounded statement and out-of-scope ceiling."
+  },
+  "appendices": {
+    "check_definitions": "internal/checks",
+    "glossary": "docs/attestation-template.md Appendix C"
+  }
+}

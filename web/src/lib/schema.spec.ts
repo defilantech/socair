@@ -4,20 +4,30 @@ import {
 	MEASUREMENT_OUTCOMES,
 	type CheckResult,
 	type Document,
-	type NodeClass
+	type Measurement,
+	type NodeClass,
+	type Tier2
 } from './api';
 import schema from '../../../docs/report-schema/v1.json';
 import golden from '../../../testdata/report.json';
+import goldenTier2 from '../../../testdata/report-tier2.json';
 import demo from '../../../internal/demo/report.json';
 
-// JSON imports widen string literals, so status is checked at runtime against
-// CHECK_STATUSES and every other field is checked by svelte-check through
-// these assignments: a field whose type the wizard declares differently, or a
-// required field the engine stops sending, fails the type check.
-type Wide = Omit<Document, 'checks'> & {
-	checks: (Omit<CheckResult, 'status' | 'severity'> & { status: string; severity?: string })[];
+// JSON imports widen string literals, so status and outcome are checked at
+// runtime against CHECK_STATUSES and MEASUREMENT_OUTCOMES, and every other
+// field is checked by svelte-check through these assignments: a field whose
+// type the wizard declares differently, or a required field the engine stops
+// sending, fails the type check. Metrics are widened too: an array of
+// measurements with different metric names imports as optional keys.
+type WideMeasurement = Omit<Measurement, 'outcome' | 'metrics'> & {
+	outcome: string;
+	metrics?: Record<string, number | undefined>;
 };
-const docs: Record<string, Wide> = { golden, demo };
+type Wide = Omit<Document, 'checks' | 'tier2'> & {
+	checks: (Omit<CheckResult, 'status' | 'severity'> & { status: string; severity?: string })[];
+	tier2?: Omit<Tier2, 'measurements'> & { measurements: WideMeasurement[] };
+};
+const docs: Record<string, Wide> = { golden, goldenTier2, demo };
 
 describe('report contract', () => {
 	it('the wizard status enum is the schema enum', () => {
@@ -45,10 +55,24 @@ describe('report contract', () => {
 	});
 
 	it('the golden and demo bounded statements are the schema sentence for their rows', () => {
-		const [noIndicators, indicators] = schema.properties.bounded_statement.enum;
+		const [noIndicators, indicators, tier2NoIndicators, tier2Indicators] = schema.properties.bounded_statement.enum;
 		for (const [name, d] of Object.entries(docs)) {
 			const flagged = d.checks.some((c) => c.status === 'FAIL' || c.status === 'LEAD');
-			expect(d.bounded_statement, name).toBe(flagged ? indicators : noIndicators);
+			const want = d.tier2 ? (flagged ? tier2Indicators : tier2NoIndicators) : flagged ? indicators : noIndicators;
+			expect(d.bounded_statement, name).toBe(want);
+		}
+	});
+
+	it('the Tier 2 golden fits the wizard type and has no pass', () => {
+		const t2 = goldenTier2.tier2;
+		expect(t2).toBeDefined();
+		for (const m of t2.measurements) {
+			expect(MEASUREMENT_OUTCOMES as readonly string[], m.check).toContain(m.outcome);
+		}
+		// Every LEAD or FAIL measurement has its check row with that status.
+		for (const m of t2.measurements.filter((x) => x.outcome === 'lead' || x.outcome === 'fail')) {
+			const row = goldenTier2.checks.find((c) => c.name === m.check);
+			expect(row?.status, m.check).toBe(m.outcome.toUpperCase());
 		}
 	});
 
