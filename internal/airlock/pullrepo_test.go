@@ -157,7 +157,7 @@ func TestPullScanPromoteADirectory(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if d.Artifact.SHA256 != digest || d.Artifact.CommitSHA != hubCommit || d.Artifact.Name != "tiny" {
+	if d.Artifact.SHA256 != digest || d.Artifact.CommitSHA != hubCommit || d.Artifact.Name != "org/tiny" {
 		t.Fatalf("scan subject %s commit %q name %q", d.Artifact.SHA256, d.Artifact.CommitSHA, d.Artifact.Name)
 	}
 	if d.PromotionAuthorization.State != report.StateWithheld {

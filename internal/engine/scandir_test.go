@@ -149,6 +149,44 @@ func TestDisplayName(t *testing.T) {
 	}
 }
 
+// A directory with bound provenance is named by the repo it was pulled from,
+// not by config.json's _name_or_path, which the publisher writes and can set
+// to any famous repo. Without provenance the label stays the config's.
+// Falsification: drop the provenance name and the claimed name shows.
+func TestBoundProvenanceNamesTheDirectory(t *testing.T) {
+	dir := modelRepo(t, map[string]string{
+		"config.json": `{"_name_or_path":"meta-llama/Llama-3.1-8B","architectures":["LlamaForCausalLM"],"model_type":"llama"}`,
+	})
+	digest, _, err := modeldir.Hash(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	prov := filepath.Join(t.TempDir(), "provenance.json")
+	commit := strings.Repeat("ab", 20)
+	manifest := `{"artifact_sha256":"` + digest + `","repo_url":"https://huggingface.co/someone/tiny","commit_or_tag":"` + commit + `","commit_sha":"` + commit + `","source":"airlock pull"}`
+	if err := os.WriteFile(prov, []byte(manifest), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	t.Setenv("SOCAIR_PROVENANCE", "")
+	d, err := Scan(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if d.Artifact.Name != "meta-llama/Llama-3.1-8B" {
+		t.Fatalf("without provenance the config label names it, got %q", d.Artifact.Name)
+	}
+
+	t.Setenv("SOCAIR_PROVENANCE", prov)
+	d, err = Scan(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if d.Artifact.Name != "someone/tiny" || d.Header.ArtifactShort != "someone/tiny" {
+		t.Fatalf("bound provenance must name it: name %q, header %q", d.Artifact.Name, d.Header.ArtifactShort)
+	}
+}
+
 // The shard index is checked against the shards, so a set whose index sends
 // the loader to a tensor no shard holds is not a clean directory.
 func TestShardIndexDisagreementFailsTheDirectory(t *testing.T) {

@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/url"
 	"os"
 	"path"
 	"path/filepath"
@@ -191,6 +192,19 @@ func displayName(dir, nameOrPath string) string {
 		return nameOrPath
 	}
 	return filepath.Base(clean)
+}
+
+// hubRepo returns the org/name a provenance repo URL names, or "" when its
+// path is not one.
+func hubRepo(repoURL string) string {
+	u, err := url.Parse(repoURL)
+	if err != nil || u.Host == "" {
+		return ""
+	}
+	if p := strings.Trim(u.Path, "/"); repoName.MatchString(p) {
+		return p
+	}
+	return ""
 }
 
 type modelConfig struct{ name, architecture string }

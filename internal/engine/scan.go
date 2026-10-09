@@ -261,6 +261,14 @@ func begin(start time.Time, id report.Identity, original string, sig *provenance
 		if m.Source != "" {
 			d.Scope.InputPath = m.Source
 		}
+		// A directory's label otherwise comes from config.json, which the
+		// publisher writes; the repo it was pulled from outranks it.
+		if repo := hubRepo(m.RepoURL); repo != "" && d.Artifact.Format == "model directory" {
+			if strings.HasPrefix(d.Artifact.Name, "adapter ") {
+				repo = "adapter " + repo
+			}
+			d.Artifact.Name, d.Header.ArtifactShort = repo, repo
+		}
 	}
 	// A checked publisher signature outranks a manifest's claim about one.
 	if sig != nil {
