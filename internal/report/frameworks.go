@@ -24,6 +24,8 @@ var patternSeverity = map[string]string{
 	"embedded-binary":         SeverityCritical,
 	"repo-binary":             SeverityCritical,
 	"denylist-match":          SeverityCritical,
+	// A file write outside the save directory when the tokenizer is saved.
+	"template-name-path": SeverityHigh,
 	// Positive evidence of tampering, or a strong sign of a hidden payload.
 	"tensor-layout":                 SeverityHigh,
 	"duplicate-key":                 SeverityHigh,
@@ -38,6 +40,7 @@ var patternSeverity = map[string]string{
 	"normalizer-injects-special":    SeverityHigh,
 	"template-injects-token":        SeverityHigh,
 	"tokenizer-token-changed":       SeverityHigh,
+	"reviewed-template-mismatch":    SeverityHigh,
 	// Suspicious or inconsistent; needs review.
 	"instruction-override":         SeverityMedium,
 	"secrecy-instruction":          SeverityMedium,

@@ -141,11 +141,11 @@
     },
     {
       "name": "Chat template (hero)",
-      "looks_for": "Code reach, hidden or obfuscated text, and override or content-triggered instructions in the chat template",
+      "looks_for": "Code reach, hidden or obfuscated text, override or content-triggered instructions, and the text the rendered template adds to the prompt",
       "status": "FAIL",
       "evidence": "process-execution: .system(...) (template calls the process-execution function system); python-object-escape: __globals__ (template reaches a Python dunder attribute)",
-      "notes": "2 structural code-execution indicator(s). Positive evidence.",
-      "pass_means": "The template parsed and reaches no Python internals or process execution, and carries no override or concealment language, URL, hidden or obfuscated text, or condition on message content. Instructions written as ordinary guidance are not detected.",
+      "notes": "2 structural code-execution indicator(s). Positive evidence. Not rendered: a template that reaches code is never evaluated.",
+      "pass_means": "The template parsed and reaches no Python internals or process execution, and carries no override or concealment language, URL, hidden or obfuscated text, or condition on message content. Instructions written as ordinary guidance are not judged: when the template rendered, the notes list the text it adds to the prompt and say whether it matches a reviewed template.",
       "severity": "critical",
       "maps_to": [
         {
@@ -235,7 +235,7 @@
       "Malicious behavior that only emerges at runtime under real traffic.",
       "Artifact formats we do not parse.",
       "Pickle code execution reached only through imports on the reviewed safe list.",
-      "Chat-template instructions written as ordinary guidance (no override or concealment phrase, URL, hidden or obfuscated text, or condition on message content), unless the template matches a reviewed template.",
+      "Chat-template instructions written as ordinary guidance (no override or concealment phrase, URL, hidden or obfuscated text, or condition on message content): the text a rendered template adds is listed in the report, not judged, unless the template matches a reviewed template.",
       "Legal review of a license, and compliance with its usage policies. The license is identified, and checked only against a policy you configure."
     ],
     "untested_node_classes": [

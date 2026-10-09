@@ -38,7 +38,7 @@ func templateDump(path string) error {
 	}
 
 	fmt.Println("=== hero check ===")
-	r := chattemplate.InspectAll(m.ChatTemplates, m.ChatTemplateNonString)
+	r := chattemplate.InspectAllWith(m.ChatTemplates, m.ChatTemplateNonString, chattemplate.Options{Tokens: chattemplate.TokensFromGGUF(m.Tokenizer)})
 	fmt.Printf("status: %s\nnotes: %s\n", r.Status, safeForTerminal(r.Notes))
 	for _, f := range r.Findings {
 		fmt.Printf("  pattern=%s span=%q detail=%s\n", f.Pattern, f.Span, safeForTerminal(f.Detail))

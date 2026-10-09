@@ -3,7 +3,9 @@ package feed
 import (
 	"crypto/ed25519"
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -227,4 +229,59 @@ func TestTokenizerTablesAreSignedAndCovered(t *testing.T) {
 	if err := Sign(bad, info(), id, sign); err == nil {
 		t.Error("a table named outside the pattern must not be signed")
 	}
+}
+
+// TestReviewedTemplateTexts: a reviewed template can carry its text, as
+// templates/<sha256>.jinja, so a scan can render it beside an artifact's.
+// The text must hash to its name and be listed in templates.txt, whose
+// label names it; anything else refuses the feed. Falsification: drop the
+// hash or listing check and its case loads.
+func TestReviewedTemplateTexts(t *testing.T) {
+	text := "{% for m in messages %}{{ m.content }}{% endfor %}"
+	hash := sha256Hex(text)
+	setup := func(t *testing.T, listed, name, body string) string {
+		dir := t.TempDir()
+		if err := os.Mkdir(filepath.Join(dir, TemplateDir), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		write(t, dir, "templates.txt", listed+"  org/model@abc1234\n")
+		write(t, dir, TemplateDir+"/"+name+".jinja", body)
+		return dir
+	}
+	id, sign, keys := signer(t)
+
+	dir := setup(t, hash, hash, text)
+	if err := Sign(dir, info(), id, sign); err != nil {
+		t.Fatal(err)
+	}
+	f, err := Load(dir, keys, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if f.Templates[hash] != "org/model@abc1234" || f.TemplateTexts[hash] != text {
+		t.Fatalf("templates %v, texts %v", f.Templates, f.TemplateTexts)
+	}
+
+	for name, c := range map[string]struct{ listed, file, body string }{
+		"text that does not hash to its name": {hash, hash, text + "x"},
+		"text not listed in templates.txt":    {h2, hash, text},
+	} {
+		d := setup(t, c.listed, c.file, c.body)
+		if err := Sign(d, info(), id, sign); err == nil {
+			if _, err := Load(d, keys, now); err == nil {
+				t.Errorf("%s: the feed loaded", name)
+			}
+		}
+	}
+
+	// A text added after signing is not part of the feed.
+	write(t, dir, TemplateDir+"/"+h3+".jinja", "x")
+	if _, err := Load(dir, keys, now); err == nil || !strings.Contains(err.Error(), "does not cover") {
+		t.Fatalf("an unsigned template text must refuse the feed, got %v", err)
+	}
+}
+
+func sha256Hex(s string) string {
+	sum := sha256.Sum256([]byte(s))
+	return hex.EncodeToString(sum[:])
 }

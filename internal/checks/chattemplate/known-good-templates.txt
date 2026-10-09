@@ -1,8 +1,10 @@
 # Reviewed-template allowlist.
 #
 # One SHA256 per line, hex, of a chat template that a human has reviewed and
-# cleared. A template on this list clears the instruction-language leads, so it
-# returns PASS instead of NOT_TESTED.
+# cleared, optionally followed by a label: by convention the repo and revision
+# it was reviewed at (`<sha256> org/model@<commit>`). A template on this list
+# clears the instruction-language leads, and its row notes that it is
+# byte-identical to the reviewed template, by its label.
 #
 # It is seeded EMPTY on purpose. Clearing a template by machine is the exact
 # false positive this project already paid for once. To add an entry: inspect

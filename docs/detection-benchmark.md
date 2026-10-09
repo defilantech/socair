@@ -18,13 +18,15 @@ generated corpus, on 2026-10-04; CI does not re-run them.
   Socair supports. Read the results as a reproducible floor and a regression
   gate, not as an independent evaluation. New cases are welcome, especially
   ones Socair misses.
-- **Two cases need an input only Socair takes.** `gguf-tokenizer-remapped` is
-  scanned with a canonical tokenizer table (`SOCAIR_TOKENIZER_REFERENCE`), and
-  `dir-known-bad-hash` with a denylist that names the file (`SOCAIR_DENYLIST`).
-  No other scanner here was given either. With Socair's defaults (neither
-  input), the remapped tokenizer passes and the known-bad file is withheld as
-  a gap, so Socair detects 35 of 38. Scores with both cases left out follow
-  the comparison table.
+- **Three cases need an input only Socair takes.** `gguf-tokenizer-remapped` is
+  scanned with a canonical tokenizer table (`SOCAIR_TOKENIZER_REFERENCE`),
+  `gguf-template-reviewed-near-miss` with the reviewed template it departs from
+  (`SOCAIR_TEMPLATE_REFERENCE`), and `dir-known-bad-hash` with a denylist that
+  names the file (`SOCAIR_DENYLIST`). No other scanner here was given any of
+  them. With Socair's defaults (none of the three), the remapped tokenizer and
+  the near-miss template pass and the known-bad file is withheld as a gap, so
+  Socair detects 36 of 40. Scores with the cases that need an input left out
+  follow the comparison table.
 - **The attacks are defanged.** Each case keeps the attack's structure (the
   gadget, the opcodes, the archive trick, the template construct) and swaps its
   payload for `echo socair-benchmark`. Every scanner here, Socair included,
@@ -39,23 +41,23 @@ generated corpus, on 2026-10-04; CI does not re-run them.
   models are measured separately, on real corpora, in
   [false-positive-baseline.md](false-positive-baseline.md).
 
-## Socair (check set tier1/0.7, 2026-10-09)
+## Socair (check set tier1/0.8, 2026-10-09)
 
 | Check row | Cases | Detected (FAIL or LEAD) | Withheld as a gap (NOT_TESTED) | Missed (PASS) |
 |---|---|---|---|---|
-| Chat template (hero) | 8 | 7 | 0 | 1 |
+| Chat template (hero) | 10 | 9 | 0 | 1 |
 | File inventory and payloads | 6 | 6 | 0 | 0 |
 | Format and structure | 2 | 2 | 0 | 0 |
 | Known-bad hash match | 1 | 1 | 0 | 0 |
 | Pickle opcode scan | 17 | 17 | 0 | 0 |
 | Remote code | 1 | 1 | 0 | 0 |
 | Tokenizer config | 3 | 3 | 0 | 0 |
-| **All** | **38** | **37** | **0** | **1** |
+| **All** | **40** | **39** | **0** | **1** |
 
 Benign controls flagged (FAIL or LEAD on any row): 0 of 5.
 
-Two of these detections depend on a reference input (see "Read this first");
-with Socair's defaults it detects 35 of 38.
+Three of these detections depend on a reference input (see "Read this first");
+with Socair's defaults it detects 36 of 40.
 
 | Case | Format | Technique | Row | Result | Severity |
 |---|---|---|---|---|---|
@@ -87,6 +89,8 @@ with Socair's defaults it detects 35 of 38.
 | `gguf-template-conditional-backdoor` | gguf | system instruction injected only when the user's message contains a trigger | Chat template (hero) | LEAD | high |
 | `gguf-template-hidden-instruction` | gguf | instruction hidden with zero-width characters | Chat template (hero) | LEAD | medium |
 | `gguf-template-plain-guidance` | gguf | a default system prompt that steers answers as ordinary guidance | Chat template (hero) | PASS |  |
+| `gguf-template-macro-conditional` | gguf | a system turn emitted from a macro only when a message carries a trigger | Chat template (hero) | LEAD | high |
+| `gguf-template-reviewed-near-miss` | gguf | a reviewed template with a branch that prefills the answer when a message carries a trigger | Chat template (hero) | LEAD | high |
 | `gguf-metadata-base64` | gguf | base64 payload in a metadata string | File inventory and payloads | FAIL | high |
 | `gguf-metadata-array-payload` | gguf | base64 payload in a metadata string array | File inventory and payloads | FAIL | high |
 | `gguf-metadata-elf` | gguf | an ELF executable in a metadata string | File inventory and payloads | FAIL | critical |
@@ -106,7 +110,9 @@ with Socair's defaults it detects 35 of 38.
 The one miss is the published known miss: a default system prompt that steers
 answers as ordinary guidance, with no override phrase, URL, obfuscation, or
 condition on the user's message. It is on the
-[detection ceiling](detection-ceiling.json).
+[detection ceiling](detection-ceiling.json). Since tier1/0.8 the row quotes
+that prompt as text the template adds, for a reviewer to read, but does not
+judge it.
 
 ## Other scanners on the same files (2026-10-04)
 
@@ -118,8 +124,10 @@ Versions:
 
 Each ran with default settings, and its verdict was read as its documentation
 describes. This comparison predates `dir-executable-named-script`, added with
-check set tier1/0.7, so its model-directory counts cover the six cases before
-it; the other scanners have not been run on that case. A *suspicious* result counts as a finding, as Socair's LEAD does:
+check set tier1/0.7, and the two rendered-template cases added with tier1/0.8
+(`gguf-template-macro-conditional` and `gguf-template-reviewed-near-miss`), so
+its counts cover the cases before them; the other scanners have not been run on
+those three. A *suspicious* result counts as a finding, as Socair's LEAD does:
 picklescan's suspicious globals and Fickling's SUSPICIOUS. "Not scanned" means
 the tool skipped the file, could not parse it, or does not support the format.
 
@@ -180,9 +188,11 @@ How to read it:
   tokenizer normalizer; the known-bad hash case needs a denylist, which only
   Socair was given.
 
-With the two cases that need a Socair-only input left out
-(`gguf-tokenizer-remapped` and `dir-known-bad-hash`), Socair detects 34 of 35
-attacks, and the two formats they belong to read:
+With the three cases that need a Socair-only input left out
+(`gguf-tokenizer-remapped`, `gguf-template-reviewed-near-miss`, and
+`dir-known-bad-hash`), Socair detects 36 of 37 attacks with check set
+tier1/0.8 (34 of 35 in the 2026-10-04 run, which predates the near-miss case),
+and the two formats they belong to read, from that run:
 
 | Format | Scanner | Attacks detected | Attacks not scanned |
 |---|---|---|---|
@@ -224,7 +234,9 @@ attacks, and the two formats they belong to read:
 | `gguf-ssti-subclasses` | finding | clean | clean | finding (not a pickle) | could not scan |
 | `gguf-template-conditional-backdoor` | finding | clean | clean | finding (not a pickle) | could not scan |
 | `gguf-template-hidden-instruction` | finding | clean | clean | finding (not a pickle) | could not scan |
+| `gguf-template-macro-conditional` | finding | not run | not run | not run | not run |
 | `gguf-template-plain-guidance` | clean | clean | clean | finding (not a pickle) | could not scan |
+| `gguf-template-reviewed-near-miss` | finding | not run | not run | not run | not run |
 | `gguf-tokenizer-remapped` | finding | clean | clean | finding (not a pickle) | could not scan |
 | `pickle-asyncio-subprocess` | finding | finding | finding | finding | clean |
 | `pickle-builtins-eval` | finding | finding | finding | finding | could not scan |

@@ -184,7 +184,8 @@ outside Socair.
 
 A feed supplies known-bad hashes, reviewed chat templates, and canonical
 tokenizers as a signed bundle; see [feed.md](feed.md). Its denylist joins
-`SOCAIR_DENYLIST`, and its tokenizer tables join `SOCAIR_TOKENIZER_REFERENCE`.
+`SOCAIR_DENYLIST`, its tokenizer tables join `SOCAIR_TOKENIZER_REFERENCE`, and
+its reviewed template texts join `SOCAIR_TEMPLATE_REFERENCE`.
 
 ## 6. Canonical tokenizer tables, `SOCAIR_TOKENIZER_REFERENCE`
 
@@ -193,7 +194,17 @@ The tokenizer row compares the model's vocabulary, token by token, with the
 table of its family; see [feed.md](feed.md) for how a family is matched and
 graded. A path that cannot be read stops the scan.
 
-## 7. A license policy, `SOCAIR_LICENSE_POLICY`
+## 7. Reviewed chat templates, `SOCAIR_TEMPLATE_REFERENCE`
+
+A reviewed template's text (`.jinja`), or a directory of them, each labelled by
+its file name. The chat-template row renders each beside the artifact's
+template on the same probe conversations: a template that renders like a
+reviewed one on every standard probe but adds a content-conditional branch is
+a LEAD; an identical render is noted; anything else gets no verdict. A local
+reference never clears a lead; only a signed feed's `templates.txt` or the
+embedded allowlist does. A path that cannot be read stops the scan.
+
+## 8. A license policy, `SOCAIR_LICENSE_POLICY`
 
 Every report names the license the artifact states, in its identity section
 (`artifact.license`), whether or not a policy is set. The scan reads it from
@@ -267,6 +278,7 @@ Catalogue ids are ScanCode LicenseDB keys where ScanCode has one, and
 | `SOCAIR_DENYLIST`, or a denylist in a feed | Known-bad hash match | NOT_TESTED |
 | `SOCAIR_PROVENANCE`, or an OMS signature from a trusted publisher | Hash, provenance, lineage | NOT_TESTED |
 | `SOCAIR_TOKENIZER_REFERENCE`, or tables in a feed | Tokenizer config: a changed ordinary token becomes a LEAD | PASS on internal consistency only, and the row says no reference was compared |
+| `SOCAIR_TEMPLATE_REFERENCE`, or template texts in a feed | Chat template: a reviewed template plus an added content-conditional branch becomes a LEAD | the rendered inventory only, and the row says no reviewed template text was compared |
 | `SOCAIR_LICENSE_POLICY` | Adds the License policy row: PASS, FAIL, LEAD, or NOT_TESTED against your allowed list | no row; the license is still named in the identity section |
 | A signed acceptance (`socair accept`) | the promotion state | withheld on any gap |
 | `SOCAIR_TIER2_HELPER` and `SOCAIR_TIER2_ENDPOINT` ([tier2.md](tier2.md)) | Adds Tier 2 measurements; one that raises a LEAD or FAIL adds a row that withholds, and one that finds nothing adds no row | No Tier 2 section; its checks are listed as not run, which is not a gap |

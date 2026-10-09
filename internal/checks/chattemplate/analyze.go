@@ -26,6 +26,11 @@ type analysis struct {
 	// message loop, such as a default system prompt. It is not a finding on
 	// its own (Qwen and Granite ship one), but a reviewer should see it.
 	outsideText []string
+	// guards are the constants a content condition tests ("html" in
+	// "if 'html' in message.content"), in the order found: the renderer puts
+	// them in a probe message to see what the condition makes the template
+	// add.
+	guards []string
 	// exhausted is set when the work budget ran out before the walk finished.
 	exhausted bool
 }
@@ -183,6 +188,9 @@ func (a *analyser) walk(nodes []jinja.Node, c ctx) {
 
 func (a *analyser) set(n jinja.Set, c ctx) {
 	if n.X == nil {
+		if n.Filter != nil {
+			a.scanExpr(n.Filter)
+		}
 		a.walk(n.Body, ctx{inLoop: true}) // captured, not emitted here
 		return
 	}
@@ -302,12 +310,20 @@ func (a *analyser) testsContentValue(e jinja.Expr) bool {
 		case jinja.Bin:
 			switch x.Op {
 			case "in", "not in":
-				if (a.readsContent(x.R) && a.isConst(x.L)) || (a.readsContent(x.L) && a.isConst(x.R)) {
+				if a.readsContent(x.R) && a.isConst(x.L) {
 					found = true
+					a.guard(x.L)
+				} else if a.readsContent(x.L) && a.isConst(x.R) {
+					found = true
+					a.guard(x.R)
 				}
 			case "==", "!=":
-				if (a.readsContent(x.L) && a.isNonEmptyConst(x.R)) || (a.readsContent(x.R) && a.isNonEmptyConst(x.L)) {
+				if a.readsContent(x.L) && a.isNonEmptyConst(x.R) {
 					found = true
+					a.guard(x.R)
+				} else if a.readsContent(x.R) && a.isNonEmptyConst(x.L) {
+					found = true
+					a.guard(x.L)
 				}
 			}
 		case jinja.Call:
@@ -315,12 +331,37 @@ func (a *analyser) testsContentValue(e jinja.Expr) bool {
 				for _, arg := range x.Args {
 					if a.isConst(arg) {
 						found = true
+						a.guard(arg)
 					}
 				}
 			}
 		}
 	})
 	return found
+}
+
+// maxGuards bounds the trigger probes a template gets.
+const maxGuards = 8
+
+// guard records the constant (or each constant of a list) a content
+// condition tests.
+func (a *analyser) guard(e jinja.Expr) {
+	if l, ok := e.(jinja.List); ok {
+		for _, x := range l.Items {
+			a.guard(x)
+		}
+		return
+	}
+	v, ok := a.fold(e)
+	if !ok || v == "" || len(v) > 256 || len(a.out.guards) >= maxGuards {
+		return
+	}
+	for _, g := range a.out.guards {
+		if g == v {
+			return
+		}
+	}
+	a.out.guards = append(a.out.guards, v)
 }
 
 var contentProbes = map[string]bool{"startswith": true, "endswith": true, "find": true, "rfind": true,

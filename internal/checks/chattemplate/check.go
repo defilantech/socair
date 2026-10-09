@@ -13,6 +13,12 @@
 //     corpus sweep proved that ordinary templates contain bare "do not tell"
 //     and that a loose "requests" pattern matches inside PULL_REQUESTS.
 //
+// A template with no code reach is then rendered on fixed probe conversations
+// by Socair's own evaluator (render.go). The text it adds to the prompt is
+// listed, never judged. Two rendered signals are LEADs: a content condition
+// that opens a system turn, and a template that renders like a reviewed one on
+// every standard probe but adds a content-conditional branch.
+//
 // Disciplined this way, a clean result is still not a proof of absence.
 package chattemplate
 
@@ -60,11 +66,12 @@ var leads = []pattern{
 //go:embed known-good-templates.txt
 var allowlistRaw string
 
+// allowlist maps each reviewed template hash to its label.
 var allowlist = parseAllowlist(allowlistRaw)
 
 // Inspect analyses one chat template string and returns the hero-check result.
 func Inspect(template string) checks.Result {
-	return inspect(template, allowlist)
+	return inspect(template, Options{})
 }
 
 // InspectAll analyses the default template and every named template (such as
@@ -73,27 +80,19 @@ func Inspect(template string) checks.Result {
 // chat-template keys stored as something other than a string, which cannot be
 // inspected.
 func InspectAll(templates map[string]string, nonString []string) checks.Result {
-	return inspectAll(templates, nonString, allowlist)
+	return inspectAll(templates, nonString, Options{})
 }
 
-// InspectAllWith is InspectAll with more reviewed template hashes, from a
-// verified feed, alongside the embedded allowlist. Like the embedded list,
-// they clear language leads only; structural evidence still FAILs.
-func InspectAllWith(templates map[string]string, nonString []string, reviewed map[string]struct{}) checks.Result {
-	if len(reviewed) == 0 {
-		return InspectAll(templates, nonString)
-	}
-	allow := make(map[string]struct{}, len(allowlist)+len(reviewed))
-	for h := range allowlist {
-		allow[h] = struct{}{}
-	}
-	for h := range reviewed {
-		allow[strings.ToLower(h)] = struct{}{}
-	}
-	return inspectAll(templates, nonString, allow)
+// InspectAllWith is InspectAll with the artifact's special tokens and the
+// reference data: reviewed template hashes from a verified feed, alongside
+// the embedded allowlist (like it, they clear language leads only;
+// structural evidence still FAILs), and reviewed templates with their text,
+// which each template's render is compared with.
+func InspectAllWith(templates map[string]string, nonString []string, o Options) checks.Result {
+	return inspectAll(templates, nonString, o)
 }
 
-func inspectAll(templates map[string]string, nonString []string, allow map[string]struct{}) checks.Result {
+func inspectAll(templates map[string]string, nonString []string, o Options) checks.Result {
 	r := checks.Result{Name: resultName, LooksFor: resultLooksFor}
 	if len(templates) == 0 && len(nonString) == 0 {
 		r.Status = checks.NotTested
@@ -105,12 +104,24 @@ func inspectAll(templates map[string]string, nonString []string, allow map[strin
 		names = append(names, n)
 	}
 	sort.Strings(names)
+	inspectNamed := func(n string) checks.Result {
+		one := inspect(templates[n], o)
+		if f, ok := pathName(n); ok {
+			one.Findings = append([]checks.Finding{f}, one.Findings...)
+			one.Status = checks.Fail
+			one.Notes = "the template's name is a path, positive evidence (CVE-2026-9856). " + one.Notes
+		}
+		return one
+	}
+	if len(names) == 1 && len(nonString) == 0 {
+		return inspectNamed(names[0])
+	}
 
 	rank := map[checks.Status]int{checks.Pass: 0, checks.NotTested: 1, checks.Lead: 2, checks.Fail: 3}
 	r.Status = checks.Pass
 	var notes []string
 	for _, n := range names {
-		one := inspect(templates[n], allow)
+		one := inspectNamed(n)
 		label := "template " + n
 		for _, f := range one.Findings {
 			f.Detail = label + ": " + f.Detail
@@ -127,11 +138,26 @@ func inspectAll(templates map[string]string, nonString []string, allow map[strin
 		}
 		notes = append(notes, "template "+n+": stored as a non-string metadata value, not inspected")
 	}
-	if len(names) == 1 && len(nonString) == 0 {
-		return inspect(templates[names[0]], allow)
-	}
 	r.Notes = strings.Join(notes, " | ")
 	return r
+}
+
+// pathName FAILs a named template in a Hugging Face config whose name is a
+// path (CVE-2026-9856): transformers' save_pretrained writes each named
+// template to a file named after it, so a separator in the name writes
+// outside the save directory. Model directory templates are keyed
+// "<config>.json#<name>".
+func pathName(key string) (checks.Finding, bool) {
+	i := strings.Index(key, ".json#")
+	if i < 0 {
+		return checks.Finding{}, false
+	}
+	name := key[i+len(".json#"):]
+	if !strings.ContainsAny(name, "/\\\x00") {
+		return checks.Finding{}, false
+	}
+	return checks.Finding{Pattern: "template-name-path", Span: excerptS(fmt.Sprintf("%q", name)),
+		Detail: "a named template's name is a path; saving the tokenizer writes a file outside its directory (CVE-2026-9856)"}, true
 }
 
 // maxTemplateBytes bounds the template the analyser reads. Real templates are
@@ -140,10 +166,24 @@ const maxTemplateBytes = 1 << 20
 
 const (
 	resultName     = "Chat template (hero)"
-	resultLooksFor = "Code reach, hidden or obfuscated text, and override or content-triggered instructions in the chat template"
+	resultLooksFor = "Code reach, hidden or obfuscated text, override or content-triggered instructions, and the text the rendered template adds to the prompt"
 )
 
-func inspect(template string, allow map[string]struct{}) checks.Result {
+// reviewed reports whether a template hash is on the embedded allowlist or
+// the feed's reviewed list, and its label there.
+func reviewed(hash string, o Options) (string, bool) {
+	if label, ok := allowlist[hash]; ok {
+		return label, true
+	}
+	for h, label := range o.Reviewed {
+		if strings.EqualFold(h, hash) {
+			return label, true
+		}
+	}
+	return "", false
+}
+
+func inspect(template string, o Options) checks.Result {
 	r := checks.Result{Name: resultName, LooksFor: resultLooksFor}
 
 	if strings.TrimSpace(template) == "" {
@@ -187,14 +227,20 @@ func inspect(template string, allow map[string]struct{}) checks.Result {
 	}
 	if len(r.Findings) > 0 {
 		r.Status = checks.Fail
-		r.Notes = fmt.Sprintf("%d structural code-execution indicator(s). Positive evidence.",
-			len(r.Findings))
+		r.Notes = fmt.Sprintf("%d structural code-execution indicator(s). Positive evidence. "+
+			"Not rendered: a template that reaches code is never evaluated.", len(r.Findings))
 		return r
 	}
 
-	if _, ok := allow[templateHash(template)]; ok {
+	// Rendering runs after the analysis, on templates with no code reach.
+	// What it finds is added to the row: the text the template adds is
+	// listed, never judged; a content condition that adds instructions, or
+	// a near-miss of a reviewed template, is a LEAD.
+	rend := renderCheck(template, nodes, an, o)
+
+	if _, ok := reviewed(templateHash(template), o); ok {
 		r.Status = checks.Pass
-		r.Notes = "template hash is on the reviewed allowlist. Heuristic; not a proof of absence."
+		r.Notes = "template hash is on the reviewed allowlist. Heuristic; not a proof of absence. " + rend.note()
 		return r
 	}
 
@@ -203,19 +249,27 @@ func inspect(template string, allow map[string]struct{}) checks.Result {
 		r.Findings = append(r.Findings, checks.Finding{Pattern: s.pattern, Span: s.span, Detail: s.detail})
 		leadHits = append(leadHits, fmt.Sprintf("%s: %q", s.pattern, s.span))
 	}
+	for _, f := range rend.findings {
+		r.Findings = append(r.Findings, f)
+		leadHits = append(leadHits, fmt.Sprintf("%s (rendered): %q", f.Pattern, f.Span))
+	}
 	if len(leadHits) > 0 {
 		r.Status = checks.Lead
-		r.Notes = "suspicious template structure or language, not conclusive; needs review: " + strings.Join(leadHits, "; ")
+		r.Notes = "suspicious template structure or language, not conclusive; needs review: " +
+			strings.Join(leadHits, "; ") + ". " + rend.note()
 		return r
 	}
 
 	r.Status = checks.Pass
 	r.Notes = "template parsed; no code-execution reach, content-conditional injection, hidden or obfuscated text, " +
 		"or instruction-language lead found. Structural heuristic; not a proof of absence."
-	if len(an.outsideText) > 0 {
+	// The render's inventory supersedes the static list of default text;
+	// it stays only when the template could not be rendered.
+	if len(an.outsideText) > 0 && rend.skipped != "" {
 		r.Notes += fmt.Sprintf(" It emits %d default text segment(s) outside the message loop, for review: %q",
 			len(an.outsideText), an.outsideText[0])
 	}
+	r.Notes += " " + rend.note()
 	return r
 }
 
@@ -224,14 +278,17 @@ func templateHash(t string) string {
 	return hex.EncodeToString(sum[:])
 }
 
-func parseAllowlist(raw string) map[string]struct{} {
-	out := map[string]struct{}{}
+// parseAllowlist reads "<sha256> [label]" lines; the label, by convention
+// the repo and revision the template was reviewed at, names it in a note.
+func parseAllowlist(raw string) map[string]string {
+	out := map[string]string{}
 	for _, line := range strings.Split(raw, "\n") {
 		line = strings.TrimSpace(line)
 		if line == "" || strings.HasPrefix(line, "#") {
 			continue
 		}
-		out[strings.ToLower(line)] = struct{}{}
+		f := strings.Fields(line)
+		out[strings.ToLower(f[0])] = strings.Join(f[1:], " ")
 	}
 	return out
 }

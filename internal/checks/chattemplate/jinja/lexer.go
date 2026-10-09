@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"unicode"
 	"unicode/utf8"
 )
 
@@ -28,14 +29,31 @@ const (
 	segText segKind = iota
 	segOutput
 	segStmt
+	// segComment and segRawTag are kept only for whitespace control; the
+	// parser skips them. A raw block's body is a segText between two
+	// segRawTags.
+	segComment
+	segRawTag
 )
 
 // segment is a run of text or one tag with its tokens.
 type segment struct {
 	kind segKind
 	text string
+	// out is a text segment's text as a render emits it (see whitespace).
+	out  string
 	toks []token
 	pos  int
+	// open and close are a tag's whitespace-control signs, '-' or '+', or 0.
+	open, close byte
+	// rawOpen marks {% raw %}, after which trim_blocks does not apply.
+	rawOpen bool
+}
+
+// block reports whether a segment is a tag that trim_blocks and
+// lstrip_blocks apply to: a statement, a comment, or a raw tag.
+func (s segment) block() bool {
+	return s.kind == segStmt || s.kind == segComment || s.kind == segRawTag
 }
 
 // Error is a parse failure with the line it happened on.
@@ -53,8 +71,8 @@ func errAt(src string, pos int, format string, args ...any) *Error {
 	return &Error{Line: 1 + strings.Count(src[:pos], "\n"), Msg: fmt.Sprintf(format, args...)}
 }
 
-// lex splits a template into text runs and tags. Comments are dropped, and a
-// raw block becomes text.
+// lex splits a template into text runs and tags. Comments yield no tokens,
+// and a raw block's body becomes text.
 func lex(src string) ([]segment, error) {
 	var out []segment
 	i := 0
@@ -69,7 +87,9 @@ func lex(src string) ([]segment, error) {
 		}
 		kind := src[open+1]
 		j := open + 2
+		var sign byte
 		if j < len(src) && (src[j] == '-' || src[j] == '+') {
+			sign = src[j]
 			j++
 		}
 		switch kind {
@@ -78,6 +98,11 @@ func lex(src string) ([]segment, error) {
 			if end < 0 {
 				return nil, errAt(src, open, "unclosed comment")
 			}
+			var closeSign byte
+			if k := j + end - 1; end > 0 && (src[k] == '-' || src[k] == '+') {
+				closeSign = src[k]
+			}
+			out = append(out, segment{kind: segComment, pos: open, open: sign, close: closeSign})
 			i = j + end + 2
 		case '{', '%':
 			closer := "}}"
@@ -85,25 +110,71 @@ func lex(src string) ([]segment, error) {
 			if kind == '%' {
 				closer, sk = "%}", segStmt
 			}
-			toks, next, err := lexTag(src, j, closer)
+			toks, next, closeSign, err := lexTag(src, j, closer)
 			if err != nil {
 				return nil, err
 			}
-			seg := segment{kind: sk, toks: toks, pos: open}
+			seg := segment{kind: sk, toks: toks, pos: open, open: sign, close: closeSign}
 			i = next
 			if sk == segStmt && len(toks) == 1 && toks[0].kind == tName && toks[0].v == "raw" {
-				body, after, err := rawBody(src, i)
+				body, end, after, err := rawBody(src, i)
 				if err != nil {
 					return nil, err
 				}
-				out = append(out, segment{kind: segText, text: body, pos: i})
+				seg.kind, seg.rawOpen = segRawTag, true
+				out = append(out, seg, segment{kind: segText, text: body, pos: i}, end)
 				i = after
 				continue
 			}
 			out = append(out, seg)
 		}
 	}
+	whitespace(out)
 	return out, nil
+}
+
+// whitespace sets each text segment's out to what Jinja emits for it under
+// the settings Hugging Face renders with: newlines normalized, the single
+// trailing newline of the template dropped (keep_trailing_newline off), "-"
+// stripping all whitespace on its side of a tag, and, unless "+" turns them
+// off, trim_blocks (the first newline after a block tag is removed) and
+// lstrip_blocks (spaces and tabs before a block tag on its own line are
+// removed). Variable tags take only "-".
+func whitespace(segs []segment) {
+	for i := range segs {
+		if segs[i].kind != segText {
+			continue
+		}
+		t := strings.ReplaceAll(strings.ReplaceAll(segs[i].text, "\r\n", "\n"), "\r", "\n")
+		if i == len(segs)-1 {
+			t = strings.TrimSuffix(t, "\n")
+		}
+		// lineStart is Jinja's line_starting: the template starts here, or the
+		// tag before ended by consuming a newline.
+		lineStart := i == 0
+		if i > 0 {
+			p := segs[i-1]
+			switch {
+			case p.close == '-':
+				t = strings.TrimLeftFunc(t, unicode.IsSpace)
+			case p.block() && p.close != '+' && !p.rawOpen && strings.HasPrefix(t, "\n"):
+				t, lineStart = t[1:], true
+			}
+		}
+		if i+1 < len(segs) {
+			n := segs[i+1]
+			switch {
+			case n.open == '-':
+				t = strings.TrimRightFunc(t, unicode.IsSpace)
+			case n.block() && n.open != '+':
+				l := strings.LastIndexByte(t, '\n') + 1
+				if (l > 0 || lineStart) && l < len(t) && strings.TrimSpace(t[l:]) == "" {
+					t = t[:l]
+				}
+			}
+		}
+		segs[i].out = t
+	}
 }
 
 // nextOpen finds the next tag opener at or after i.
@@ -121,8 +192,9 @@ func nextOpen(src string, i int) int {
 	}
 }
 
-// rawBody returns the text up to {% endraw %} and the offset after it.
-func rawBody(src string, i int) (string, int, error) {
+// rawBody returns the text up to {% endraw %}, the endraw tag, and the offset
+// after it.
+func rawBody(src string, i int) (string, segment, int, error) {
 	for k := i; k < len(src); {
 		open := strings.Index(src[k:], "{%")
 		if open < 0 {
@@ -130,23 +202,26 @@ func rawBody(src string, i int) (string, int, error) {
 		}
 		p := k + open
 		j := p + 2
+		var sign byte
 		if j < len(src) && (src[j] == '-' || src[j] == '+') {
+			sign = src[j]
 			j++
 		}
-		toks, next, err := lexTag(src, j, "%}")
+		toks, next, closeSign, err := lexTag(src, j, "%}")
 		if err == nil && len(toks) == 1 && toks[0].v == "endraw" {
-			return src[i:p], next, nil
+			return src[i:p], segment{kind: segRawTag, pos: p, open: sign, close: closeSign}, next, nil
 		}
 		k = p + 2
 	}
-	return "", 0, errAt(src, i, "raw block without endraw")
+	return "", segment{}, 0, errAt(src, i, "raw block without endraw")
 }
 
 var ops3 = []string{"**", "//", "==", "!=", "<=", ">="}
 
 // lexTag tokenizes one tag body starting at i until its closer, which only
-// counts outside brackets so a dict literal's "}}" does not end the tag.
-func lexTag(src string, i int, closer string) ([]token, int, error) {
+// counts outside brackets so a dict literal's "}}" does not end the tag. It
+// also returns the closer's whitespace-control sign.
+func lexTag(src string, i int, closer string) ([]token, int, byte, error) {
 	var toks []token
 	depth := 0
 	for {
@@ -154,14 +229,14 @@ func lexTag(src string, i int, closer string) ([]token, int, error) {
 			i++
 		}
 		if i >= len(src) {
-			return nil, 0, errAt(src, i, "unclosed tag, want %q", closer)
+			return nil, 0, 0, errAt(src, i, "unclosed tag, want %q", closer)
 		}
 		if depth == 0 {
 			if strings.HasPrefix(src[i:], closer) {
-				return toks, i + len(closer), nil
+				return toks, i + len(closer), 0, nil
 			}
 			if (src[i] == '-' || src[i] == '+') && strings.HasPrefix(src[i+1:], closer) {
-				return toks, i + 1 + len(closer), nil
+				return toks, i + 1 + len(closer), src[i], nil
 			}
 		}
 		c := src[i]
@@ -169,7 +244,7 @@ func lexTag(src string, i int, closer string) ([]token, int, error) {
 		case c == '\'' || c == '"':
 			s, next, err := lexString(src, i)
 			if err != nil {
-				return nil, 0, err
+				return nil, 0, 0, err
 			}
 			toks = append(toks, token{tStr, s, i})
 			i = next
@@ -202,7 +277,7 @@ func lexTag(src string, i int, closer string) ([]token, int, error) {
 			if op == "" {
 				if !strings.ContainsRune("+-*/%~<>=()[]{},.:|", rune(c)) {
 					r, _ := utf8.DecodeRuneInString(src[i:])
-					return nil, 0, errAt(src, i, "unexpected character %q in tag", r)
+					return nil, 0, 0, errAt(src, i, "unexpected character %q in tag", r)
 				}
 				op = string(c)
 			}

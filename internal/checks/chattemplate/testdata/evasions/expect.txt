@@ -30,3 +30,6 @@ known-miss-plain-default-prompt.jinja PASS known-miss
 benign-code-words-in-prompt.jinja PASS benign
 long-letter-chain.jinja LEAD instruction-override
 unparseable-by-design.jinja LEAD unanalysable-template
+# Caught only by rendering: the static walk does not attribute a macro's text
+# to its call site, and the trigger probe shows the system turn it opens.
+macro-conditional-system.jinja LEAD content-conditional-injection

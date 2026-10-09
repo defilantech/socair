@@ -7,7 +7,13 @@ import (
 	"testing"
 
 	"github.com/defilantech/socair/internal/checks"
+	"github.com/defilantech/socair/internal/checks/chattemplate/jinja"
 )
+
+// corpusOptions stand in for a tokenizer: the corpus is templates alone, and
+// a serving stack always passes the bos and eos tokens. With no token list,
+// text written like a special token counts as one.
+var corpusOptions = Options{Tokens: Tokens{Named: map[string]string{"bos_token": "<s>", "eos_token": "</s>"}}}
 
 // TestRealTemplatesAreNotFlagged is the false-positive gate: real chat
 // templates from shipped models must not FAIL or LEAD. Third-party templates
@@ -25,22 +31,56 @@ func TestRealTemplatesAreNotFlagged(t *testing.T) {
 		t.Fatalf("no .jinja files under %s", dir)
 	}
 	tally := map[checks.Status]int{}
+	var rendered, adding, triggered int
 	for _, f := range files {
 		b, err := os.ReadFile(f)
 		if err != nil {
 			t.Fatal(err)
 		}
-		r := inspect(string(b), map[string]struct{}{})
+		name := filepath.Base(f)
+		r := inspect(string(b), corpusOptions)
 		tally[r.Status]++
 		switch r.Status {
 		case checks.Fail, checks.Lead:
-			t.Errorf("%s: %s: %s", filepath.Base(f), r.Status, r.Notes)
+			t.Errorf("%s: %s: %s", name, r.Status, r.Notes)
 		case checks.NotTested:
-			t.Logf("%s: NOT_TESTED: %s", filepath.Base(f), r.Notes)
+			t.Logf("%s: NOT_TESTED: %s", name, r.Notes)
+		}
+		// The render measurement: what rendered, what was refused and why,
+		// and what each template adds.
+		nodes, err := jinja.Parse(string(b))
+		if err != nil {
+			continue
+		}
+		res := renderCheck(string(b), nodes, analyse(nodes), corpusOptions)
+		if res.skipped != "" {
+			t.Logf("%s: not rendered: %s", name, res.skipped)
+			continue
+		}
+		rendered++
+		if len(res.added) > 0 {
+			adding++
+		}
+		if len(res.triggers) > 0 {
+			triggered++
+		}
+		var adds []string
+		for _, a := range res.added {
+			adds = append(adds, quote(a.text))
+		}
+		t.Logf("%s: rendered %d probe(s), refused %d, adds %d fragment(s): %s", name, res.rendered, len(res.refused),
+			len(res.added), strings.Join(adds, " | "))
+		for _, d := range res.triggers {
+			t.Logf("%s: when a message contains %q it adds %q", name, d.guard, d.adds)
+		}
+		for _, p := range res.refused {
+			t.Logf("%s: refused %s", name, p)
 		}
 	}
 	t.Logf("%d templates: %d PASS, %d LEAD, %d FAIL, %d NOT_TESTED",
 		len(files), tally[checks.Pass], tally[checks.Lead], tally[checks.Fail], tally[checks.NotTested])
+	t.Logf("render: %d of %d rendered, %d add text of their own, %d add text under a content condition",
+		rendered, len(files), adding, triggered)
 }
 
 // TestEvasionCorpus holds the check to the evasion fixtures in
@@ -69,7 +109,7 @@ func TestEvasionCorpus(t *testing.T) {
 			t.Fatal(err)
 		}
 		n++
-		r := inspect(string(b), map[string]struct{}{})
+		r := inspect(string(b), Options{})
 		if string(r.Status) != f[1] {
 			t.Errorf("%s: status %s, want %s (notes: %s)", f[0], r.Status, f[1], r.Notes)
 			continue

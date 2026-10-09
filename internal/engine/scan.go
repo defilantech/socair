@@ -226,7 +226,7 @@ func ScanWith(path string, mode Mode, in Inputs) (*report.Document, error) {
 		tokRow.Notes += refs.tokenizerNote(id.TokenizerSHA256)
 		tokRow = refs.compareTokenizer(tokRow, tok.Tokens, tokenizer.GGUFSpecial(tok))
 		meta := []checks.Result{
-			chattemplate.InspectAllWith(chatTemplates, chatTemplateNonString, refs.reviewedTemplates()),
+			chattemplate.InspectAllWith(chatTemplates, chatTemplateNonString, refs.templateOptions(chattemplate.TokensFromGGUF(tok))),
 			tokRow,
 			quant.CompareObserved(quantDeclared, fileType, observedTypes),
 		}

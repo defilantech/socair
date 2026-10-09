@@ -606,6 +606,82 @@ not shipped (`license_link` is listed, never followed), a safetensors
 header's own metadata, and license texts in other languages beyond the GLM-4
 title.
 
+## Chat templates: rendering (2026-10-09, check set tier1/0.8)
+
+The hero check now renders every template with no code reach on fixed probe
+conversations (`probes/v1`: system and user, user only, multi-turn, an
+assistant turn without the generation prompt, and, when the template mentions
+tools, tools offered and a tool call with its result), with Socair's own
+evaluator over its parsed tree (`chattemplate/jinja`, `Render`). It never
+calls Python or another Jinja engine. Every byte of a render is attributed to
+the conversation or to the template, so the row can list the text a template
+adds to the prompt. The static pass also hands the renderer the literals each
+content condition tests (`'html' in message.content`), and a trigger probe
+puts them in the messages, so the row can quote what a condition adds.
+
+Measured against the same 70 templates as above (llama.cpp
+`models/templates`, pinned at `7fe450e1`), with a stand-in bos and eos token
+since the corpus has no tokenizer:
+
+| | Templates |
+|---|---|
+| Status (unchanged from tier1/0.7) | 70 PASS, 0 LEAD, 0 FAIL, 0 NOT_TESTED |
+| Rendered | 69 of 70 |
+| Not rendered | 1: `fireworks-ai-llama-3-firefunction-v2` refuses every probe, because it concatenates a `functions` variable no probe passes |
+| Refused at least one probe | 11 (23 probe renders), each the way Jinja refuses it: Hermes 2 Pro, Hermes 3, and Command R+ `tool_use` iterate `tools` unconditionally (12; they are selected only when tools are passed); `raise_exception` in Gemma 2 (no system role), Mistral Small 3.2 and Nemo (tool call ids must be 9 characters), and gpt-oss (channel tags in content, on its trigger probes) (6); Kimi K2 Instruct and Thinking call `list.append`, which transformers' immutable sandbox refuses (2); llama.cpp's DeepSeek R1 template passes a `map` generator to `tojson` (2); Functionary 3.2 concatenates tool arguments to a string (1) |
+| Add text of their own | 63 of 69; the other 6 add nothing beyond special tokens and role names (DeepSeek R1 Distill Llama, DeepSeek V3.1, llama.cpp's DeepSeek R1 and RWKV World, Phi-3.5 mini, Gemma 2) |
+| Add text under a content condition | 3: SmolLM3 (`/think` or `/no_think` in the system message switches its default system prompt), MiniMax M2 (`</think>` changes its turn separators), muse-glimmer (`reasoning strength` adds a "Valid recipients" line) |
+
+What the 63 add, by a keyword count over the listed fragments: tool-call
+instructions in 57, an identity or default system prompt in 39, reasoning or
+thinking instructions in 16, a date or knowledge-cutoff line in 12, and a
+safety preamble in 2 (Command R+ and Command R7B). All of it is listed in the
+row's notes, bounded to six fragments of 120 characters, and none of it
+changes the status.
+
+**A rule measured and dropped.** The first draft made a content condition
+that adds instruction prose to the render a LEAD. It flagged SmolLM3, whose
+`/think` switch legitimately replaces the default system prompt: 1 false
+positive in 70. The shipped rule is narrower: only a condition that makes the
+template's own text open a system turn (the Pillar shape) is a LEAD, 0 of 70.
+Anything else a condition adds is quoted in the notes, not judged.
+
+**Fidelity.** On the developer's machine, every probe render of every corpus
+template, trigger probes included, was compared with Jinja2 3.1.6 configured
+as transformers configures it (an immutable sandbox, `trim_blocks`,
+`lstrip_blocks`, loop controls, transformers' `tojson`, `raise_exception`,
+`strftime_now` frozen, and a `{% generation %}` shim) on the same variables:
+482 renders byte-identical, 29 refused by both, 0 different. That oracle is a
+measurement, not a dependency: Socair does not ship or call Python. The
+semantics it now models include Jinja's whitespace control, per-iteration loop
+scope, `namespace`, macros with defaults, lazy `map`/`select` results (always
+true, no length or JSON form), and markupsafe's escaping when `|safe` text is
+added to a plain string.
+
+**Reviewed-template comparison.** With a reviewed template's text available (a
+feed's `templates/<sha256>.jinja`, or `SOCAIR_TEMPLATE_REFERENCE`), a template
+that renders like it on every standard probe but differs under a trigger
+probe for a condition the reviewed template does not test is a LEAD with the
+first difference. A difference only under a condition both test (a revision of
+Qwen3's `</think>` handling) is a note, and any other mismatch gets no verdict.
+No reviewed texts were configured in the corpus run, so every row says none
+was compared.
+
+**Evasion corpus.** `macro-conditional-system.jinja` (a system turn emitted from
+a macro only when a message mentions an invoice) PASSes the static walk, which
+does not attribute a macro's text to its call site, and is a LEAD from the
+render. The plain default-prompt known miss stays a PASS, now with its prompt
+quoted in the row.
+
+Reproduce:
+
+```
+SOCAIR_TEMPLATE_CORPUS=/path/to/templates go test ./internal/checks/chattemplate -run RealTemplates -v
+```
+
+The test logs, per template, the probes rendered and refused and the text it
+adds.
+
 ## Follow-ups from the first run, since done
 
 1. The GGML file-type mapping follows llama.cpp's `llama_ftype` enum, and the
