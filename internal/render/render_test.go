@@ -324,8 +324,9 @@ func TestAcceptedLineOnlyUnderConditions(t *testing.T) {
 func TestReportReadsOnANarrowScreen(t *testing.T) {
 	html := renderString(t, loadGolden(t))
 	for _, want := range []string{
-		"td { overflow-wrap: anywhere; }",
+		"td:not(:first-child) { overflow-wrap: anywhere; }",
 		".hash { word-break: break-all; }",
+		"table.files td { overflow-wrap: anywhere; }",
 		"@media (max-width: 640px)",
 		"table.checks thead { display: none; }",
 		`<table class="checks">`,

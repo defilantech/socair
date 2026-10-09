@@ -50,7 +50,8 @@
   table { width: 100%; border-collapse: collapse; margin-top: 6px; }
   table.files td.hash { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 10px; word-break: break-all; }
   th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--line); vertical-align: top; }
-  td { overflow-wrap: anywhere; }
+  td:not(:first-child) { overflow-wrap: anywhere; }
+  table.files td { overflow-wrap: anywhere; }
   .hash { word-break: break-all; }
   a { overflow-wrap: anywhere; }
   th { font-size: 12px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); }
