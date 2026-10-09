@@ -9,8 +9,8 @@ import type { CheckStatus, Document } from './api';
 
 // Pill is the visual treatment for a status or a promotion state. 'conditions'
 // is the amber caution of an authorization with conditions: never the pass
-// look and never the neutral gap look (PRODUCT.md, Capabilities and
-// Constraints: conditions and needs-acceptance are amber).
+// look and never the neutral gap look. Conditions and needs-acceptance are
+// amber.
 export type Pill = 'pass' | 'fail' | 'lead' | 'not-tested' | 'conditions';
 
 // statusPill maps a check status to its treatment. NOT_TESTED is never pass.

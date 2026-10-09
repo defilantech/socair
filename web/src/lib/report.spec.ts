@@ -57,8 +57,8 @@ describe('promotion badge', () => {
 	it('treats conditions as a caution, never clean green', () => {
 		expect(promotionPill(doc('authorized_with_conditions', []))).not.toBe('pass');
 	});
-	// PRODUCT.md (Capabilities and Constraints): conditions are amber. The
-	// grey NOT_TESTED look would make one state read two ways on a model page.
+	// Conditions are amber. The grey NOT_TESTED look would make one state read
+	// two ways on a model page.
 	it('gives conditions the amber caution, not the gap look', () => {
 		expect(promotionPill(doc('authorized_with_conditions', []))).toBe('conditions');
 		expect(promotionPill(doc('authorized_with_conditions', []))).not.toBe('not-tested');
