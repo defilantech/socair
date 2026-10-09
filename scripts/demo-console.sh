@@ -18,6 +18,10 @@
 # It builds socair and the console from this checkout, makes two demo keys
 # (an operator who signs reports, an acceptor who signs acceptances), and
 # downloads about 1.6 GB, most of it Qwen3-0.6B. Needs go, npm, curl, and jq.
+#
+# SOCAIR_DEMO_ISSUER and SOCAIR_DEMO_ACCEPTOR rename the demo signer and
+# acceptor. The binary is stamped with `git describe` of the checkout, so a
+# report names the exact commit or tag that produced it.
 set -euo pipefail
 
 root="$(cd "$(dirname "$0")/.." && pwd)"
@@ -26,6 +30,10 @@ mkdir -p "$D"/{bin,keys,scan}
 D="$(cd "$D" && pwd)"
 X="$D/bin/socair"
 hub="${SOCAIR_HF_ENDPOINT:-https://huggingface.co}"
+issuer="${SOCAIR_DEMO_ISSUER:-Acme ML Platform}"
+acceptor="${SOCAIR_DEMO_ACCEPTOR:-Jane Doe, CISO}"
+version="$(git -C "$root" describe --tags --always --dirty 2>/dev/null || echo dev)"
+version="${version#v}"
 
 export SOCAIR_STORE="$D/store" SOCAIR_SCAN_TMP="$D/scan"
 if [[ -e "$SOCAIR_STORE" ]]; then
@@ -38,15 +46,15 @@ sha256() {
 }
 
 echo "== build socair and the console"
-(cd "$root" && GOFLAGS=-mod=vendor go build -o "$X" ./cmd/socair)
+(cd "$root" && GOFLAGS=-mod=vendor go build -ldflags "-X github.com/defilantech/socair/internal/engine.Version=$version" -o "$X" ./cmd/socair)
 (cd "$root/web" && npm ci --silent && npm run -s build >/dev/null)
 
 "$X" airlock init "$SOCAIR_STORE" >/dev/null
 
 echo "== demo keys: an operator who signs reports, a CISO who signs acceptances"
-"$X" key gen --out "$D/keys/operator" --issuer "Acme ML Platform" >/dev/null
-"$X" airlock trust add "$D/keys/operator.pub" --name "Acme ML Platform" >/dev/null
-"$X" key gen --out "$D/keys/ciso" --issuer "Jane Doe, CISO" >/dev/null
+"$X" key gen --out "$D/keys/operator" --issuer "$issuer" >/dev/null
+"$X" airlock trust add "$D/keys/operator.pub" --name "$issuer" >/dev/null
+"$X" key gen --out "$D/keys/ciso" --issuer "$acceptor" >/dev/null
 "$X" airlock trust add --acceptor "$D/keys/ciso.pub" >/dev/null
 
 # A one-entry known-bad list, so that row can PASS on the approved example.
@@ -83,7 +91,7 @@ scan_sign "$q" SOCAIR_DENYLIST="$D/denylist.txt"
 l=$(pull hf-internal-testing/tiny-random-LlamaForCausalLM --exclude onnx/)
 scan_sign "$l"
 e=$(dirname "$l")
-"$X" accept --attestation "$e/report.dsse.json" --key "$D/keys/ciso.key" --by "Jane Doe, CISO" \
+"$X" accept --attestation "$e/report.dsse.json" --key "$D/keys/ciso.key" --by "$acceptor" \
 	--expires "$(jq -r '.header.rescan_due' "$e/report.json")" --store "$SOCAIR_STORE" >/dev/null
 "$X" sign --key "$D/keys/operator.key" --attestation "$e/report.dsse.json" \
 	--acceptance "$e/report.acceptance.dsse.json" --store "$SOCAIR_STORE" >/dev/null
