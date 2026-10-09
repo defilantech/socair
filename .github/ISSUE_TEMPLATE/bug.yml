@@ -1,0 +1,34 @@
+name: Bug
+description: Something does not work as the docs say.
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        A crash on a crafted input, a way past the airlock, or a signature that verifies when it should not is a vulnerability: report it privately (SECURITY.md), not here.
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: The command you ran, what you expected, and what happened instead. Paste the error text.
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: How to reproduce
+      description: The smallest steps or input that show it.
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Socair version
+      description: "`socair version`, or the commit for a source build."
+    validations:
+      required: true
+  - type: input
+    id: platform
+    attributes:
+      label: Platform
+      placeholder: linux/amd64, darwin/arm64, ...
