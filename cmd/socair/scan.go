@@ -11,9 +11,10 @@ import (
 	"github.com/defilantech/socair/internal/report"
 )
 
-// scan runs the Tier 1 engine over one artifact and prints the report document
-// as JSON, or with --format cyclonedx the CycloneDX ML-BOM derived from it.
-// Output is gated on the document validating.
+// scan runs the engine over one artifact (Tier 1, and Tier 2 when
+// SOCAIR_TIER2_HELPER is set) and prints the report document as JSON, or with
+// --format cyclonedx the CycloneDX ML-BOM derived from it. Output is gated on
+// the document validating.
 func scan(args []string) error {
 	var path, format string
 	for i := 0; i < len(args); i++ {

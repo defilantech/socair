@@ -30,6 +30,9 @@ Reference data from a signed feed (denylist, reviewed templates, canonical
 tokenizers) is not part of the check set. The report names the feed it used
 in `scope.reference_data`.
 
+Tier 2 measurements are not part of the check set either. Each records its
+own suite, suite version, and probe-set digest ([tier2.md](tier2.md)).
+
 ## Versions
 
 | Version | Rule fingerprint | Date | Changes |

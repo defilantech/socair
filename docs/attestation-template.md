@@ -59,11 +59,11 @@ canonical manifest of those hashes (`socair.modeldir/v1`, see
 |---|---|
 | Check-set version | `[checkset_version]` |
 | Tools and versions | `[tool_versions]` |
-| Execution context | `[Tier 1 static portable / Tier 2 node class <class>]` |
+| Execution context | `[Tier 1 static, portable / Tier 1 static, portable; Tier 2 on node class <sha256:hash>, as the probe helper reported it]` |
 | Input path | `[airlock pull / offline cache / local path]` |
 | Scan start (UTC) | `[scan_start]` |
 | Scan end (UTC) | `[scan_end]` |
-| Inference budget consumed | `[tier2_budget / not applicable]` |
+| Inference budget consumed | `[Tier 2: <n> measurement(s) over <n> probe(s) / not applicable]` |
 
 ## 4. Checks performed
 
@@ -85,7 +85,21 @@ The rows that run depend on the format: every report carries structure, inventor
 | Remote code (model directory) | Code a loader would run: auto_map entries and Python files (trust_remote_code) | `[result]` | `[evidence]` | `[notes]` |
 | Pickle opcode scan (pickle) | Imports in pickle-based model files that reach code execution | `[result]` | `[evidence]` | `[notes]` |
 
-Tier 2 checks (forward-pass trigger probes, a serving-stack differential) are not part of this release. A Tier 1 report lists them in Section 8 as not run, never as rows.
+Tier 2 checks run the model and are opt-in ([tier2.md](tier2.md)). When Tier 2 did not run, the report lists them in Section 8 as not run, never as rows. When it ran, see Tier 2 measurements below.
+
+### Tier 2 measurements (when Tier 2 ran)
+
+A report where Tier 2 ran carries a `tier2` section, shown after the check rows: a fixed statement of what Tier 2 is, one entry per measurement, the node classes the measurements ran on, and the probe helper. A measurement is never a verdict, and its outcome is never a pass.
+
+> Tier 2 measurements ran the model through the endpoints the operator named, on the node classes listed here as the probe helper reported them; Socair did not observe the hardware or verify that an endpoint served the bytes identified by the artifact hash. A measurement is not a verdict: a LEAD or FAIL it raises is a check row and withholds promotion, and a measurement that found nothing adds no row, is not a PASS, and authorizes nothing.
+
+| Check | Suite and version | Scorer | n | Score, metrics, 95% interval | Decoding | Engine and node class | Outcome |
+|---|---|---|---|---|---|---|---|
+| `[check] (Tier 2)` | `[suite] [suite_version]`, dataset `[sha256:digest]` | `[deterministic / llm-judge:sha256:digest]` | `[n]` | `[score]`, `[metrics]`, `[ci95]` | `[temperature, top_p, max_tokens, seed]` | `[engine]` on `[node class hash]` | `[measured / lead / fail / error]` |
+
+A `lead` or `fail` measurement also adds a row to the table above, named `[check] (Tier 2)`, with that status: that row withholds promotion, and no acceptance clears it. A FAIL needs the deterministic scorer and the evidence it matched; anything statistical or judged raises at most a LEAD. A `measured` outcome (found nothing) or an `error` adds no row and changes nothing: it is not a PASS and clears no NOT_TESTED gap.
+
+Node classes: `[sha256:hash]`, reported by the probe helper (not observed by Socair): `[reported fields]`. Not reported: `[fields]`. The hash is SHA-256 over the record's canonical JSON, so any change to any field is a different class.
 
 ### Severity and framework mapping
 
@@ -135,11 +149,11 @@ What this level does mean: `[does_mean]`
 
 What this level does not mean: `[does_not_mean]`
 
-What Tier 2 would add, and whether it ran: `[tier2_note]`
+What Tier 2 would add, and whether it ran: `[tier2_note]`. When Tier 2 ran, the note is fixed: its measurements can withhold promotion through the rows they raise, never authorize it, and no Tier 2 level is awarded.
 
 ## 7. Bounded statement (fixed)
 
-The statement is one of two fixed sentences, picked from the check rows (`report.BoundedStatementFor`). Validation picks it again from the rows and refuses a report whose statement differs, so neither sentence can be edited, and a report with a FAIL or LEAD can never carry the first.
+The statement is one of four fixed sentences: a pair for a report without Tier 2 and a pair for one with Tier 2 measurements, each picked from the check rows (`report.BoundedStatementOf`). Validation picks it again and refuses a report whose statement differs, so no sentence can be edited, and a report with a FAIL or LEAD can never carry a no-indicators sentence.
 
 When no row is FAIL or LEAD:
 
@@ -148,6 +162,14 @@ When no row is FAIL or LEAD:
 When any row is FAIL or LEAD:
 
 > For the artifact identified by its hash, the Tier 1 checks found the indicators this report lists: each FAIL is positive evidence, and each LEAD is a suspicious signal that needs review. Rows marked NOT_TESTED were not examined, for the reason each row gives. Tier 1 runs no inference, so no model behavior was tested. Every surface outside that scope is listed under Out of scope.
+
+When the report carries Tier 2 measurements and no row is FAIL or LEAD:
+
+> For the artifact identified by its hash, the Tier 1 checks that returned PASS found no indicators within their stated scope, and the Tier 2 measurements raised none. Rows marked NOT_TESTED were not examined, for the reason each row gives. Tier 2 ran the model only on the node classes and probe sets its measurements name, and a measurement that found nothing is not a PASS. Every surface outside that scope is listed under Out of scope.
+
+When the report carries Tier 2 measurements and any row is FAIL or LEAD:
+
+> For the artifact identified by its hash, the checks found the indicators this report lists: each FAIL is positive evidence, and each LEAD is a suspicious signal that needs review; a row marked (Tier 2) was raised by a measurement made by running the model. Rows marked NOT_TESTED were not examined, for the reason each row gives. Tier 2 ran the model only on the node classes and probe sets its measurements name, and a measurement that found nothing is not a PASS. Every surface outside that scope is listed under Out of scope.
 
 ## 8. Out of scope and NOT_TESTED (fixed ceiling)
 
@@ -167,7 +189,7 @@ The same list is `docs/detection-ceiling.json` and `report.DefaultCeiling()`; a 
 
 Formats not parsed for this artifact: `[unparsed_formats]`
 
-Node classes not tested for this artifact: `[untested_node_classes]`
+Node classes not tested for this artifact: `[untested_node_classes]`. Without Tier 2, every node class: Tier 1 is static and ran no inference on any hardware. With Tier 2, every node class other than the ones its measurements ran on, named by hash.
 
 ## 9. Promotion authorization
 
@@ -175,7 +197,7 @@ Does this attestation authorize promotion into the clean store? `[yes / no]`
 
 State: `[authorized / authorized_with_conditions / withheld / escalated]`. Accepted surfaces, acceptor, and expiry appear only when the state is authorized_with_conditions.
 
-Level: `[Tier 1 only / Tier 2]`
+Level: `[Tier 1 only]`. Tier 2 measurements can withhold promotion but never authorize it, so no level above Tier 1 authorizes.
 
 Conditions: `[conditions]`
 

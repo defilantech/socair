@@ -120,6 +120,7 @@ Usage:
   socair version
   socair inspect <path>    read an artifact and print its manifest as JSON
   socair scan <path>       run the Tier 1 checks and print the report as JSON
+                           (and the opt-in Tier 2 helper, with SOCAIR_TIER2_HELPER set; docs/tier2.md)
   socair corpus <dir>      sweep every GGUF under a directory, headers only
   socair template <path>   print the chat template and hero-check findings
   socair render <path>     scan and write the HTML attestation to stdout

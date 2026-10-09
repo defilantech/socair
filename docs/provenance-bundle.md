@@ -202,6 +202,7 @@ graded. A path that cannot be read stops the scan.
 | `SOCAIR_PROVENANCE`, or an OMS signature from a trusted publisher | Hash, provenance, lineage | NOT_TESTED |
 | `SOCAIR_TOKENIZER_REFERENCE`, or tables in a feed | Tokenizer config: a changed ordinary token becomes a LEAD | PASS on internal consistency only, and the row says no reference was compared |
 | A signed acceptance (`socair accept`) | the promotion state | withheld on any gap |
+| `SOCAIR_TIER2_HELPER` and `SOCAIR_TIER2_ENDPOINT` ([tier2.md](tier2.md)) | Adds Tier 2 measurements; one that raises a LEAD or FAIL adds a row that withholds, and one that finds nothing adds no row | No Tier 2 section; its checks are listed as not run, which is not a gap |
 
 ## Falsification
 
