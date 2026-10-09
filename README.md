@@ -133,6 +133,7 @@ Defilan Technologies is building commercial offerings on top of it:
 | [feed.md](docs/feed.md) | Signed reference feeds: format, verification, building one |
 | [api.md](docs/api.md), [wizard.md](docs/wizard.md) | The local HTTP API, the click-through wizard, and the airlock console (wizard.md) |
 | [false-positive-baseline.md](docs/false-positive-baseline.md) | How each detector was measured against real models |
+| [detection-benchmark.md](docs/detection-benchmark.md) | Detection on reproductions of published attacks, misses pinned, beside picklescan, ModelScan, ModelAudit, and Fickling |
 | [dev.md](docs/dev.md), [CONTRIBUTING.md](CONTRIBUTING.md) | Building, testing, and contributing (DCO sign-off) |
 | [releasing.md](docs/releasing.md), [verify-release.md](docs/verify-release.md) | Cutting and verifying a release |
 
