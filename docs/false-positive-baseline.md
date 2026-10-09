@@ -443,6 +443,17 @@ fired. Identical tokenizer hashes group shared tokenizers (the three Qwen 2.5
 variants; the Llama 3.x copies; Zephyr and SOLAR), which a canonical-tokenizer
 comparison can build on.
 
+## Tokenizer: the -1 sentinel (2026-10-09, check set tier1/0.7)
+
+`hf-internal-testing/tiny-random-LlamaForCausalLM` FAILed the Tokenizer row on
+`config.json pad_token_id = -1`. That value is transformers' "unset"
+sentinel: older `LlamaConfig` versions defaulted `pad_token_id` to -1, and
+configs derived from them still carry it. None of the 62 tokenizers above
+used it, so the corpus missed it. A negative special-token id is now skipped
+by the range rule; an id at or above zero that names no token still FAILs.
+The change only removes a FAIL, so it cannot add a false positive on the
+corpus above.
+
 ## Follow-ups from the first run, since done
 
 1. The GGML file-type mapping follows llama.cpp's `llama_ftype` enum, and the
