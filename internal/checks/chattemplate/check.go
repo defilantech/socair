@@ -104,15 +104,24 @@ func inspectAll(templates map[string]string, nonString []string, o Options) chec
 		names = append(names, n)
 	}
 	sort.Strings(names)
+	inspectNamed := func(n string) checks.Result {
+		one := inspect(templates[n], o)
+		if f, ok := pathName(n); ok {
+			one.Findings = append([]checks.Finding{f}, one.Findings...)
+			one.Status = checks.Fail
+			one.Notes = "the template's name is a path, positive evidence (CVE-2026-9856). " + one.Notes
+		}
+		return one
+	}
 	if len(names) == 1 && len(nonString) == 0 {
-		return inspect(templates[names[0]], o)
+		return inspectNamed(names[0])
 	}
 
 	rank := map[checks.Status]int{checks.Pass: 0, checks.NotTested: 1, checks.Lead: 2, checks.Fail: 3}
 	r.Status = checks.Pass
 	var notes []string
 	for _, n := range names {
-		one := inspect(templates[n], o)
+		one := inspectNamed(n)
 		label := "template " + n
 		for _, f := range one.Findings {
 			f.Detail = label + ": " + f.Detail
@@ -131,6 +140,24 @@ func inspectAll(templates map[string]string, nonString []string, o Options) chec
 	}
 	r.Notes = strings.Join(notes, " | ")
 	return r
+}
+
+// pathName FAILs a named template in a Hugging Face config whose name is a
+// path (CVE-2026-9856): transformers' save_pretrained writes each named
+// template to a file named after it, so a separator in the name writes
+// outside the save directory. Model directory templates are keyed
+// "<config>.json#<name>".
+func pathName(key string) (checks.Finding, bool) {
+	i := strings.Index(key, ".json#")
+	if i < 0 {
+		return checks.Finding{}, false
+	}
+	name := key[i+len(".json#"):]
+	if !strings.ContainsAny(name, "/\\\x00") {
+		return checks.Finding{}, false
+	}
+	return checks.Finding{Pattern: "template-name-path", Span: excerptS(fmt.Sprintf("%q", name)),
+		Detail: "a named template's name is a path; saving the tokenizer writes a file outside its directory (CVE-2026-9856)"}, true
 }
 
 // maxTemplateBytes bounds the template the analyser reads. Real templates are

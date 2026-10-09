@@ -147,6 +147,31 @@ func TestDetectorSeparatesCleanFromStructural(t *testing.T) {
 	}
 }
 
+// TestTemplateNameIsNotAPath is CVE-2026-9856: transformers' save_pretrained
+// writes each named template of a tokenizer or processor config to a file
+// named after it, so a name with a path separator writes outside the save
+// directory. Such a name is positive evidence and FAILs; ordinary names do
+// not. Falsification: skip the name check and the first case PASSes.
+func TestTemplateNameIsNotAPath(t *testing.T) {
+	body := "{% for m in messages %}{{ m['content'] }}{% endfor %}"
+	cases := map[string]checks.Status{
+		"tokenizer_config.json#../../../../home/user/.bashrc": checks.Fail,
+		"chat_template.json#..\\..\\evil":                     checks.Fail,
+		"tokenizer_config.json#tool_use":                      checks.Pass,
+		"tokenizer_config.json#rag":                           checks.Pass,
+	}
+	for name, want := range cases {
+		r := InspectAll(map[string]string{"tokenizer_config.json#default": body, name: body}, nil)
+		if r.Status != want {
+			t.Errorf("%q: status %s, want %s (notes: %s)", name, r.Status, want, r.Notes)
+			continue
+		}
+		if want == checks.Fail && (len(r.Findings) == 0 || r.Findings[0].Pattern != "template-name-path") {
+			t.Errorf("%q: want a template-name-path finding, got %+v", name, r.Findings)
+		}
+	}
+}
+
 // TestBlockSetFilterIsAnalysed: a captured block's filter chain ({% set x |
 // f %}) was parsed and thrown away, so code in it was never read. The
 // renderer applies it, and the analysis reads it first. Falsification: stop
