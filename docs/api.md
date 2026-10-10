@@ -63,6 +63,10 @@ leading `v`, such as `0.1.0-rc.2`.
 
 `store` is `absent` (none configured), `ready`, or `unopenable`.
 
+`socair health [--addr <host:port>]` asks a running API this question and exits
+0 only for a `200`. It is the container image's probe: the image has no shell,
+and the API binds the pod's loopback, which a kubelet's HTTP probe cannot reach.
+
 ### `POST /api/scan`
 
 Request `{"path":"/models/model.gguf"}`. `local` is accepted as an alias.
