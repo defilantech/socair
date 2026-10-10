@@ -12,7 +12,7 @@ assets are named `socair_<version>_<os>_<arch>` and
 arm64; the version has no leading `v`, and the tag has one.
 
 ```
-V=0.1.0-rc.2
+V=0.1.0-rc.3
 curl -LO https://github.com/defilantech/socair/releases/download/v$V/socair_${V}_linux_amd64
 curl -LO https://github.com/defilantech/socair/releases/download/v$V/SHA256SUMS
 ```

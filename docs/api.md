@@ -51,7 +51,7 @@ is also checked against the pages they might visit:
 ```
 
 `dev` in a source build; a release build reports its version without the
-leading `v`, such as `0.1.0-rc.2`.
+leading `v`, such as `0.1.0-rc.3`.
 
 ### `GET /api/health`
 
