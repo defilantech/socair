@@ -1,0 +1,9 @@
+# The image takes prebuilt Linux binaries from dist/ and builds the wizard
+# from web/; nothing else enters the build context.
+*
+!dist/socair_*_linux_*
+!dist/socair-sigstore_*_linux_*
+!web/
+web/node_modules
+web/build
+web/.svelte-kit
