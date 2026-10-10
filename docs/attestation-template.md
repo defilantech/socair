@@ -93,7 +93,7 @@ The rows that run depend on the format: every report carries structure, inventor
 | File inventory and payloads | Hidden files, embedded payloads, unexpected executables | `[result]` | `[evidence]` | `[notes]` |
 | Hash, provenance, lineage | Traceable origin: a manifest bound to this hash, from an immutable upstream commit | `[result]` | `[evidence]` | `[notes]` |
 | Known-bad hash match | Match against the known-bad artifact denylist | `[result]` | `[evidence]` | `[notes]` |
-| Chat template (hero) | Code reach, hidden or obfuscated text, override or content-triggered instructions, and the text the rendered template adds to the prompt | `[result]` | `[evidence]` | `[notes]` |
+| Chat template | Code reach, hidden or obfuscated text, override or content-triggered instructions, and the text the rendered template adds to the prompt | `[result]` | `[evidence]` | `[notes]` |
 | Tokenizer config | Tampered tokenizer tables: special-token ids, token types, control tokens | `[result]` | `[evidence]` | `[notes]` |
 | Quant match (GGUF) | Declared quantization (file name) against the tensor types in the file | `[result]` | `[evidence]` | `[notes]` |
 | Remote code (model directory) | Code a loader would run: auto_map entries and Python files (trust_remote_code) | `[result]` | `[evidence]` | `[notes]` |
@@ -128,7 +128,7 @@ Every row names what it **addresses** (`maps_to`), against MITRE ATLAS 5.6.0 and
 |---|---|---|
 | Format and structure | AML.T0010.003 | LLM03 |
 | File inventory and payloads | AML.T0011.000, AML.T0010.003 | LLM03 |
-| Chat template (hero) | AML.T0051, AML.T0011.000 | LLM01, LLM03 |
+| Chat template | AML.T0051, AML.T0011.000 | LLM01, LLM03 |
 | Tokenizer config | AML.T0010.003 | LLM03 |
 | Quant match | AML.T0010.003 | LLM03 |
 | Pickle opcode scan | AML.T0011.000, AML.T0010.003 | LLM03 |

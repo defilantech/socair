@@ -77,8 +77,8 @@ func TestSARIFIsByteStable(t *testing.T) {
 }
 
 func TestRuleIDFromCheckName(t *testing.T) {
-	if got := ruleID("Chat template (hero)"); got != "chat-template-hero" {
-		t.Errorf("ruleID = %q, want chat-template-hero", got)
+	if got := ruleID("Hash, provenance, lineage"); got != "hash-provenance-lineage" {
+		t.Errorf("ruleID = %q, want hash-provenance-lineage", got)
 	}
 }
 

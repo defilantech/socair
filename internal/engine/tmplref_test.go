@@ -17,7 +17,7 @@ func templateRow(t *testing.T, path string) report.CheckResult {
 	if err != nil {
 		t.Fatal(err)
 	}
-	return row(d, "Chat template (hero)")
+	return row(d, "Chat template")
 }
 
 // TestGGUFTemplateTokens: a GGUF's own special tokens reach the render: the

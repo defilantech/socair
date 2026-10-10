@@ -122,7 +122,7 @@ Usage:
   socair scan <path>       run the Tier 1 checks and print the report as JSON
                            (and the opt-in Tier 2 helper, with SOCAIR_TIER2_HELPER set; docs/tier2.md)
   socair corpus <dir>      sweep every GGUF under a directory, headers only
-  socair template <path>   print the chat template and hero-check findings
+  socair template <path>   print the chat template and its check findings
   socair render <path>     scan and write the HTML attestation to stdout
   socair key gen --out <prefix> [--issuer <name>]   create an Ed25519 signing key pair
   socair sign --key <key> --report <report.json>   sign a report as a DSSE attestation

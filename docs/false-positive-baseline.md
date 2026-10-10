@@ -55,7 +55,7 @@ Zero FAILs across all 52 files. Per-check tally on the first directory
 (26 files), PASS / FAIL / NOT_TESTED:
 
 ```
-Chat template (hero)           8 / 0 / 18
+Chat template                  8 / 0 / 18
 Format and structure           26 / 0 / 0
 Tokenizer config               23 / 0 / 3
 Quant match                    2 / 0 / 24
@@ -97,7 +97,7 @@ Both patterns were narrowed to require context:
 Result on the first directory (26 files), PASS / FAIL / NOT_TESTED:
 
 ```
-Chat template (hero)   24 / 0 / 2
+Chat template   24 / 0 / 2
 ```
 
 The 2 remaining NOT_TESTED are the MiniMax shards 2 and 3, which carry no chat

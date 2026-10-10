@@ -84,7 +84,7 @@ func TestRowsCarrySeverityAndMappings(t *testing.T) {
 			t.Errorf("row %q maps to nothing", c.Name)
 		}
 		switch {
-		case c.Name == "Chat template (hero)" && c.Severity != report.SeverityCritical:
+		case c.Name == "Chat template" && c.Severity != report.SeverityCritical:
 			t.Errorf("template code reach: severity %q, want critical", c.Severity)
 		case (c.Status == report.StatusPass || c.Status == report.StatusNotTested) && c.Severity != "":
 			t.Errorf("%s row %q has severity %q", c.Status, c.Name, c.Severity)
