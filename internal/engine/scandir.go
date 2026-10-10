@@ -96,13 +96,24 @@ func scanDir(dir string, start time.Time, refs *references, in Inputs, t2 *tier2
 	tokRow = refs.compareTokenizer(tokRow, tok.Tokens, tok.HFSpecial())
 	d.Verification.RerunInstructions = "socair scan <directory>"
 
-	// Per-file rows.
+	// Per-file rows. A file is a pickle by its extension or by its bytes: a
+	// pickle under any other name (notes.txt, a torch zip named weights.dat)
+	// is found by content, so no name keeps it from the pickle check.
 	var structParts, invParts, pickleParts []checks.Part
 	for _, f := range files {
-		if f.Role != modeldir.RoleWeights && f.Role != modeldir.RoleAdapter {
+		ext := strings.ToLower(path.Ext(f.Path))
+		weights := f.Role == modeldir.RoleWeights || f.Role == modeldir.RoleAdapter
+		if !weights || !pickleExt[ext] && ext != ".safetensors" && ext != ".gguf" {
+			if kind := pickle.Sniff(at(f)); kind != "" {
+				r := pickle.Inspect(at(f))
+				r.Notes = "found by its bytes, a " + kind + ", not its name; " + r.Notes
+				pickleParts = append(pickleParts, checks.Part{File: f.Path, Result: r})
+				continue
+			}
+		}
+		if !weights {
 			continue
 		}
-		ext := strings.ToLower(path.Ext(f.Path))
 		switch {
 		case ext == ".safetensors" || ext == ".gguf":
 			structParts = append(structParts, checks.Part{File: f.Path, Result: structure.Validate(at(f))})
@@ -135,6 +146,14 @@ func scanDir(dir string, start time.Time, refs *references, in Inputs, t2 *tier2
 	invRow := checks.Merge("File inventory and payloads", "Hidden files, embedded payloads, unexpected executables", invParts)
 	if len(invParts) == 0 {
 		invRow = inventory.InspectRepo(root)
+	}
+	if len(pickleParts) == 0 {
+		// Say why there is no Pickle opcode scan row, so "none present" is not
+		// read as "not run".
+		if invRow.Notes != "" {
+			invRow.Notes += "; "
+		}
+		invRow.Notes += "no pickle file: none is named as one or begins as one (a protocol 2 to 5 stream, or a zip holding a pickle), so no Pickle opcode scan row"
 	}
 
 	templates, nonString, unread := modeldir.ChatTemplates(root, files)

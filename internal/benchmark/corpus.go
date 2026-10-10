@@ -79,6 +79,12 @@ func global2(mod, name, arg string) []byte {
 	return b.Bytes()
 }
 
+// global0 is the same call at protocol 0, which has no PROTO header and is
+// ordinary text: GLOBAL, MARK, UNICODE, TUPLE, REDUCE, STOP.
+func global0(mod, name, arg string) []byte {
+	return []byte("c" + mod + "\n" + name + "\n(V" + arg + "\ntR.")
+}
+
 // global4 is the same call at protocol 4: SHORT_BINUNICODE module and name,
 // STACK_GLOBAL, the default since Python 3.8.
 func global4(mod, name, arg string) []byte {
@@ -162,6 +168,18 @@ func torchZip(pkl []byte) []byte {
 		"archive/version":  []byte("3\n"),
 		"archive/data/0":   make([]byte, 16),
 	}, []string{"archive/data.pkl", "archive/version", "archive/data/0"})
+}
+
+// torchScriptZip is a TorchScript archive as torch.jit.save writes one, the
+// layout of rust_model.ot in sentence-transformers repositories: data.pkl
+// builds a __torch__ class that the archive's own code/ defines.
+func torchScriptZip() []byte {
+	return zipOf(map[string][]byte{
+		"rust_model/data.pkl":          []byte("\x80\x02c__torch__\nModule\nq\x00)\x81q\x01."),
+		"rust_model/code/__torch__.py": []byte("class Module(Module):\n  __parameters__ = []\n"),
+		"rust_model/constants.pkl":     []byte("\x80\x02)."),
+		"rust_model/version":           []byte("1\n"),
+	}, []string{"rust_model/data.pkl", "rust_model/code/__torch__.py", "rust_model/constants.pkl", "rust_model/version"})
 }
 
 // badCRC corrupts every CRC-32 in a zip's central directory, the trick that
@@ -257,6 +275,7 @@ const (
 	srcTokenizer   = "Tokenizer tampering: remapped tokens and instruction-bearing special tokens"
 	srcShadow      = "ShadowPickle (arXiv 2607.17503): OrderedDict handed a code string passes torch.load(weights_only=True), which checks the callable and not its arguments"
 	srcDifferent   = "PickleFuzzer (arXiv 2605.15084): streams scanners and CPython parse differently"
+	srcByName      = "Scanners that choose which files are pickles by extension, as Socair's directory scan did before #186: a pickle under another name is never opened"
 )
 
 // Cases is the corpus, in report order: benign controls, then attacks.
@@ -274,6 +293,11 @@ func Cases() []Case {
 			file("model.safetensors", safetensorstest.Clean())},
 		{"control-model-directory", "model directory", "benign transformers-style directory", "control", "", Clean,
 			repo(nil)},
+		// A TorchScript archive holds pickles but is not a format the pickle
+		// check models; it stays a named, unscanned archive (a gap) and must
+		// not become a LEAD on every repository that ships one.
+		{"control-dir-torchscript", "model directory", "benign directory with a TorchScript archive, rust_model.ot, as sentence-transformers ships", "control", "", Clean,
+			repo(map[string][]byte{"rust_model.ot": torchScriptZip()})},
 
 		// Pickle: code execution through the unpickler.
 		{"pickle-os-system-p2", "pickle", "os.system via GLOBAL + REDUCE, protocol 2", srcPickleRCE, "Pickle opcode scan", Detect,
@@ -389,6 +413,14 @@ func Cases() []Case {
 			})},
 		{"dir-pickle-weights", "model directory", "pytorch_model.bin with a pickle gadget beside safe weights", srcPickleRCE, "Pickle opcode scan", Detect,
 			repo(map[string][]byte{"pytorch_model.bin": torchZip(global2("posix", "system", Payload))})},
+		{"dir-pickle-renamed", "model directory", "a pickle gadget named notes.txt beside safe weights", srcByName, "Pickle opcode scan", Detect,
+			repo(map[string][]byte{"notes.txt": global2("posix", "system", Payload)})},
+		{"dir-torch-zip-renamed", "model directory", "a PyTorch zip checkpoint with a gadget, named weights.dat", srcByName, "Pickle opcode scan", Detect,
+			repo(map[string][]byte{"weights.dat": torchZip(global2("posix", "system", Payload))})},
+		// A protocol 0 or 1 pickle is text with no header, so it is found by
+		// its extension or not at all; pinned so the stated limit stays true.
+		{"dir-pickle-protocol0-renamed", "model directory", "a protocol 0 pickle gadget (text, no header) named notes.txt", srcByName, "File inventory and payloads", KnownMiss,
+			repo(map[string][]byte{"notes.txt": global0("posix", "system", Payload)})},
 		{"dir-native-executable", "model directory", "a native executable shipped in the repository", srcPayloadMeta, "File inventory and payloads", Detect,
 			repo(map[string][]byte{"tools/helper": elfHeader})},
 		{"dir-executable-named-script", "model directory", "a native executable named setup.py", srcPayloadMeta, "File inventory and payloads", Detect,

@@ -1,6 +1,8 @@
 package engine
 
 import (
+	"archive/zip"
+	"bytes"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -253,5 +255,71 @@ func TestDirectoryNumPyArraysReachThePickleCheck(t *testing.T) {
 	}
 	if r := row(d, "Pickle opcode scan"); r.Status != report.StatusLead {
 		t.Fatalf("pickle row %s (%s), want LEAD on bytes past the array's data", r.Status, r.Notes)
+	}
+}
+
+// torchZipOf is a zip-format PyTorch checkpoint holding pkl as its data.pkl.
+func torchZipOf(t *testing.T, pkl []byte) string {
+	t.Helper()
+	var b bytes.Buffer
+	zw := zip.NewWriter(&b)
+	for name, data := range map[string][]byte{"archive/data.pkl": pkl, "archive/version": []byte("3\n")} {
+		w, err := zw.Create(name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := w.Write(data); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := zw.Close(); err != nil {
+		t.Fatal(err)
+	}
+	return b.String()
+}
+
+// TestDirectoryFindsAPickleByItsBytes: a directory sent a file to the pickle
+// check only when its extension said pickle, so a pickle named notes.txt or a
+// torch zip named weights.dat was never opened and File inventory passed
+// (#186). A weight file in a format Socair does not parse (model.h5) that is
+// really a pickle is scanned as one too. Falsification: drop the sniff from
+// scanDir and no pickle row appears.
+func TestDirectoryFindsAPickleByItsBytes(t *testing.T) {
+	for name, data := range map[string]string{
+		"notes.txt":   string(posixSystemPickle),
+		"weights.dat": torchZipOf(t, posixSystemPickle),
+		"model.h5":    string(posixSystemPickle),
+	} {
+		d, err := Scan(modelRepo(t, map[string]string{name: data}))
+		if err != nil {
+			t.Fatal(err)
+		}
+		r := row(d, "Pickle opcode scan")
+		if r.Status != report.StatusFail || !strings.Contains(r.Notes, name) {
+			t.Errorf("%s: pickle row %q (%s), want FAIL naming the file", name, r.Status, r.Notes)
+		}
+		if !strings.Contains(r.Notes, "found by its bytes") {
+			t.Errorf("%s: pickle row does not say the file was found by its bytes: %s", name, r.Notes)
+		}
+		if d.PromotionAuthorization.Authorized {
+			t.Errorf("%s: a directory with a posix.system pickle must not be authorized", name)
+		}
+	}
+}
+
+// TestDirectoryWithNoPickleSaysSo: a directory with no pickle has no Pickle
+// opcode scan row, and a reader could not tell "none present" from "not run".
+// The inventory row now says none of its files is a pickle. Falsification:
+// drop the note and this fails.
+func TestDirectoryWithNoPickleSaysSo(t *testing.T) {
+	d, err := Scan(modelRepo(t, nil))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if r := row(d, "Pickle opcode scan"); r.Status != "" {
+		t.Fatalf("pickle row %q in a directory with no pickle", r.Status)
+	}
+	if inv := row(d, "File inventory and payloads"); !strings.Contains(inv.Notes, "no pickle file") {
+		t.Fatalf("inventory notes do not say there is no pickle: %s", inv.Notes)
 	}
 }

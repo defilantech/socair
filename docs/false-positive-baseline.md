@@ -756,6 +756,60 @@ Ultralytics/YOLOv8 `27f858f2`, YOLOv5 `5bca7970`; hexgrad/Kokoro-82M
 facebook/fastspeech2-en-ljspeech `a3e3e5e2`; julien-c/wine-quality `90ef3b74`;
 openai/whisper (GitHub) `86098128`.
 
+## Pickles found by their bytes (2026-10-09, check set tier1/0.8)
+
+A model directory sent a file to the pickle check only when its extension
+said pickle (#186), so a pickle named `notes.txt`, or a torch zip named
+`weights.dat`, was never opened, and File inventory passed. A directory scan
+now also sends a file there when its bytes say pickle (`pickle.Sniff`): a
+protocol 2 to 5 stream that walks (it completes a pickle or imports a global
+within its first MiB), or a zip holding one. Protocol 0 and 1 pickles begin
+with ordinary text and are found by their extension or not at all; the
+benchmark pins that miss. Safetensors and GGUF are left to their own readers,
+since a safetensors header of 0x280 bytes begins with the same two bytes as a
+protocol 2 pickle.
+
+**The gate.** `SOCAIR_PICKLE_SNIFF_CORPUS=<dirs> go test
+./internal/checks/pickle -run RealSniff -v` sniffs every file and fails on a
+file the sniff claims that its name does not already mark as a pickle. On 583
+files (the local Hugging Face cache, `~/models`, the socair.ai example
+repositories, and three repositories fetched for their spread of formats:
+`sentence-transformers/all-MiniLM-L6-v2`, `distilbert/distilbert-base-uncased`,
+and `openai/whisper-tiny`, with ONNX, OpenVINO, TensorFlow, Flax msgpack,
+TorchScript, and PyTorch files beside safetensors and GGUF), the first run
+claimed two files: `rust_model.ot` in all-MiniLM-L6-v2 and distilbert.
+
+**TorchScript.** Both are TorchScript archives (`code/` and `constants.pkl`
+beside `data.pkl`), and the pickle check graded them LEAD: the archive's
+`__torch__.Module` class, and `torch.jit._pickle.build_intlist`, are not on
+the reviewed lists. A LEAD is not cleared by an acceptance, so two of the
+Hub's most used repositories would have become blocks with no path through.
+`torch.jit.load` runs a TorchScript archive as TorchScript, which the pickle
+grammar does not model, so the sniff leaves TorchScript alone and the
+inventory keeps naming it as an unscanned archive (a gap, as before). A
+torch.save zip given a `code/` entry to pass as TorchScript is therefore named
+as unscanned, not passed. The `control-dir-torchscript` benchmark control pins
+this. After the change: 4 files are pickles by name and bytes, 2 by name only
+(OpenVINO's raw `.bin` weights, which the pickle row already reports as not a
+pickle), and 0 by bytes only.
+
+**Verdicts on real repositories.** Each of seven was scanned as a directory
+with the engine before and after:
+
+| Repository | Files | Rows that changed | Promotion |
+|---|---|---|---|
+| nvidia/Qwen3.8-27B-NVFP4 | 19 | none; inventory notes "no pickle file" | unchanged |
+| Qwen/Qwen3-0.6B | 10 | none; inventory notes "no pickle file" | unchanged |
+| katuni4ka/tiny-random-chatglm2 | 12 | none; inventory notes "no pickle file" | unchanged |
+| hf-internal-testing/tiny-random-MistralForCausalLM | 10 | none | unchanged |
+| sentence-transformers/all-MiniLM-L6-v2 | 30 | none | unchanged |
+| distilbert/distilbert-base-uncased | 12 | none | unchanged |
+| openai/whisper-tiny | 16 | none | unchanged |
+
+The `pytorch_model.bin` checkpoints in distilbert and whisper-tiny PASS the
+grammar as before, and `rust_model.ot` stays "Archive contents were not
+scanned" in File inventory.
+
 ## Follow-ups from the first run, since done
 
 1. The GGML file-type mapping follows llama.cpp's `llama_ftype` enum, and the

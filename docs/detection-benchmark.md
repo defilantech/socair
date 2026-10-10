@@ -25,7 +25,7 @@ generated corpus, on 2026-10-04; CI does not re-run them.
   names the file (`SOCAIR_DENYLIST`). No other scanner here was given any of
   them. With Socair's defaults (none of the three), the remapped tokenizer and
   the near-miss template pass and the known-bad file is withheld as a gap, so
-  Socair detects 39 of 43. Scores with the cases that need an input left out
+  Socair detects 41 of 46. Scores with the cases that need an input left out
   follow the comparison table.
 - **The attacks are defanged.** Each case keeps the attack's structure (the
   gadget, the opcodes, the archive trick, the template construct) and swaps its
@@ -38,7 +38,7 @@ generated corpus, on 2026-10-04; CI does not re-run them.
   - in-the-wild malicious uploads;
   - the 7z-wrapped nullifAI samples;
   - the ShadowPickle corpus (arXiv 2607.17503).
-- **Few benign controls.** There are 5 controls. False positives on real
+- **Few benign controls.** There are 6 controls. False positives on real
   models are measured separately, on real corpora, in
   [false-positive-baseline.md](false-positive-baseline.md).
 
@@ -47,18 +47,18 @@ generated corpus, on 2026-10-04; CI does not re-run them.
 | Check row | Cases | Detected (FAIL or LEAD) | Withheld as a gap (NOT_TESTED) | Missed (PASS) |
 |---|---|---|---|---|
 | Chat template (hero) | 10 | 9 | 0 | 1 |
-| File inventory and payloads | 6 | 6 | 0 | 0 |
+| File inventory and payloads | 7 | 6 | 0 | 1 |
 | Format and structure | 2 | 2 | 0 | 0 |
 | Known-bad hash match | 1 | 1 | 0 | 0 |
-| Pickle opcode scan | 20 | 20 | 0 | 0 |
+| Pickle opcode scan | 22 | 22 | 0 | 0 |
 | Remote code | 1 | 1 | 0 | 0 |
 | Tokenizer config | 3 | 3 | 0 | 0 |
-| **All** | **43** | **42** | **0** | **1** |
+| **All** | **46** | **44** | **0** | **2** |
 
-Benign controls flagged (FAIL or LEAD on any row): 0 of 5.
+Benign controls flagged (FAIL or LEAD on any row): 0 of 6.
 
 Three of these detections depend on a reference input (see "Read this first");
-with Socair's defaults it detects 39 of 43.
+with Socair's defaults it detects 41 of 46.
 
 Check set tier1/0.8 replaced the pickle row's import allowlist with a typed
 grammar (`socair-wo/1`, see [check-set.md](check-set.md)) and added three
@@ -71,6 +71,15 @@ CPython does). Every earlier case kept its outcome and severity. The
 used to hold a plain OrderedDict beside a `data/0` record nothing
 referenced, which the grammar reports as bytes torch.load never reads.
 
+A model directory now finds a pickle by its bytes as well as its name (#186,
+also tier1/0.8): `dir-pickle-renamed` (a gadget named `notes.txt`) and
+`dir-torch-zip-renamed` (a torch zip named `weights.dat`) were never opened
+before, and are detected now. `dir-pickle-protocol0-renamed` is pinned as a
+miss: a protocol 0 pickle is ordinary text with no header, so in a directory
+it is found by its extension or not at all. `control-dir-torchscript` pins
+that a TorchScript archive (`rust_model.ot`, as sentence-transformers ships)
+stays a named, unscanned archive and does not become a LEAD.
+
 | Case | Format | Technique | Row | Result | Severity |
 |---|---|---|---|---|---|
 | `control-pickle` | pickle | benign state-dict-shaped pickle written by CPython | (control: every row) | PASS |  |
@@ -78,6 +87,7 @@ referenced, which the grammar reports as bytes torch.load never reads.
 | `control-gguf` | gguf | benign GGUF with a plain chat template | (control: every row) | PASS |  |
 | `control-safetensors` | safetensors | benign safetensors | (control: every row) | PASS |  |
 | `control-model-directory` | model directory | benign transformers-style directory | (control: every row) | PASS |  |
+| `control-dir-torchscript` | model directory | benign directory with a TorchScript archive, rust_model.ot, as sentence-transformers ships | (control: every row) | PASS |  |
 | `pickle-os-system-p2` | pickle | os.system via GLOBAL + REDUCE, protocol 2 | Pickle opcode scan | FAIL | critical |
 | `pickle-os-system-p4` | pickle | os.system via STACK_GLOBAL, protocol 4 (the Python 3.8+ default) | Pickle opcode scan | FAIL | critical |
 | `pickle-builtins-exec` | pickle | builtins.exec of a code string | Pickle opcode scan | FAIL | critical |
@@ -116,18 +126,30 @@ referenced, which the grammar reports as bytes torch.load never reads.
 | `safetensors-metadata-script` | safetensors | a script in the header metadata | File inventory and payloads | FAIL | high |
 | `dir-remote-code` | model directory | auto_map pointing at repository code that runs a command | Remote code | LEAD | medium |
 | `dir-pickle-weights` | model directory | pytorch_model.bin with a pickle gadget beside safe weights | Pickle opcode scan | FAIL | critical |
+| `dir-pickle-renamed` | model directory | a pickle gadget named notes.txt beside safe weights | Pickle opcode scan | FAIL | critical |
+| `dir-torch-zip-renamed` | model directory | a PyTorch zip checkpoint with a gadget, named weights.dat | Pickle opcode scan | FAIL | critical |
+| `dir-pickle-protocol0-renamed` | model directory | a protocol 0 pickle gadget (text, no header) named notes.txt | File inventory and payloads | PASS |  |
 | `dir-native-executable` | model directory | a native executable shipped in the repository | File inventory and payloads | FAIL | critical |
 | `dir-executable-named-script` | model directory | a native executable named setup.py | File inventory and payloads | FAIL | critical |
 | `dir-template-ssti` | model directory | SSTI in chat_template.jinja | Chat template (hero) | FAIL | critical |
 | `dir-normalizer-injects-special` | model directory | a normalizer that rewrites input into a special token | Tokenizer config | LEAD | high |
 | `dir-known-bad-hash` | model directory | a file whose hash is on the known-bad list | Known-bad hash match | FAIL | critical |
 
-The one miss is the published known miss: a default system prompt that steers
+There are two misses. The first is the published known miss: a default system prompt that steers
 answers as ordinary guidance, with no override phrase, URL, obfuscation, or
 condition on the user's message. It is on the
 [detection ceiling](detection-ceiling.json). Since tier1/0.8 the row quotes
 that prompt as text the template adds, for a reviewer to read, but does not
 judge it.
+
+The second is `dir-pickle-protocol0-renamed`, a protocol 0 pickle under a name
+that is not a pickle's. It is stated in [check-set.md](check-set.md) and in
+every directory report that has no pickle, whose File inventory row says no
+file is named as a pickle or begins as one "(a protocol 2 to 5 stream, or a
+zip holding a pickle)". It is not a ceiling bullet: something must still load
+the file by name. Standard loaders do not, and a repository that ships its own
+loader ships code, which the Remote code row raises as a LEAD; a loader already
+in the serving stack is outside what a scan of the artifact can see.
 
 ## Other scanners on the same files (2026-10-04)
 
@@ -143,8 +165,10 @@ check set tier1/0.7, and the five cases added with tier1/0.8 (the
 rendered-template cases `gguf-template-macro-conditional` and
 `gguf-template-reviewed-near-miss`, and the pickle cases
 `pickle-ordereddict-code-string`, `pickle-nested-loader`, and
-`pickle-memo-reput`), so its counts cover the cases before them; the other
-scanners have not been run on those six. A *suspicious* result counts as a finding, as Socair's LEAD does:
+`pickle-memo-reput`), and the four added with #186 (`dir-pickle-renamed`,
+`dir-torch-zip-renamed`, `dir-pickle-protocol0-renamed`, and the
+`control-dir-torchscript` control), so its counts cover the cases before them;
+the other scanners have not been run on those ten. A *suspicious* result counts as a finding, as Socair's LEAD does:
 picklescan's suspicious globals and Fickling's SUSPICIOUS. "Not scanned" means
 the tool skipped the file, could not parse it, or does not support the format.
 
@@ -207,7 +231,7 @@ How to read it:
 
 With the three cases that need a Socair-only input left out
 (`gguf-tokenizer-remapped`, `gguf-template-reviewed-near-miss`, and
-`dir-known-bad-hash`), Socair detects 39 of 40 attacks with check set
+`dir-known-bad-hash`), Socair detects 41 of 43 attacks with check set
 tier1/0.8 (34 of 35 in the 2026-10-04 run, which predates the near-miss case),
 and the two formats they belong to read, from that run:
 
@@ -228,6 +252,7 @@ and the two formats they belong to read, from that run:
 
 | Case | Socair | ModelAudit | picklescan | Fickling | ModelScan |
 |---|---|---|---|---|---|
+| `control-dir-torchscript` | clean | not run | not run | not run | not run |
 | `control-gguf` | clean | clean | clean | finding (not a pickle) | could not scan |
 | `control-model-directory` | clean | clean | could not scan | could not scan | could not scan |
 | `control-pickle` | clean | clean | finding (suspicious) | finding | clean |
@@ -237,8 +262,11 @@ and the two formats they belong to read, from that run:
 | `dir-executable-named-script` | finding | not run | not run | not run | not run |
 | `dir-native-executable` | finding | clean | could not scan | could not scan | could not scan |
 | `dir-normalizer-injects-special` | finding | clean | could not scan | could not scan | could not scan |
+| `dir-pickle-protocol0-renamed` | clean | not run | not run | not run | not run |
+| `dir-pickle-renamed` | finding | not run | not run | not run | not run |
 | `dir-pickle-weights` | finding | finding | finding | could not scan | finding |
 | `dir-remote-code` | finding | clean | could not scan | could not scan | could not scan |
+| `dir-torch-zip-renamed` | finding | not run | not run | not run | not run |
 | `dir-template-ssti` | finding | finding | could not scan | could not scan | could not scan |
 | `gguf-control-token-instruction` | finding | clean | clean | finding (not a pickle) | could not scan |
 | `gguf-hidden-tensor-bytes` | finding | finding | clean | finding (not a pickle) | could not scan |
