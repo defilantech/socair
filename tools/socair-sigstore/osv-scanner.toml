@@ -1,0 +1,7 @@
+# Advisories that OSV reports against this module's dependencies but that do
+# not apply to the code it builds. Each says why; govulncheck in CI, which
+# checks the code actually compiled, stays the gate.
+
+[[IgnoredVulns]]
+id = "GO-2026-5932"
+reason = "Reported against every version of golang.org/x/crypto for its openpgp packages. socair-sigstore does not import them: they are not in its vendor/ tree, so they are not compiled in."
