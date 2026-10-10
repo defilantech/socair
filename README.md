@@ -98,6 +98,10 @@ are the static web app in `web/`, built with npm from a checkout; see
 `scripts/demo-console.sh` builds it and fills a demo store with one model in
 each state.
 
+On Kubernetes, the Helm chart runs the airlock and the wizard from the
+release's container image, `ghcr.io/defilantech/socair`, which carries the
+same release binaries: see [docs/kubernetes.md](docs/kubernetes.md).
+
 ### Build from source
 
 Go 1.27 or later. Dependencies are vendored, so this builds air-gapped.
@@ -181,6 +185,7 @@ checks that run the model on your own GPUs, is built here in the open.
 | [tier2.md](docs/tier2.md) | Tier 2, opt-in: measurements made by running the model, the node-class record, the probe-helper protocol, isolation, and the roadmap |
 | [airlock.md](docs/airlock.md) | The airlock: pull, ingest, promote, the trust policy, the log, the signed inventory export |
 | [intake-host.md](docs/intake-host.md) | Running Socair as the model intake host for an on-prem GPU cluster |
+| [kubernetes.md](docs/kubernetes.md) | The Helm chart: the airlock and the wizard in a cluster, who can reach them, and handing promoted models to LLMKube |
 | [provenance-bundle.md](docs/provenance-bundle.md) | The inputs that move each row: mirrors, denylists, provenance, signatures, a license policy, acceptances |
 | [feed.md](docs/feed.md) | Signed reference feeds: format, verification, building one |
 | [api.md](docs/api.md), [wizard.md](docs/wizard.md) | The local HTTP API, the click-through wizard, and the airlock console (wizard.md) |
