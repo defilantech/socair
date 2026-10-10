@@ -132,7 +132,7 @@ jobs:
           [ "$installed" = "$released" ] || { echo "installed $installed, released $released" >&2; exit 1; }
       - name: index two chart versions and install from the index
         run: |
-          mkdir -p repo
+          mkdir -p repo pulled
           for v in 0.0.1 0.0.0-dryrun; do
             helm package charts/socair --version "$v" --app-version "$v" -d chart
             cp "chart/socair-$v.tgz" repo/
@@ -143,7 +143,7 @@ jobs:
           done
           [ "$(grep -c '^    digest:' repo/index.yaml)" = 2 ] || { cat repo/index.yaml; exit 1; }
           python3 -m http.server 8879 --bind 127.0.0.1 --directory repo >/dev/null 2>&1 &
-          for _ in $(seq 1 30); do curl -fsS http://127.0.0.1:8879/index.yaml >/dev/null && break; sleep 1; done
+          for _ in $(seq 1 30); do curl -fsS http://127.0.0.1:8879/index.yaml >/dev/null 2>&1 && break; sleep 1; done
           helm repo add socair http://127.0.0.1:8879
           # A pre-release is listed only with --devel, as for any Helm repository.
           helm search repo socair/socair --devel --versions
