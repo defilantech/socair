@@ -7,12 +7,18 @@ trusted key signed.
 explains the design, how to reach it, and how promoted models get to LLMKube.
 
 ```
+helm repo add socair https://defilantech.github.io/socair
 kubectl create namespace socair
 kubectl -n socair create configmap socair-trusted-keys --from-file=operator.pub
-helm install intake oci://ghcr.io/defilantech/charts/socair --version <version> -n socair \
+helm install intake socair/socair --version <version> -n socair \
   --set trust.trustedKeysConfigMap=socair-trusted-keys
 kubectl -n socair port-forward deploy/intake-socair 8080:8080
 ```
+
+The chart is also published as `oci://ghcr.io/defilantech/charts/socair`.
+Both carry a build-provenance attestation;
+[docs/kubernetes.md](https://github.com/defilantech/socair/blob/main/docs/kubernetes.md#install)
+shows how to check it before installing.
 
 By default the API binds the pod's loopback with no Service (it has no
 authentication of its own, so `kubectl port-forward` and Kubernetes RBAC are

@@ -69,10 +69,25 @@ Tier 2 checks themselves are on the roadmap.
 
 ### Install a release
 
-Releases are GitHub pre-releases for now. Each holds `socair` and the optional
-`socair-sigstore` helper for linux and darwin on amd64 and arm64, a
-`SHA256SUMS` file, and a build-provenance attestation for every binary. Check
-the binary before you run it:
+With Homebrew, on macOS or Linux:
+
+```
+brew install defilantech/tap/socair
+```
+
+The formula installs the release's own `socair` binary for your platform,
+checked against the release's `SHA256SUMS`, so the binary's attestation
+verifies the installed copy:
+
+```
+gh attestation verify "$(brew --prefix socair)/bin/socair" --repo defilantech/socair \
+  --signer-workflow defilantech/socair/.github/workflows/release.yml
+```
+
+Or download a release yourself. Releases are GitHub pre-releases for now. Each
+holds `socair` and the optional `socair-sigstore` helper for linux and darwin
+on amd64 and arm64, a `SHA256SUMS` file, and a build-provenance attestation
+for every binary. Check the binary before you run it:
 
 ```
 V=0.1.0-rc.2
@@ -100,7 +115,8 @@ each state.
 
 On Kubernetes, the Helm chart runs the airlock and the wizard from the
 release's container image, `ghcr.io/defilantech/socair`, which carries the
-same release binaries: see [docs/kubernetes.md](docs/kubernetes.md).
+same release binaries (`helm repo add socair https://defilantech.github.io/socair`):
+see [docs/kubernetes.md](docs/kubernetes.md).
 
 ### Build from source
 
