@@ -205,10 +205,14 @@ checks that run the model on your own GPUs, is built here in the open.
 | [provenance-bundle.md](docs/provenance-bundle.md) | The inputs that move each row: mirrors, denylists, provenance, signatures, a license policy, acceptances |
 | [feed.md](docs/feed.md) | Signed reference feeds: format, verification, building one |
 | [api.md](docs/api.md), [wizard.md](docs/wizard.md) | The local HTTP API, the click-through wizard, and the airlock console (wizard.md) |
+| [threat-model.md](docs/threat-model.md) | What Socair protects, whom it trusts for what, and what it does not defend against |
 | [false-positive-baseline.md](docs/false-positive-baseline.md) | How each detector was measured against real models |
 | [detection-benchmark.md](docs/detection-benchmark.md) | Detection on reproductions of published attacks, misses pinned, beside picklescan, ModelScan, ModelAudit, and Fickling |
 | [dev.md](docs/dev.md), [CONTRIBUTING.md](CONTRIBUTING.md) | Building, testing, and contributing (DCO sign-off) |
 | [releasing.md](docs/releasing.md), [verify-release.md](docs/verify-release.md) | Cutting and verifying a release |
+| [ROADMAP.md](ROADMAP.md), [CHANGELOG.md](CHANGELOG.md) | What is planned and not planned, and what each release changed |
+| [GOVERNANCE.md](GOVERNANCE.md), [MAINTAINERS.md](MAINTAINERS.md) | Who decides, how the contract changes, and the project's commitments |
+| [SUPPORT.md](SUPPORT.md), [TRADEMARKS.md](TRADEMARKS.md) | Where to ask questions and report problems; using the Socair name |
 
 ## Security
 
@@ -217,4 +221,4 @@ Report vulnerabilities privately; see [SECURITY.md](SECURITY.md).
 ## License
 
 Apache License 2.0. "Socair" and the Socair logo are trademarks of Defilan
-Technologies.
+Technologies; see [TRADEMARKS.md](TRADEMARKS.md).
