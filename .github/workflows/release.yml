@@ -111,13 +111,15 @@ jobs:
           push-to-registry: true
 
   # The Helm chart, versioned as the tag with the image of the same version,
-  # pushed to GHCR as an OCI artifact and attested.
+  # pushed to GHCR as an OCI artifact and attached to the draft release, both
+  # attested. Publishing the release adds the attached chart to the Helm
+  # repository (distribute.yml).
   chart:
     if: startsWith(github.ref, 'refs/tags/v')
     needs: image
     runs-on: ubuntu-latest
     permissions:
-      contents: read
+      contents: write      # attach the chart to the draft release
       packages: write      # push to ghcr.io/defilantech/charts/socair
       id-token: write
       attestations: write
@@ -144,3 +146,10 @@ jobs:
           subject-name: ghcr.io/defilantech/charts/socair
           subject-digest: ${{ steps.push.outputs.digest }}
           push-to-registry: true
+      - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: chart-dist/socair-*.tgz
+      - name: attach the chart to the draft release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload "${GITHUB_REF_NAME}" "chart-dist/socair-${GITHUB_REF_NAME#v}.tgz"

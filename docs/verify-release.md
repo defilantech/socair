@@ -80,13 +80,19 @@ from (`vcs.revision`).
 
 A release also pushes the container image, `ghcr.io/defilantech/socair:$V`
 (linux/amd64 and linux/arm64), and the Helm chart,
-`oci://ghcr.io/defilantech/charts/socair` at version `$V`. Each carries a
+`oci://ghcr.io/defilantech/charts/socair` at version `$V`. The same chart
+archive, `socair-$V.tgz`, is a release asset, and the Helm repository at
+`https://defilantech.github.io/socair` points at it. Each carries a
 build-provenance attestation from the same release workflow:
 
 ```
 gh attestation verify oci://ghcr.io/defilantech/socair:$V --repo defilantech/socair \
   --signer-workflow defilantech/socair/.github/workflows/release.yml
 gh attestation verify oci://ghcr.io/defilantech/charts/socair:$V --repo defilantech/socair \
+  --signer-workflow defilantech/socair/.github/workflows/release.yml
+
+# or the archive, from the release page or `helm pull socair/socair --version $V`:
+gh attestation verify socair-$V.tgz --repo defilantech/socair \
   --signer-workflow defilantech/socair/.github/workflows/release.yml
 ```
 
@@ -95,6 +101,18 @@ copies what `scripts/build-release.sh` built and compiles nothing, so
 `/usr/local/bin/socair` in the image has the SHA-256 listed in `SHA256SUMS`
 for its platform. The chart's `image.digest` value pins the image you
 verified ([kubernetes.md](kubernetes.md)).
+
+## Installed with Homebrew
+
+`brew install defilantech/tap/socair` downloads the release's binary for
+your platform, checks it against the SHA-256 the formula records (taken from
+`SHA256SUMS` after the attestations verified), and installs it unchanged. The
+attestation therefore verifies the installed copy:
+
+```
+gh attestation verify "$(brew --prefix socair)/bin/socair" --repo defilantech/socair \
+  --signer-workflow defilantech/socair/.github/workflows/release.yml
+```
 
 ## Running it
 

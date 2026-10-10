@@ -1,0 +1,152 @@
+name: distribute
+
+# Publishing a release (the maintainer's step after reviewing the draft that
+# release.yml creates) puts it where Defilan's other tools install from:
+#
+#   - the Helm repository https://defilantech.github.io/socair: index.yaml on
+#     the gh-pages branch, pointing at the chart the release holds
+#     (`helm repo add socair https://defilantech.github.io/socair`);
+#   - the Homebrew tap defilantech/homebrew-tap
+#     (`brew install defilantech/tap/socair`).
+#
+# Each job checks the release's files against their build-provenance
+# attestations before it points anyone at them. A pull request that touches
+# this path builds the binaries and the chart and installs both from what the
+# scripts render. See docs/releasing.md.
+on:
+  release:
+    types: [published]
+  pull_request:
+    paths:
+      - ".github/workflows/distribute.yml"
+      - "scripts/publish-homebrew-formula.sh"
+      - "scripts/helm-repo-index.sh"
+
+permissions:
+  contents: read
+
+env:
+  HELM_VERSION: v4.3.0
+
+jobs:
+  helm-repo:
+    if: github.event_name == 'release'
+    runs-on: ubuntu-latest
+    concurrency:
+      group: gh-pages
+      cancel-in-progress: false
+    permissions:
+      contents: write      # push index.yaml to gh-pages
+      attestations: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: gh-pages
+          path: site
+      - uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
+        with:
+          version: ${{ env.HELM_VERSION }}
+      - name: fetch the chart and check its provenance
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.event.release.tag_name }}
+        run: |
+          gh release download "$TAG" -R "$GITHUB_REPOSITORY" -p "socair-${TAG#v}.tgz" -D chart
+          gh attestation verify "chart/socair-${TAG#v}.tgz" -R "$GITHUB_REPOSITORY" \
+            --signer-workflow "$GITHUB_REPOSITORY/.github/workflows/release.yml"
+      - name: add it to the index
+        env:
+          TAG: ${{ github.event.release.tag_name }}
+        run: |
+          scripts/helm-repo-index.sh "chart/socair-${TAG#v}.tgz" \
+            "https://github.com/$GITHUB_REPOSITORY/releases/download/$TAG" site/index.yaml
+          git -C site add index.yaml
+          git -C site \
+            -c user.name="github-actions[bot]" \
+            -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
+            commit -m "Add socair ${TAG#v} to the Helm repository"
+          git -C site push
+
+  homebrew:
+    if: github.event_name == 'release'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      attestations: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: fetch the binaries and check their provenance
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.event.release.tag_name }}
+        run: |
+          v="${TAG#v}"
+          gh release download "$TAG" -R "$GITHUB_REPOSITORY" -D rel -p SHA256SUMS -p "socair_${v}_*"
+          for p in darwin_amd64 darwin_arm64 linux_amd64 linux_arm64; do
+            gh attestation verify "rel/socair_${v}_$p" -R "$GITHUB_REPOSITORY" \
+              --signer-workflow "$GITHUB_REPOSITORY/.github/workflows/release.yml"
+          done
+          # The formula takes its hashes from SHA256SUMS: they must be the
+          # hashes of the binaries just verified.
+          (cd rel && sha256sum --check --ignore-missing SHA256SUMS)
+      - name: publish the formula to the tap
+        env:
+          HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+          TAG: ${{ github.event.release.tag_name }}
+        run: |
+          if [ -z "$HOMEBREW_TAP_TOKEN" ]; then
+            echo "::error::HOMEBREW_TAP_TOKEN is not set: add a token that can push to defilantech/homebrew-tap (docs/releasing.md), then re-run this job"
+            exit 1
+          fi
+          scripts/publish-homebrew-formula.sh "${TAG#v}" rel/SHA256SUMS
+
+  test:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: false
+      - uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
+        with:
+          version: ${{ env.HELM_VERSION }}
+      - name: build the release binaries
+        run: scripts/build-release.sh 0.0.0-dryrun dist
+      - name: install the rendered formula with Homebrew
+        run: |
+          eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"
+          export HOMEBREW_NO_AUTO_UPDATE=1 HOMEBREW_NO_ANALYTICS=1 HOMEBREW_NO_ENV_HINTS=1
+          brew tap-new --no-git local/socair
+          DRY_RUN=1 SOCAIR_RELEASE_URL="file://$PWD/dist" \
+            scripts/publish-homebrew-formula.sh 0.0.0-dryrun dist/SHA256SUMS \
+            >"$(brew --repository)/Library/Taps/local/homebrew-socair/Formula/socair.rb"
+          brew install local/socair/socair
+          brew test local/socair/socair
+          # Homebrew installs the release's bytes unchanged, so the binary's
+          # attestation verifies an installed copy too.
+          installed=$(sha256sum "$(brew --prefix socair)/bin/socair" | cut -d' ' -f1)
+          released=$(awk '$2 == "socair_0.0.0-dryrun_linux_amd64" { print $1 }' dist/SHA256SUMS)
+          [ "$installed" = "$released" ] || { echo "installed $installed, released $released" >&2; exit 1; }
+      - name: index two chart versions and install from the index
+        run: |
+          mkdir -p repo pulled
+          for v in 0.0.1 0.0.0-dryrun; do
+            helm package charts/socair --version "$v" --app-version "$v" -d chart
+            cp "chart/socair-$v.tgz" repo/
+          done
+          # The second release is indexed twice, as a re-run of the job would.
+          for v in 0.0.1 0.0.0-dryrun 0.0.0-dryrun; do
+            scripts/helm-repo-index.sh "chart/socair-$v.tgz" http://127.0.0.1:8879 repo/index.yaml
+          done
+          [ "$(grep -c '^    digest:' repo/index.yaml)" = 2 ] || { cat repo/index.yaml; exit 1; }
+          python3 -m http.server 8879 --bind 127.0.0.1 --directory repo >/dev/null 2>&1 &
+          for _ in $(seq 1 30); do curl -fsS http://127.0.0.1:8879/index.yaml >/dev/null 2>&1 && break; sleep 1; done
+          helm repo add socair http://127.0.0.1:8879
+          # A pre-release is listed only with --devel, as for any Helm repository.
+          helm search repo socair/socair --devel --versions
+          [ "$(helm search repo socair/socair -o json | jq -r '.[0].version')" = 0.0.1 ]
+          helm pull socair/socair --version 0.0.0-dryrun -d pulled
+          cmp pulled/socair-0.0.0-dryrun.tgz chart/socair-0.0.0-dryrun.tgz

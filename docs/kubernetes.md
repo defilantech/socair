@@ -22,30 +22,40 @@ staged, scanned, and promoted before anything serves them. It is the same
 
 ## Install
 
-Releases push the chart and the image to GHCR, each with a build-provenance
-attestation. Check both before installing:
+Releases publish the chart to the Helm repository at
+`https://defilantech.github.io/socair`, where Defilan's other charts are, and
+push the chart and the image to GHCR. Each carries a build-provenance
+attestation. Fetch the chart and check both before installing:
 
 ```
 V=0.1.0-rc.2
-gh attestation verify oci://ghcr.io/defilantech/charts/socair:$V --repo defilantech/socair
-gh attestation verify oci://ghcr.io/defilantech/socair:$V --repo defilantech/socair
+helm repo add socair https://defilantech.github.io/socair
+helm pull socair/socair --version $V
+gh attestation verify socair-$V.tgz --repo defilantech/socair \
+  --signer-workflow defilantech/socair/.github/workflows/release.yml
+gh attestation verify oci://ghcr.io/defilantech/socair:$V --repo defilantech/socair \
+  --signer-workflow defilantech/socair/.github/workflows/release.yml
 ```
 
-Then give the store its trust policy and install:
+Then give the store its trust policy and install the chart you verified:
 
 ```
 kubectl create namespace socair
 kubectl label namespace socair pod-security.kubernetes.io/enforce=restricted
 kubectl -n socair create configmap socair-trusted-keys --from-file=operator.pub
 kubectl -n socair create configmap socair-acceptor-keys --from-file=ciso.pub
-helm install intake oci://ghcr.io/defilantech/charts/socair --version $V -n socair \
+helm install intake socair-$V.tgz -n socair \
   --set trust.trustedKeysConfigMap=socair-trusted-keys \
   --set trust.acceptorKeysConfigMap=socair-acceptor-keys
 kubectl -n socair port-forward deploy/intake-socair 8080:8080
 ```
 
 and open <http://127.0.0.1:8080>. The chart's [README](../charts/socair/README.md)
-lists every value.
+lists every value. While releases are pre-releases, name the version: Helm
+lists a pre-release only with `--devel`. The same chart is at
+`oci://ghcr.io/defilantech/charts/socair` for a cluster that pulls from an
+OCI registry
+(`gh attestation verify oci://ghcr.io/defilantech/charts/socair:$V --repo defilantech/socair`).
 
 ## Who can reach it
 
