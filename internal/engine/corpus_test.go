@@ -34,7 +34,7 @@ func TestCorpusSweep(t *testing.T) {
 			hostileSeen = true
 			found := false
 			for _, n := range e.Fails {
-				if n == "Chat template (hero)" {
+				if n == "Chat template" {
 					found = true
 				}
 			}

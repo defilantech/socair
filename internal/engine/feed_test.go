@@ -69,7 +69,7 @@ func TestFeedReviewedTemplateClearsALead(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if r := row(d, "Chat template (hero)"); r.Status != report.StatusLead {
+	if r := row(d, "Chat template"); r.Status != report.StatusLead {
 		t.Fatalf("without a feed: %s, want LEAD", r.Status)
 	}
 
@@ -78,7 +78,7 @@ func TestFeedReviewedTemplateClearsALead(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if r := row(d, "Chat template (hero)"); r.Status != report.StatusPass {
+	if r := row(d, "Chat template"); r.Status != report.StatusPass {
 		t.Fatalf("with the template on the feed: %s (%s), want PASS", r.Status, r.Notes)
 	}
 	if !strings.Contains(d.Scope.ReferenceData, "Example Intel 2026.10.1") {
@@ -95,7 +95,7 @@ func TestFeedCannotClearStructuralEvidence(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if r := row(d, "Chat template (hero)"); r.Status != report.StatusFail {
+	if r := row(d, "Chat template"); r.Status != report.StatusFail {
 		t.Fatalf("a feed entry must not clear code: %s", r.Status)
 	}
 }

@@ -10,8 +10,8 @@ import (
 	"github.com/defilantech/socair/internal/gguf"
 )
 
-// templateDump prints every chat template of an artifact and the hero-check
-// findings with their evidence spans. It is the tuning tool: it shows why a
+// templateDump prints every chat template of an artifact and the Chat template
+// row's findings with their evidence spans. It is the tuning tool: it shows why a
 // template was flagged.
 func templateDump(path string) error {
 	m, err := gguf.ReadHeader(path)
@@ -37,7 +37,7 @@ func templateDump(path string) error {
 		fmt.Printf("=== %s: template %q is not a string; not inspected ===\n", m.FileName, n)
 	}
 
-	fmt.Println("=== hero check ===")
+	fmt.Println("=== Chat template check ===")
 	r := chattemplate.InspectAllWith(m.ChatTemplates, m.ChatTemplateNonString, chattemplate.Options{Tokens: chattemplate.TokensFromGGUF(m.Tokenizer)})
 	fmt.Printf("status: %s\nnotes: %s\n", r.Status, safeForTerminal(r.Notes))
 	for _, f := range r.Findings {

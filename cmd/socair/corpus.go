@@ -15,7 +15,7 @@ func corpus(root string) error {
 		return err
 	}
 
-	fmt.Printf("%-46s %-14s %-9s %-11s %-14s\n", "model", "hero", "structure", "tokenizer", "quant")
+	fmt.Printf("%-46s %-14s %-9s %-11s %-14s\n", "model", "template", "structure", "tokenizer", "quant")
 	fmt.Println("-----------------------------------------------------------------------------------------------------------")
 	for _, e := range entries {
 		if e.Error != "" {
@@ -24,7 +24,7 @@ func corpus(root string) error {
 		}
 		fmt.Printf("%-46s %-14s %-9s %-11s %-14s\n",
 			shortPath(e.Path),
-			e.Checks["Chat template (hero)"],
+			e.Checks["Chat template"],
 			e.Checks["Format and structure"],
 			e.Checks["Tokenizer config"],
 			e.Checks["Quant match"],

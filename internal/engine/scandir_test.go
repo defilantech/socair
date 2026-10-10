@@ -69,7 +69,7 @@ func TestDirectoryScanCoversEveryFile(t *testing.T) {
 		t.Errorf("identity name %q arch %q", a.Name, a.Architecture)
 	}
 	for name, want := range map[string]report.Status{
-		"Format and structure": report.StatusPass, "Chat template (hero)": report.StatusPass,
+		"Format and structure": report.StatusPass, "Chat template": report.StatusPass,
 		"Remote code": report.StatusPass, "Tokenizer config": report.StatusPass,
 	} {
 		if got := row(d, name).Status; got != want {

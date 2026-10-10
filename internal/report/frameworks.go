@@ -139,7 +139,7 @@ var (
 var checkMaps = map[string][]FrameworkRef{
 	"Format and structure":        {atlasSupplyChainModel, owaspSupplyChain},
 	"File inventory and payloads": {atlasUnsafeArtifacts, atlasSupplyChainModel, owaspSupplyChain},
-	"Chat template (hero)":        {atlasPromptInjection, atlasUnsafeArtifacts, owaspPromptInjection, owaspSupplyChain},
+	"Chat template":               {atlasPromptInjection, atlasUnsafeArtifacts, owaspPromptInjection, owaspSupplyChain},
 	"Tokenizer config":            {atlasSupplyChainModel, owaspSupplyChain},
 	"Quant match":                 {atlasSupplyChainModel, owaspSupplyChain},
 	"Pickle opcode scan":          {atlasUnsafeArtifacts, atlasSupplyChainModel, owaspSupplyChain},

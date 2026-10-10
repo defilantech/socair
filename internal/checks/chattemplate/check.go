@@ -165,7 +165,7 @@ func pathName(key string) (checks.Finding, bool) {
 const maxTemplateBytes = 1 << 20
 
 const (
-	resultName     = "Chat template (hero)"
+	resultName     = "Chat template"
 	resultLooksFor = "Code reach, hidden or obfuscated text, override or content-triggered instructions, and the text the rendered template adds to the prompt"
 )
 

@@ -149,7 +149,7 @@
       ]
     },
     {
-      "name": "Chat template (hero)",
+      "name": "Chat template",
       "looks_for": "Code reach, hidden or obfuscated text, override or content-triggered instructions, and the text the rendered template adds to the prompt",
       "status": "PASS",
       "notes": "no structural indicator and no instruction-language lead matched. Heuristic; not a proof of absence.",

@@ -56,7 +56,7 @@ func TestPromotionAuthorizedWhenAllPass(t *testing.T) {
 
 func TestPromotionWithheldOnFail(t *testing.T) {
 	d := promotionDoc(map[string]report.Status{
-		"Chat template (hero)":      report.StatusFail,
+		"Chat template":             report.StatusFail,
 		"Hash, provenance, lineage": report.StatusNotTested,
 	})
 	pa := promotion(d, "ciso@example.com", "2027-01-01T00:00:00Z")
@@ -127,7 +127,7 @@ func TestScanCleanFixture(t *testing.T) {
 	if got := rowStatus(d, "Format and structure"); got != report.StatusPass {
 		t.Errorf("structure = %s, want PASS", got)
 	}
-	if got := rowStatus(d, "Chat template (hero)"); got != report.StatusPass {
+	if got := rowStatus(d, "Chat template"); got != report.StatusPass {
 		t.Errorf("hero = %s, want PASS", got)
 	}
 	if got := rowStatus(d, "Tokenizer config"); got != report.StatusNotTested {
@@ -154,12 +154,12 @@ func TestScanHostileTemplateFails(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Scan: %v", err)
 	}
-	if got := rowStatus(d, "Chat template (hero)"); got != report.StatusFail {
+	if got := rowStatus(d, "Chat template"); got != report.StatusFail {
 		t.Fatalf("hero = %s, want FAIL", got)
 	}
 	found := false
 	for _, n := range d.Findings.Fails {
-		if n == "Chat template (hero)" {
+		if n == "Chat template" {
 			found = true
 		}
 	}
@@ -213,7 +213,7 @@ func TestScanInstructionLeadWithholds(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Scan: %v", err)
 	}
-	if got := rowStatus(d, "Chat template (hero)"); got != report.StatusLead {
+	if got := rowStatus(d, "Chat template"); got != report.StatusLead {
 		t.Fatalf("hero = %s, want LEAD (a lead, not a FAIL)", got)
 	}
 	if d.PromotionAuthorization.Authorized {
@@ -291,7 +291,7 @@ func TestLeadIsNotClearedByAcceptance(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Scan: %v", err)
 	}
-	if got := rowStatus(d, "Chat template (hero)"); got != report.StatusLead {
+	if got := rowStatus(d, "Chat template"); got != report.StatusLead {
 		t.Fatalf("hero = %s, want LEAD", got)
 	}
 	pa := d.PromotionAuthorization
@@ -301,7 +301,7 @@ func TestLeadIsNotClearedByAcceptance(t *testing.T) {
 	if !strings.Contains(pa.Conditions, "no acceptance clears it") {
 		t.Errorf("the withholding must say no acceptance clears it, got %q", pa.Conditions)
 	}
-	if len(d.Findings.Leads) != 1 || d.Findings.Leads[0] != "Chat template (hero)" {
+	if len(d.Findings.Leads) != 1 || d.Findings.Leads[0] != "Chat template" {
 		t.Errorf("findings.leads = %v, want the hero row", d.Findings.Leads)
 	}
 	if problems := report.Validate(d); len(problems) != 0 {
@@ -320,7 +320,7 @@ func TestNamedTemplatePayloadIsSeen(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := rowStatus(d, "Chat template (hero)"); got != report.StatusLead {
+	if got := rowStatus(d, "Chat template"); got != report.StatusLead {
 		t.Fatalf("hero = %s, want LEAD from the tool_use template", got)
 	}
 }
@@ -336,7 +336,7 @@ func TestNonStringTemplateIsNotTested(t *testing.T) {
 	}
 	var notes string
 	for _, c := range d.Checks {
-		if c.Name == "Chat template (hero)" {
+		if c.Name == "Chat template" {
 			notes = c.Notes
 			if c.Status != report.StatusNotTested {
 				t.Fatalf("hero = %s, want NOT_TESTED", c.Status)
@@ -410,7 +410,7 @@ func TestUnparseableGGUFStillReports(t *testing.T) {
 		if d.Artifact.Format != "GGUF" || len(d.Artifact.SHA256) != 64 {
 			t.Errorf("%s: identity %q %q, want GGUF and a hash", c.name, d.Artifact.Format, d.Artifact.SHA256)
 		}
-		for _, row := range []string{"Format and structure", "Chat template (hero)", "Tokenizer config", "Quant match"} {
+		for _, row := range []string{"Format and structure", "Chat template", "Tokenizer config", "Quant match"} {
 			var got report.CheckResult
 			for _, ch := range d.Checks {
 				if ch.Name == row {
@@ -425,7 +425,7 @@ func TestUnparseableGGUFStillReports(t *testing.T) {
 			if ch.Name == "Format and structure" && !strings.Contains(ch.Notes, c.want) {
 				t.Errorf("%s: structure notes %q, want them to name %q", c.name, ch.Notes, c.want)
 			}
-			if ch.Name == "Chat template (hero)" && strings.Contains(ch.Notes, "no chat template present") {
+			if ch.Name == "Chat template" && strings.Contains(ch.Notes, "no chat template present") {
 				t.Errorf("%s: hero row claims no template, but the metadata was never read", c.name)
 			}
 		}
@@ -475,7 +475,7 @@ func TestChecksSeeTheHashedBytes(t *testing.T) {
 	if d.Artifact.SHA256 != hex.EncodeToString(sum[:]) {
 		t.Fatalf("hash %s is not the clean bytes the scan read", d.Artifact.SHA256)
 	}
-	if got := rowStatus(d, "Chat template (hero)"); got != report.StatusPass {
+	if got := rowStatus(d, "Chat template"); got != report.StatusPass {
 		t.Fatalf("hero = %s: the checks read different bytes than were hashed", got)
 	}
 }

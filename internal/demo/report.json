@@ -140,7 +140,7 @@
       ]
     },
     {
-      "name": "Chat template (hero)",
+      "name": "Chat template",
       "looks_for": "Code reach, hidden or obfuscated text, override or content-triggered instructions, and the text the rendered template adds to the prompt",
       "status": "FAIL",
       "evidence": "process-execution: .system(...) (template calls the process-execution function system); python-object-escape: __globals__ (template reaches a Python dunder attribute)",
@@ -211,7 +211,7 @@
   ],
   "findings": {
     "fails": [
-      "Chat template (hero)"
+      "Chat template"
     ],
     "not_tested": [
       "File inventory and payloads"
@@ -258,7 +258,7 @@
     "authorized": false,
     "state": "withheld",
     "level": "Tier 1 only",
-    "conditions": "Withheld: positive evidence on Chat template (hero). A FAIL or a LEAD withholds promotion, and no acceptance clears it: it needs a person's review outside Socair."
+    "conditions": "Withheld: positive evidence on Chat template. A FAIL or a LEAD withholds promotion, and no acceptance clears it: it needs a person's review outside Socair."
   },
   "verification": {
     "document_hash": "",

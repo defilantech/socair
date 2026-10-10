@@ -116,7 +116,7 @@ var passMeaning = map[string]string{
 	"File inventory and payloads": "No script, shell command, long encoded blob, or executable signature was found in string metadata values, " +
 		"including every string-array element of 64 bytes or more, and no native executable among the files. " +
 		"Shorter array elements, such as vocabulary tokens, are too short to carry one and are not scanned.",
-	"Chat template (hero)": "The template parsed and reaches no Python internals or process execution, " +
+	"Chat template": "The template parsed and reaches no Python internals or process execution, " +
 		"and carries no override or concealment language, URL, hidden or obfuscated text, or condition on message content. " +
 		"Instructions written as ordinary guidance are not judged: when the template rendered, the notes list the text it adds " +
 		"to the prompt and say whether it matches a reviewed template.",

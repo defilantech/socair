@@ -46,7 +46,7 @@ generated corpus, on 2026-10-04; CI does not re-run them.
 
 | Check row | Cases | Detected (FAIL or LEAD) | Withheld as a gap (NOT_TESTED) | Missed (PASS) |
 |---|---|---|---|---|
-| Chat template (hero) | 10 | 9 | 0 | 1 |
+| Chat template | 10 | 9 | 0 | 1 |
 | File inventory and payloads | 7 | 6 | 0 | 1 |
 | Format and structure | 2 | 2 | 0 | 0 |
 | Known-bad hash match | 1 | 1 | 0 | 0 |
@@ -107,15 +107,15 @@ stays a named, unscanned archive and does not become a LEAD.
 | `pickle-ordereddict-code-string` | pickle | collections.OrderedDict, a safe-listed callable, handed a command string | Pickle opcode scan | FAIL | critical |
 | `pickle-nested-loader` | pickle | torch.storage._load_from_bytes unpickling a second pickle carried as bytes | Pickle opcode scan | FAIL | critical |
 | `pickle-memo-reput` | pickle | STACK_GLOBAL module read from a memo slot written twice | Pickle opcode scan | FAIL | critical |
-| `gguf-ssti-globals` | gguf | SSTI through self.__init__.__globals__ to os.popen | Chat template (hero) | FAIL | critical |
-| `gguf-ssti-subclasses` | gguf | SSTI through ''.__class__.__mro__[1].__subclasses__() | Chat template (hero) | FAIL | critical |
-| `gguf-ssti-attr-hex` | gguf | dunder name hidden with \|attr and hex escapes | Chat template (hero) | FAIL | critical |
-| `gguf-ssti-filter-block` | gguf | SSTI inside a {% filter %} block | Chat template (hero) | FAIL | critical |
-| `gguf-template-conditional-backdoor` | gguf | system instruction injected only when the user's message contains a trigger | Chat template (hero) | LEAD | high |
-| `gguf-template-hidden-instruction` | gguf | instruction hidden with zero-width characters | Chat template (hero) | LEAD | medium |
-| `gguf-template-plain-guidance` | gguf | a default system prompt that steers answers as ordinary guidance | Chat template (hero) | PASS |  |
-| `gguf-template-macro-conditional` | gguf | a system turn emitted from a macro only when a message carries a trigger | Chat template (hero) | LEAD | high |
-| `gguf-template-reviewed-near-miss` | gguf | a reviewed template with a branch that prefills the answer when a message carries a trigger | Chat template (hero) | LEAD | high |
+| `gguf-ssti-globals` | gguf | SSTI through self.__init__.__globals__ to os.popen | Chat template | FAIL | critical |
+| `gguf-ssti-subclasses` | gguf | SSTI through ''.__class__.__mro__[1].__subclasses__() | Chat template | FAIL | critical |
+| `gguf-ssti-attr-hex` | gguf | dunder name hidden with \|attr and hex escapes | Chat template | FAIL | critical |
+| `gguf-ssti-filter-block` | gguf | SSTI inside a {% filter %} block | Chat template | FAIL | critical |
+| `gguf-template-conditional-backdoor` | gguf | system instruction injected only when the user's message contains a trigger | Chat template | LEAD | high |
+| `gguf-template-hidden-instruction` | gguf | instruction hidden with zero-width characters | Chat template | LEAD | medium |
+| `gguf-template-plain-guidance` | gguf | a default system prompt that steers answers as ordinary guidance | Chat template | PASS |  |
+| `gguf-template-macro-conditional` | gguf | a system turn emitted from a macro only when a message carries a trigger | Chat template | LEAD | high |
+| `gguf-template-reviewed-near-miss` | gguf | a reviewed template with a branch that prefills the answer when a message carries a trigger | Chat template | LEAD | high |
 | `gguf-metadata-base64` | gguf | base64 payload in a metadata string | File inventory and payloads | FAIL | high |
 | `gguf-metadata-array-payload` | gguf | base64 payload in a metadata string array | File inventory and payloads | FAIL | high |
 | `gguf-metadata-elf` | gguf | an ELF executable in a metadata string | File inventory and payloads | FAIL | critical |
@@ -131,7 +131,7 @@ stays a named, unscanned archive and does not become a LEAD.
 | `dir-pickle-protocol0-renamed` | model directory | a protocol 0 pickle gadget (text, no header) named notes.txt | File inventory and payloads | PASS |  |
 | `dir-native-executable` | model directory | a native executable shipped in the repository | File inventory and payloads | FAIL | critical |
 | `dir-executable-named-script` | model directory | a native executable named setup.py | File inventory and payloads | FAIL | critical |
-| `dir-template-ssti` | model directory | SSTI in chat_template.jinja | Chat template (hero) | FAIL | critical |
+| `dir-template-ssti` | model directory | SSTI in chat_template.jinja | Chat template | FAIL | critical |
 | `dir-normalizer-injects-special` | model directory | a normalizer that rewrites input into a special token | Tokenizer config | LEAD | high |
 | `dir-known-bad-hash` | model directory | a file whose hash is on the known-bad list | Known-bad hash match | FAIL | critical |
 
