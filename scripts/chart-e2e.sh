@@ -126,13 +126,24 @@ client() { # client <namespace> <name>: run socair health against the Service
 			args: ["health", "--addr", "'"$dep.$ns"'.svc:8080"],
 			securityContext: {allowPrivilegeEscalation: false, capabilities: {drop: ["ALL"]}}}]}}')
 	kubectl -n "$1" run "$2" --image=socair:e2e --restart=Never --overrides="$o" >/dev/null
-	kubectl -n "$1" wait --for=jsonpath='{.status.phase}'=Succeeded "pod/$2" --timeout=60s >/dev/null 2>&1
+	local phase=""
+	for _ in $(seq 1 90); do
+		phase=$(kubectl -n "$1" get "pod/$2" -o jsonpath='{.status.phase}')
+		[[ "$phase" == Succeeded || "$phase" == Failed ]] && break
+		sleep 1
+	done
+	kubectl -n "$1" logs "pod/$2" >"$tmp/client.log" 2>&1 || true
+	echo "  $1/$2 ($phase): $(tr '\n' ' ' <"$tmp/client.log")"
+	[[ "$phase" == Succeeded ]]
 }
 client "$ns" same-namespace || fail "a pod in $ns could not reach the Service"
 kubectl create namespace "$other" >/dev/null
 if client "$other" other-namespace; then
 	fail "a pod in another namespace reached the API through the NetworkPolicy"
 fi
+# Refused for the right reason: the connection was dropped, not a name that
+# did not resolve.
+grep -Eqi 'timeout|deadline' "$tmp/client.log" || fail "the other namespace failed for another reason"
 
 step "uninstall keeps the store"
 helm uninstall "$rel" -n "$ns" >/dev/null
