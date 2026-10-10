@@ -1,0 +1,141 @@
+# Socair on Kubernetes: one pod running the airlock store and the wizard
+# (`socair serve --store`). docs/kubernetes.md explains the design; README.md
+# beside this file walks through an install.
+
+image:
+  repository: ghcr.io/defilantech/socair
+  # Defaults to the chart's appVersion.
+  tag: ""
+  # A digest (sha256:...) pins the exact image and wins over tag.
+  digest: ""
+  pullPolicy: IfNotPresent
+
+imagePullSecrets: []
+nameOverride: ""
+fullnameOverride: ""
+
+serviceAccount:
+  create: true
+  # Defaults to the release's full name.
+  name: ""
+  annotations: {}
+
+# The airlock store: staging, the clean store, the trust policy, and the
+# append-only activity log. It holds every staged model and every promoted
+# copy, so size it for both.
+persistence:
+  # false puts the store in an emptyDir that dies with the pod: for a try-out
+  # only, since the activity log is the store's audit trail.
+  enabled: true
+  # Use an existing PersistentVolumeClaim instead of creating one.
+  existingClaim: ""
+  storageClass: ""
+  accessModes:
+    - ReadWriteOnce
+  size: 200Gi
+  # Keep the claim on `helm uninstall`, so the store and its log survive.
+  keep: true
+  annotations: {}
+
+# Where a scan snapshots the artifact before checking it (SOCAIR_SCAN_TMP). A
+# scan needs free space here for the artifact it scans, and two scans can run
+# at once.
+scratch:
+  # An emptyDir on the node by default. sizeLimit caps it; past it the kubelet
+  # evicts the pod. Leave empty for no cap.
+  sizeLimit: ""
+  # A generic ephemeral volume instead: a claim created with the pod and
+  # deleted with it, for models larger than the node's own disk.
+  ephemeral:
+    enabled: false
+    storageClass: ""
+    size: 200Gi
+
+# Pulling models from Hugging Face (the wizard's Pull, `airlock pull`). Off
+# by default: the pod gets no network egress (SOCAIR_EGRESS=deny, and the
+# NetworkPolicy allows none). Ingesting from a mounted volume needs none.
+pull:
+  enabled: false
+  # A hub mirror instead of huggingface.co (SOCAIR_HF_ENDPOINT).
+  endpoint: ""
+  # A Secret in this namespace holding a hub token (HF_TOKEN). Socair sends
+  # it to the hub's own host only.
+  tokenSecret:
+    name: ""
+    key: token
+  # Where egress may go on TCP 443 when pull is enabled.
+  egressCIDRs:
+    - 0.0.0.0/0
+    - ::/0
+
+# The store's trust policy. Each ConfigMap holds Ed25519 public keys (PEM),
+# one per key ending in .pub: the same format as LLMKube's
+# modelAttestation.trustedKeysConfigMap, so one ConfigMap can serve both.
+# Each is mounted read-only over the store's directory. Left empty, the
+# store's own directory on the volume is used, which starts empty, so nothing
+# can be promoted until a key is trusted.
+trust:
+  # Keys whose signed attestations may promote a model.
+  trustedKeysConfigMap: ""
+  # Keys whose signed acceptances may clear untested rows. Socair refuses a
+  # key that is in both.
+  acceptorKeysConfigMap: ""
+
+# How people reach the wizard. By default the API binds the pod's loopback
+# and there is no Service: reach it with `kubectl port-forward`, so
+# Kubernetes RBAC (create on pods/portforward) is the authentication.
+service:
+  # A Service, with the API bound on all of the pod's interfaces. The API
+  # has no authentication of its own, so put an authenticating proxy in front
+  # of it and set authenticatingProxy to true to confirm that, or the install
+  # fails.
+  enabled: false
+  authenticatingProxy: false
+  type: ClusterIP
+  port: 8080
+  annotations: {}
+
+networkPolicy:
+  # Deny all ingress and egress except what the settings above need.
+  # kubectl port-forward does not pass through a NetworkPolicy.
+  enabled: true
+  # With service.enabled: the peers allowed to reach the API, such as your
+  # proxy's pods. Empty allows pods in this namespace only.
+  ingressFrom: []
+
+resources:
+  requests:
+    cpu: 500m
+    memory: 512Mi
+  # Set limits from a scan of your largest model.
+  limits: {}
+
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 65532
+  runAsGroup: 65532
+  fsGroup: 65532
+  fsGroupChangePolicy: OnRootMismatch
+  seccompProfile:
+    type: RuntimeDefault
+
+securityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities:
+    drop:
+      - ALL
+
+podAnnotations: {}
+podLabels: {}
+nodeSelector: {}
+tolerations: []
+affinity: {}
+priorityClassName: ""
+
+# Extra environment, such as a signed reference feed (SOCAIR_FEED and
+# SOCAIR_FEED_KEYS, docs/feed.md) on a mounted volume.
+extraEnv: []
+# Extra volumes and mounts, such as a read-only share of models to ingest.
+extraVolumes: []
+extraVolumeMounts: []

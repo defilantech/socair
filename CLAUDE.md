@@ -24,6 +24,14 @@ go run ./cmd/socair sign --key op.key --report r.json  # r.dsse.json
 go run ./cmd/socair verify r.dsse.json --trusted op.pub --artifact <file>
 ```
 
+Helm chart (`charts/socair`) and image (`Dockerfile`):
+
+```
+helm lint --strict charts/socair
+helm unittest charts/socair      # helm-unittest plugin; tests in charts/socair/tests
+scripts/chart-e2e.sh             # kind cluster end to end (needs docker, kind, kubectl, helm, go)
+```
+
 Opt-in tests that need real resources, skipped by default:
 - `SOCAIR_TEST_MODEL=<path.gguf>` runs `internal/gguf/integration_test.go`
 - `SOCAIR_TEST_EGRESS=1` runs the network pull test in `internal/airlock/integration_test.go`
@@ -66,6 +74,8 @@ npm run build     # static output in web/build
 **Airlock** (`internal/airlock`, `docs/airlock.md`): a content-addressed store with `incoming/<sha256>/` staging, `clean/<sha256>/` (artifact, `attestation.dsse.json`, and `attestation.json`), a trust policy in `trusted-keys/`, and an append-only `log.jsonl`. Only `promote` moves bytes into clean, and only with an envelope signed by a trusted key whose subject is that exact hash; the bytes are hashed while copied. A bare report is never a ticket. "In clean" does not mean clean, because conditional promotions also cross, so listings must carry attestation state. `pull` is the only networked operation (`SOCAIR_EGRESS=deny` blocks it; `SOCAIR_HF_ENDPOINT` overrides the hub; `HF_TOKEN` goes to the hub's own host only, stripped on any cross-host redirect). A repo pull's `--include`/`--exclude` select files the way `hf download` patterns do; the provenance manifest records the selection and every file left out. Every large copy (pull, scan snapshot, promote) checks for room first via `internal/diskfree`. Store root resolves from `--store`, then `SOCAIR_STORE`, then `~/.socair/store`. `Store.Assess` is the gate's one verification, used by `Promote` and the console; a model's stage is derived from evidence files (`Store.Models`), never stored. The signed inventory snapshot (`socair airlock export`, `socair inventory verify`) is `internal/inventory`.
 
 **API** (`internal/api`, `docs/api.md`): stateless and has no auth. `POST /api/scan` returns the document, and `POST /api/render` takes it back and returns HTML/PDF bytes. It binds to loopback by default, and a non-loopback bind is refused unless `SOCAIR_API_ALLOW_PUBLIC=1`. With `--web`, it serves the static wizard at `/` with an SPA fallback that never shadows `/api`.
+
+**Kubernetes** (`charts/socair`, `Dockerfile`, `docs/kubernetes.md`): one pod runs `socair serve --store` with the store on a kept PVC and scan snapshots on a scratch volume. The image copies the release binaries from `scripts/build-release.sh` (it compiles no Go) plus the wizard build, on distroless as uid 65532. Because the API has no authentication, the chart binds it to the pod's loopback with no Service (operators use `kubectl port-forward`, so RBAC is the gate), probes with `socair health`, and fails the install if `service.enabled` lacks `service.authenticatingProxy`. A NetworkPolicy denies all traffic unless `pull.enabled` (which also drops `SOCAIR_EGRESS=deny`). Trust keys can come from ConfigMaps of `*.pub`, LLMKube's format. A tag's release workflow pushes and attests the image and the chart to GHCR. Keep the chart's defaults safe: its unit tests pin them.
 
 **Wizard** (`web/`, `docs/wizard.md`): shows only state the engine returned and derives no status, count, or badge of its own. NOT_TESTED must never look like a pass. Promotion labels come from `promotion_authorization.state`. A failed scan offers no download. Tests cover these rules, so keep them passing.
 

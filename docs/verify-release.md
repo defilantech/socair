@@ -76,6 +76,26 @@ changes, because Go records that in the binary (`vcs.modified`) and the bytes
 then differ. `go version -m` also shows the exact commit a binary was built
 from (`vcs.revision`).
 
+## The container image and the Helm chart
+
+A release also pushes the container image, `ghcr.io/defilantech/socair:$V`
+(linux/amd64 and linux/arm64), and the Helm chart,
+`oci://ghcr.io/defilantech/charts/socair` at version `$V`. Each carries a
+build-provenance attestation from the same release workflow:
+
+```
+gh attestation verify oci://ghcr.io/defilantech/socair:$V --repo defilantech/socair \
+  --signer-workflow defilantech/socair/.github/workflows/release.yml
+gh attestation verify oci://ghcr.io/defilantech/charts/socair:$V --repo defilantech/socair \
+  --signer-workflow defilantech/socair/.github/workflows/release.yml
+```
+
+The image's binaries are the release's: the [Dockerfile](../Dockerfile)
+copies what `scripts/build-release.sh` built and compiles nothing, so
+`/usr/local/bin/socair` in the image has the SHA-256 listed in `SHA256SUMS`
+for its platform. The chart's `image.digest` value pins the image you
+verified ([kubernetes.md](kubernetes.md)).
+
 ## Running it
 
 In the directory you downloaded to:

@@ -74,6 +74,11 @@ func main() {
 			fmt.Fprintln(os.Stderr, "error:", err)
 			os.Exit(1)
 		}
+	case "health":
+		if err := healthCmd(os.Args[2:]); err != nil {
+			fmt.Fprintln(os.Stderr, "error:", err)
+			os.Exit(1)
+		}
 	case "key":
 		if err := keyCmd(os.Args[2:]); err != nil {
 			fmt.Fprintln(os.Stderr, "error:", err)
@@ -146,6 +151,7 @@ Usage:
   socair airlock export --out <dir> [--key <k>]   write a shareable, signed snapshot of the store
   socair inventory verify <dir> --trusted <key.pub|dir>   verify an exported inventory snapshot
   socair serve             run the engine HTTP/JSON API for the click-ops wizard
+  socair health [--addr <host:port>]   exit 0 only if a running API reports healthy (a container probe)
   socair demo              write a SAMPLE attestation that shows what a report looks like
 `)
 }

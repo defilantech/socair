@@ -1,0 +1,27 @@
+apiVersion: v2
+name: socair
+description: >-
+  Socair's model intake airlock and wizard on Kubernetes. Stage open-weight
+  models, scan them, and promote only those whose attestation a trusted key
+  signed, before they reach the GPUs.
+type: application
+# A release packages the chart with the tag's version for both fields
+# (.github/workflows/release.yml), so the chart and the image always match.
+version: 0.1.0-rc.2
+appVersion: "0.1.0-rc.2"
+kubeVersion: ">=1.27.0-0"
+home: https://socair.ai
+sources:
+  - https://github.com/defilantech/socair
+keywords:
+  - security
+  - supply-chain
+  - attestation
+  - ai
+  - models
+  - airlock
+maintainers:
+  - name: Defilan Technologies
+    url: https://github.com/defilantech
+annotations:
+  artifacthub.io/license: Apache-2.0

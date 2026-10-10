@@ -22,7 +22,18 @@ builds, proves the build reproduces, attests provenance, and creates a
      byte differs;
    - attaches a GitHub build-provenance attestation (SLSA) to every binary;
    - creates a draft release holding the binaries and `SHA256SUMS`, with
-     generated notes.
+     generated notes;
+   - builds the container image from those binaries and the wizard for
+     linux/amd64 and linux/arm64, pushes it to `ghcr.io/defilantech/socair:<version>`,
+     and attests it;
+   - packages the Helm chart with the tag's version as both its version and
+     its appVersion, pushes it to `oci://ghcr.io/defilantech/charts/socair`,
+     and attests it.
+
+   Unlike the binaries, the image and the chart have no draft step: the push
+   publishes them. The first push of each creates a private GHCR package, so
+   make `socair` and `charts/socair` public in the organization's package
+   settings once, and link them to this repository.
 4. Review the draft (notes, assets, attestations), then publish it. The
    workflow creates the draft without `--prerelease`, so for an `-rc` or other
    pre-release tag, mark it as a pre-release before publishing
