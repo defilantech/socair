@@ -316,3 +316,23 @@ func TestAcceptedLineOnlyUnderConditions(t *testing.T) {
 		t.Error("an authorized_with_conditions report must print what was accepted")
 	}
 }
+
+// A filed report gets opened on a phone. Long evidence (a shard path, a byte
+// count) must wrap instead of widening the check table past the page, and
+// below 640px each check stacks instead of squeezing four columns.
+// Falsification: drop either rule and this fails.
+func TestReportReadsOnANarrowScreen(t *testing.T) {
+	html := renderString(t, loadGolden(t))
+	for _, want := range []string{
+		"td:not(:first-child) { overflow-wrap: anywhere; }",
+		".hash { word-break: break-all; }",
+		"table.files td { overflow-wrap: anywhere; }",
+		"@media (max-width: 640px)",
+		"table.checks thead { display: none; }",
+		`<table class="checks">`,
+	} {
+		if !strings.Contains(html, want) {
+			t.Errorf("rendered report lacks %q", want)
+		}
+	}
+}

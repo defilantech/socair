@@ -50,6 +50,10 @@
   table { width: 100%; border-collapse: collapse; margin-top: 6px; }
   table.files td.hash { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 10px; word-break: break-all; }
   th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  td:not(:first-child) { overflow-wrap: anywhere; }
+  table.files td { overflow-wrap: anywhere; }
+  .hash { word-break: break-all; }
+  a { overflow-wrap: anywhere; }
   th { font-size: 12px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); }
   td.looks { color: var(--muted); font-size: 13px; }
   .passmeans { margin-top: 6px; font-size: 12px; color: #444; }
@@ -96,6 +100,15 @@
   .unsigned-chip { display: inline-block; margin: 0 0 10px 6px; padding: 3px 8px; border-radius: 4px;
     font-size: 11px; font-weight: 700; letter-spacing: 0.08em; background: #fdecea; color: #a3231b;
     border: 1px solid #f3c2bd; text-transform: uppercase; }
+  /* A phone: each check stacks (name, result, looks-for, evidence) instead of
+     squeezing four columns, and nothing is wider than the screen. */
+  @media (max-width: 640px) {
+    body { padding: 20px 16px; }
+    table.checks thead { display: none; }
+    table.checks, table.checks tbody, table.checks tr, table.checks td { display: block; width: auto; }
+    table.checks tr { border-bottom: 1px solid var(--line); padding: 8px 0; }
+    table.checks td { border-bottom: none; padding: 4px 0; }
+  }
   @media print { body { padding: 0; } .sheet { max-width: none; } }
 </style>
 </head>
@@ -151,7 +164,7 @@
   </section>
 
   <h2>Checks performed</h2>
-  <table>
+  <table class="checks">
     <thead>
       <tr><th>Check</th><th>Looks for</th><th>Result</th><th>Evidence</th></tr>
     </thead>
@@ -175,7 +188,7 @@
 
   <h2>Tier 2 measurements</h2>
   <p class="evidence">{{ .Statement }}</p>
-  <table>
+  <table class="checks">
     <thead>
       <tr><th>Check</th><th>Measured</th><th>Outcome</th><th>Result</th></tr>
     </thead>
