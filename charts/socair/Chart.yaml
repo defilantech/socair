@@ -7,8 +7,8 @@ description: >-
 type: application
 # A release packages the chart with the tag's version for both fields
 # (.github/workflows/release.yml), so the chart and the image always match.
-version: 0.1.0-rc.2
-appVersion: "0.1.0-rc.2"
+version: 0.1.0-rc.3
+appVersion: "0.1.0-rc.3"
 kubeVersion: ">=1.27.0-0"
 home: https://socair.ai
 sources:
