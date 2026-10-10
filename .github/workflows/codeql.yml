@@ -1,0 +1,54 @@
+name: codeql
+
+# CodeQL code scanning: the Go engine and the optional keyless verifier
+# (its own module), the wizard, the Tier 2 probe helper, and the workflows
+# themselves. Results go to the repository's code scanning alerts.
+on:
+  push:
+    branches: [main]
+  pull_request:
+  schedule:
+    - cron: "27 5 * * 2"
+
+permissions:
+  contents: read
+
+jobs:
+  analyze:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write  # upload the results
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - language: go
+            build-mode: manual
+          - language: javascript-typescript
+            build-mode: none
+          - language: python
+            build-mode: none
+          - language: actions
+            build-mode: none
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - if: matrix.language == 'go'
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: false
+      - uses: github/codeql-action/init@24c54180a607b1449ed407dd24f251e4e9147c8d # v4.38.3
+        with:
+          languages: ${{ matrix.language }}
+          build-mode: ${{ matrix.build-mode }}
+      # Both Go modules, from their vendored dependencies: nothing is fetched.
+      - if: matrix.language == 'go'
+        env:
+          GOFLAGS: -mod=vendor
+        run: |
+          go build ./...
+          (cd tools/socair-sigstore && go build -o /dev/null .)
+      - uses: github/codeql-action/analyze@24c54180a607b1449ed407dd24f251e4e9147c8d # v4.38.3
+        with:
+          category: /language:${{ matrix.language }}

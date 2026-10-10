@@ -11,6 +11,8 @@
 
 <p align="center">
   <a href="https://github.com/defilantech/socair/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/defilantech/socair/actions/workflows/ci.yml/badge.svg"></a>
+  <a href="https://github.com/defilantech/socair/releases"><img alt="Release" src="https://img.shields.io/github/v/release/defilantech/socair?include_prereleases&label=release"></a>
+  <a href="https://scorecard.dev/viewer/?uri=github.com/defilantech/socair"><img alt="OpenSSF Scorecard" src="https://api.scorecard.dev/projects/github.com/defilantech/socair/badge"></a>
   <a href="LICENSE"><img alt="License: Apache-2.0" src="https://img.shields.io/badge/license-Apache--2.0-1F9E80"></a>
 </p>
 
