@@ -2,8 +2,9 @@ name: release
 
 # A tag v<version> builds the release binaries, checks the build reproduces,
 # attests each binary's provenance (SLSA, via GitHub artifact attestations),
-# and creates a DRAFT release: publishing it is a maintainer's decision. A pull
-# request that touches the release path runs the build and the
+# and creates a DRAFT release: publishing it is a maintainer's decision. It
+# then pushes the container image and the Helm chart to GHCR, each attested.
+# A pull request that touches the release path runs the build and the
 # reproducibility check only. See docs/releasing.md.
 on:
   push:
@@ -65,3 +66,81 @@ jobs:
         run: |
           gh release create "${GITHUB_REF_NAME}" dist/* --draft --verify-tag \
             --title "Socair ${GITHUB_REF_NAME}" --generate-notes
+
+  # The container image (Dockerfile) for linux/amd64 and linux/arm64, pushed
+  # to GHCR and attested like the binaries. It carries the release binaries
+  # rebuilt here, byte-identical to the draft's (the build reproduces).
+  image:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: publish
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write      # push to ghcr.io/defilantech/socair
+      id-token: write      # sign the provenance attestation
+      attestations: write  # store it
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: false
+      - name: build the binaries
+        id: build
+        run: |
+          echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+          scripts/build-release.sh "${GITHUB_REF_NAME#v}" dist
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+      - uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        id: push
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          build-args: VERSION=${{ steps.build.outputs.version }}
+          tags: ghcr.io/defilantech/socair:${{ steps.build.outputs.version }}
+          push: true
+      - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-name: ghcr.io/defilantech/socair
+          subject-digest: ${{ steps.push.outputs.digest }}
+          push-to-registry: true
+
+  # The Helm chart, versioned as the tag with the image of the same version,
+  # pushed to GHCR as an OCI artifact and attested.
+  chart:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: image
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write      # push to ghcr.io/defilantech/charts/socair
+      id-token: write
+      attestations: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
+        with:
+          version: v4.3.0
+      - name: package and push the chart
+        id: push
+        env:
+          REGISTRY_USER: ${{ github.actor }}
+          REGISTRY_TOKEN: ${{ github.token }}
+        run: |
+          v="${GITHUB_REF_NAME#v}"
+          helm package charts/socair --version "$v" --app-version "$v" -d chart-dist
+          printf '%s' "$REGISTRY_TOKEN" | helm registry login ghcr.io -u "$REGISTRY_USER" --password-stdin
+          helm push "chart-dist/socair-$v.tgz" oci://ghcr.io/defilantech/charts 2>&1 | tee push.log
+          digest="$(sed -n 's/^Digest: //p' push.log)"
+          [ -n "$digest" ] || { echo "helm push printed no digest" >&2; exit 1; }
+          echo "digest=$digest" >> "$GITHUB_OUTPUT"
+      - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-name: ghcr.io/defilantech/charts/socair
+          subject-digest: ${{ steps.push.outputs.digest }}
+          push-to-registry: true
