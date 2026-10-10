@@ -136,7 +136,16 @@ client() { # client <namespace> <name>: run socair health against the Service
 	echo "  $1/$2 ($phase): $(tr '\n' ' ' <"$tmp/client.log")"
 	[[ "$phase" == Succeeded ]]
 }
-client "$ns" same-namespace || fail "a pod in $ns could not reach the Service"
+# A ready pod is not yet a routed Service: wait for its endpoint, then allow
+# the proxy a few seconds to program it (a Service with no endpoint refuses).
+kubectl -n "$ns" wait endpointslice -l kubernetes.io/service-name="$dep" \
+	--for=jsonpath='{.endpoints[0].conditions.ready}'=true --timeout=60s >/dev/null
+reached=""
+for i in 1 2 3 4 5; do
+	if client "$ns" "same-namespace-$i"; then reached=1; break; fi
+	sleep 3
+done
+[[ -n "$reached" ]] || fail "a pod in $ns could not reach the Service"
 kubectl create namespace "$other" >/dev/null
 if client "$other" other-namespace; then
 	fail "a pod in another namespace reached the API through the NetworkPolicy"
