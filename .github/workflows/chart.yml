@@ -1,0 +1,115 @@
+name: chart
+
+# The Helm chart (charts/socair) and the image it runs (Dockerfile). A change
+# to either, or to the code inside the image, lints and unit-tests the chart,
+# validates its manifests against the Kubernetes schemas, and installs it into
+# a kind cluster to walk a model through the airlock (scripts/chart-e2e.sh).
+# docs/kubernetes.md explains the chart.
+on:
+  push:
+    branches: [main]
+    paths:
+      - "charts/**"
+      - "Dockerfile"
+      - ".dockerignore"
+      - "cmd/**"
+      - "internal/**"
+      - "web/**"
+      - "vendor/**"
+      - "go.mod"
+      - "tools/socair-sigstore/**"
+      - "scripts/build-release.sh"
+      - "scripts/chart-e2e.sh"
+      - ".github/workflows/chart.yml"
+  pull_request:
+    paths:
+      - "charts/**"
+      - "Dockerfile"
+      - ".dockerignore"
+      - "cmd/**"
+      - "internal/**"
+      - "web/**"
+      - "vendor/**"
+      - "go.mod"
+      - "tools/socair-sigstore/**"
+      - "scripts/build-release.sh"
+      - "scripts/chart-e2e.sh"
+      - ".github/workflows/chart.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: chart-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  HELM_VERSION: v4.3.0
+  # Pinned by hash: Helm cannot verify this plugin's signature without its
+  # signing key, so the hash is the check.
+  HELM_UNITTEST_VERSION: 1.2.1
+  HELM_UNITTEST_SHA256: bbcebd42631dff9fc595462fad839c49a1b06f9635e952e7e837d7e5fe82865f
+  KUBECONFORM_VERSION: v0.8.0
+  KUBECONFORM_SHA256: 9bc2bffbf71f261128533edaf912153948b7ff238f9a531ae6d34466ec287883
+  KIND_VERSION: v0.33.0
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
+        with:
+          version: ${{ env.HELM_VERSION }}
+      - name: install helm-unittest and kubeconform
+        run: |
+          cd "$RUNNER_TEMP"
+          curl -fsSLo unittest.tgz "https://github.com/helm-unittest/helm-unittest/releases/download/v${HELM_UNITTEST_VERSION}/unittest-${HELM_UNITTEST_VERSION}.tgz"
+          echo "${HELM_UNITTEST_SHA256}  unittest.tgz" | sha256sum -c
+          helm plugin install ./unittest.tgz --verify=false
+          curl -fsSLo kubeconform.tgz "https://github.com/yannh/kubeconform/releases/download/${KUBECONFORM_VERSION}/kubeconform-linux-amd64.tar.gz"
+          echo "${KUBECONFORM_SHA256}  kubeconform.tgz" | sha256sum -c
+          mkdir -p bin && tar xzf kubeconform.tgz -C bin kubeconform
+          echo "$RUNNER_TEMP/bin" >> "$GITHUB_PATH"
+      - name: lint
+        run: |
+          for v in charts/socair/ci/*.yaml; do
+            helm lint --strict charts/socair -f "$v"
+          done
+      - name: unit tests
+        run: helm unittest charts/socair
+      # The oldest Kubernetes the chart supports (Chart.yaml kubeVersion) and
+      # the newest schemas.
+      - name: validate manifests
+        run: |
+          for v in charts/socair/ci/*.yaml; do
+            for k in 1.27.0 master; do
+              echo "== $v on $k"
+              helm template intake charts/socair -n socair -f "$v" --kube-version "${k/master/1.34.0}" |
+                kubeconform -strict -summary -kubernetes-version "$k"
+            done
+          done
+
+  e2e:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: false
+      - uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
+        with:
+          version: ${{ env.HELM_VERSION }}
+      - uses: helm/kind-action@1544676c07bb3570fcb70166beaa07c4528fd4aa # v1.15.1
+        with:
+          version: ${{ env.KIND_VERSION }}
+          cluster_name: kind
+      - name: install the chart and walk a model through the airlock
+        run: scripts/chart-e2e.sh
+      - name: on failure, show the pods and their logs
+        if: failure()
+        run: |
+          kubectl get all,pvc,networkpolicy -A -o wide || true
+          kubectl -n socair-e2e describe pods || true
+          kubectl -n socair-e2e logs deploy/intake-socair --all-containers || true

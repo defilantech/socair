@@ -1,0 +1,91 @@
+suite: storage
+templates:
+  - deployment.yaml
+  - pvc.yaml
+release:
+  name: intake
+tests:
+  - it: creates a store claim by default, kept on uninstall
+    template: pvc.yaml
+    asserts:
+      - isKind:
+          of: PersistentVolumeClaim
+      - equal:
+          path: metadata.name
+          value: intake-socair-store
+      - equal:
+          path: spec.resources.requests.storage
+          value: 200Gi
+      - equal:
+          path: metadata.annotations["helm.sh/resource-policy"]
+          value: keep
+
+  - it: mounts the store claim at /store
+    template: deployment.yaml
+    asserts:
+      - contains:
+          path: spec.template.spec.volumes
+          content:
+            name: store
+            persistentVolumeClaim:
+              claimName: intake-socair-store
+      - contains:
+          path: spec.template.spec.containers[0].volumeMounts
+          content:
+            name: store
+            mountPath: /store
+
+  - it: uses an existing claim without creating one
+    set:
+      persistence.existingClaim: models-intake
+    asserts:
+      - hasDocuments:
+          count: 0
+        template: pvc.yaml
+      - contains:
+          path: spec.template.spec.volumes
+          content:
+            name: store
+            persistentVolumeClaim:
+              claimName: models-intake
+        template: deployment.yaml
+
+  - it: puts the store in an emptyDir when persistence is off
+    set:
+      persistence.enabled: false
+    asserts:
+      - hasDocuments:
+          count: 0
+        template: pvc.yaml
+      - contains:
+          path: spec.template.spec.volumes
+          content:
+            name: store
+            emptyDir: {}
+        template: deployment.yaml
+
+  - it: caps the scratch emptyDir when a size limit is set
+    template: deployment.yaml
+    set:
+      scratch.sizeLimit: 300Gi
+    asserts:
+      - contains:
+          path: spec.template.spec.volumes
+          content:
+            name: scratch
+            emptyDir:
+              sizeLimit: 300Gi
+
+  - it: uses a generic ephemeral volume for scratch when asked
+    template: deployment.yaml
+    set:
+      scratch.ephemeral.enabled: true
+      scratch.ephemeral.storageClass: fast-nvme
+      scratch.ephemeral.size: 1Ti
+    asserts:
+      - equal:
+          path: spec.template.spec.volumes[?(@.name == "scratch")].ephemeral.volumeClaimTemplate.spec.resources.requests.storage
+          value: 1Ti
+      - equal:
+          path: spec.template.spec.volumes[?(@.name == "scratch")].ephemeral.volumeClaimTemplate.spec.storageClassName
+          value: fast-nvme

@@ -1,0 +1,42 @@
+Socair {{ .Chart.AppVersion }} is running in {{ .Release.Namespace }}.
+{{- if .Values.service.enabled }}
+
+The API is exposed as Service {{ include "socair.fullname" . }}:{{ .Values.service.port }}. It has no
+authentication of its own: only your authenticating proxy should reach it.
+{{- if .Values.networkPolicy.enabled }}
+{{- if .Values.networkPolicy.ingressFrom }} The NetworkPolicy admits only networkPolicy.ingressFrom.
+{{- else }} The NetworkPolicy admits any pod in {{ .Release.Namespace }}; set
+networkPolicy.ingressFrom to your proxy's pods to narrow it.
+{{- end }}
+{{- end }}
+{{- else }}
+
+The API binds the pod's loopback and has no Service. Open the wizard with:
+
+  kubectl -n {{ .Release.Namespace }} port-forward deploy/{{ include "socair.fullname" . }} 8080:8080
+
+then browse to http://127.0.0.1:8080. Kubernetes RBAC (create on
+pods/portforward in this namespace) decides who can.
+{{- end }}
+
+The store is at /store in the pod
+{{- if .Values.persistence.enabled }} (claim {{ include "socair.storeClaim" . }}
+{{- if .Values.persistence.keep }}, kept on uninstall{{ end }})
+{{- else }}, in an emptyDir: it and its activity log are lost with the pod
+{{- end }}.
+{{- if not .Values.trust.trustedKeysConfigMap }}
+
+No trusted signing key is configured, so nothing can be promoted yet. Put the
+public keys you trust in a ConfigMap (the same one LLMKube's
+modelAttestation.trustedKeysConfigMap reads) and point the chart at it:
+
+  kubectl -n {{ .Release.Namespace }} create configmap socair-trusted-keys --from-file=operator.pub
+  helm upgrade {{ .Release.Name }} <chart> --reuse-values --set trust.trustedKeysConfigMap=socair-trusted-keys
+{{- end }}
+{{- if not .Values.pull.enabled }}
+
+Pulling from a hub is off (no egress). Ingest models from a mounted volume
+(extraVolumes), or set pull.enabled=true.
+{{- end }}
+
+docs/kubernetes.md: https://github.com/defilantech/socair/blob/main/docs/kubernetes.md

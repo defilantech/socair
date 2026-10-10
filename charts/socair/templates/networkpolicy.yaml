@@ -1,0 +1,46 @@
+{{- if .Values.networkPolicy.enabled }}
+# Deny everything the settings do not need. kubectl port-forward reaches the
+# pod through the kubelet, not the pod network, so this does not block it.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "socair.fullname" . }}
+  labels:
+    {{- include "socair.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "socair.selectorLabels" . | nindent 6 }}
+  policyTypes:
+    - Ingress
+    - Egress
+  {{- if .Values.service.enabled }}
+  ingress:
+    - from:
+        {{- if .Values.networkPolicy.ingressFrom }}
+        {{- toYaml .Values.networkPolicy.ingressFrom | nindent 8 }}
+        {{- else }}
+        - podSelector: {}
+        {{- end }}
+      ports:
+        - protocol: TCP
+          port: 8080
+  {{- end }}
+  {{- if .Values.pull.enabled }}
+  egress:
+    # Name resolution for the hub.
+    - ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+    - to:
+        {{- range .Values.pull.egressCIDRs }}
+        - ipBlock:
+            cidr: {{ . }}
+        {{- end }}
+      ports:
+        - protocol: TCP
+          port: 443
+  {{- end }}
+{{- end }}

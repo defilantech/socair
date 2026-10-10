@@ -1,0 +1,138 @@
+suite: network
+templates:
+  - deployment.yaml
+  - networkpolicy.yaml
+  - service.yaml
+release:
+  name: intake
+tests:
+  # Egress is off unless pulling from a hub is asked for, in the engine
+  # (SOCAIR_EGRESS=deny) and in the NetworkPolicy.
+  - it: denies egress in the engine by default
+    template: deployment.yaml
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: SOCAIR_EGRESS
+            value: deny
+
+  - it: denies all ingress and egress by default
+    template: networkpolicy.yaml
+    asserts:
+      - isKind:
+          of: NetworkPolicy
+      - equal:
+          path: spec.policyTypes
+          value: [Ingress, Egress]
+      - notExists:
+          path: spec.ingress
+      - notExists:
+          path: spec.egress
+
+  - it: renders no Service by default
+    template: service.yaml
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  - it: allows DNS and TCP 443 egress when pull is enabled
+    set:
+      pull.enabled: true
+      pull.egressCIDRs: [10.0.0.0/8]
+    asserts:
+      - notContains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: SOCAIR_EGRESS
+            value: deny
+        template: deployment.yaml
+      - contains:
+          path: spec.egress
+          content:
+            to:
+              - ipBlock:
+                  cidr: 10.0.0.0/8
+            ports:
+              - protocol: TCP
+                port: 443
+        template: networkpolicy.yaml
+      - contains:
+          path: spec.egress
+          content:
+            ports:
+              - protocol: UDP
+                port: 53
+              - protocol: TCP
+                port: 53
+        template: networkpolicy.yaml
+
+  - it: passes a hub mirror and token to the engine
+    template: deployment.yaml
+    set:
+      pull.enabled: true
+      pull.endpoint: https://hf-mirror.internal
+      pull.tokenSecret.name: hub-token
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: SOCAIR_HF_ENDPOINT
+            value: https://hf-mirror.internal
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: HF_TOKEN
+            valueFrom:
+              secretKeyRef:
+                name: hub-token
+                key: token
+
+  - it: exposes the API to this namespace only when a Service is enabled
+    set:
+      service.enabled: true
+      service.authenticatingProxy: true
+    asserts:
+      - isKind:
+          of: Service
+        template: service.yaml
+      - equal:
+          path: spec.ports[0].targetPort
+          value: http
+        template: service.yaml
+      - equal:
+          path: spec.ingress[0].from
+          value:
+            - podSelector: {}
+        template: networkpolicy.yaml
+      - equal:
+          path: spec.ingress[0].ports
+          value:
+            - protocol: TCP
+              port: 8080
+        template: networkpolicy.yaml
+
+  - it: exposes the API to the named peers only
+    template: networkpolicy.yaml
+    set:
+      service.enabled: true
+      service.authenticatingProxy: true
+      networkPolicy.ingressFrom:
+        - podSelector:
+            matchLabels:
+              app: oauth2-proxy
+    asserts:
+      - equal:
+          path: spec.ingress[0].from
+          value:
+            - podSelector:
+                matchLabels:
+                  app: oauth2-proxy
+
+  - it: renders no NetworkPolicy when disabled
+    template: networkpolicy.yaml
+    set:
+      networkPolicy.enabled: false
+    asserts:
+      - hasDocuments:
+          count: 0

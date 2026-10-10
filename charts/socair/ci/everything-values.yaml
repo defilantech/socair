@@ -1,0 +1,43 @@
+# Every optional feature on, so lint and schema checks see each template path.
+image:
+  digest: sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+persistence:
+  storageClass: standard
+  size: 500Gi
+scratch:
+  ephemeral:
+    enabled: true
+    storageClass: standard
+    size: 1Ti
+pull:
+  enabled: true
+  endpoint: https://hf-mirror.internal
+  tokenSecret:
+    name: hub-token
+  egressCIDRs: [10.0.0.0/8]
+trust:
+  trustedKeysConfigMap: socair-trusted-keys
+  acceptorKeysConfigMap: socair-acceptor-keys
+service:
+  enabled: true
+  authenticatingProxy: true
+networkPolicy:
+  ingressFrom:
+    - podSelector:
+        matchLabels:
+          app: oauth2-proxy
+resources:
+  limits:
+    memory: 8Gi
+priorityClassName: batch
+extraEnv:
+  - name: SOCAIR_FEED
+    value: /feed
+extraVolumes:
+  - name: feed
+    configMap:
+      name: socair-feed
+extraVolumeMounts:
+  - name: feed
+    mountPath: /feed
+    readOnly: true

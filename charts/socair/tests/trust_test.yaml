@@ -1,0 +1,53 @@
+suite: trust
+templates:
+  - deployment.yaml
+release:
+  name: intake
+tests:
+  - it: keeps the trust policy on the store volume by default
+    asserts:
+      - notContains:
+          path: spec.template.spec.containers[0].volumeMounts
+          content:
+            name: trusted-keys
+            mountPath: /store/trusted-keys
+            readOnly: true
+
+  # The same ConfigMap shape LLMKube's model-attestation gate reads.
+  - it: mounts trusted and acceptor keys read-only over the store's directories
+    set:
+      trust.trustedKeysConfigMap: socair-trusted-keys
+      trust.acceptorKeysConfigMap: socair-acceptor-keys
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].volumeMounts
+          content:
+            name: trusted-keys
+            mountPath: /store/trusted-keys
+            readOnly: true
+      - contains:
+          path: spec.template.spec.containers[0].volumeMounts
+          content:
+            name: acceptor-keys
+            mountPath: /store/acceptor-keys
+            readOnly: true
+      - contains:
+          path: spec.template.spec.volumes
+          content:
+            name: trusted-keys
+            configMap:
+              name: socair-trusted-keys
+      - contains:
+          path: spec.template.spec.volumes
+          content:
+            name: acceptor-keys
+            configMap:
+              name: socair-acceptor-keys
+
+  - it: refuses one ConfigMap for both signing and acceptance
+    set:
+      trust.trustedKeysConfigMap: keys
+      trust.acceptorKeysConfigMap: keys
+    asserts:
+      - failedTemplate:
+          errorPattern: one key may not both sign attestations and accept their gaps

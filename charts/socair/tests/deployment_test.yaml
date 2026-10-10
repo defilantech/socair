@@ -1,0 +1,130 @@
+suite: deployment
+templates:
+  - deployment.yaml
+release:
+  name: intake
+chart:
+  appVersion: 9.9.9
+tests:
+  # The API has no authentication, so by default it binds the pod's loopback
+  # and is reached only through kubectl port-forward (Kubernetes RBAC).
+  - it: binds the pod's loopback by default
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].args
+          value: [serve, --addr, 127.0.0.1:8080, --web, /usr/share/socair/web, --store, /store]
+      - notContains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: SOCAIR_API_ALLOW_PUBLIC
+            value: "1"
+      - notExists:
+          path: spec.template.spec.containers[0].ports
+
+  - it: binds all interfaces only when a Service with an authenticating proxy is configured
+    set:
+      service.enabled: true
+      service.authenticatingProxy: true
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].args
+          content: 0.0.0.0:8080
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: SOCAIR_API_ALLOW_PUBLIC
+            value: "1"
+      - equal:
+          path: spec.template.spec.containers[0].ports[0].containerPort
+          value: 8080
+
+  - it: refuses to expose the API without an authenticating proxy
+    set:
+      service.enabled: true
+    asserts:
+      - failedTemplate:
+          errorPattern: has no authentication of its own
+
+  # One writer: the store's activity log is an append-only hash chain.
+  - it: runs one replica and replaces it rather than rolling
+    asserts:
+      - equal:
+          path: spec.replicas
+          value: 1
+      - equal:
+          path: spec.strategy.type
+          value: Recreate
+
+  - it: probes the API through socair health on loopback
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].livenessProbe.exec.command
+          value: [/usr/local/bin/socair, health, --addr, 127.0.0.1:8080]
+      - equal:
+          path: spec.template.spec.containers[0].readinessProbe.exec.command
+          value: [/usr/local/bin/socair, health, --addr, 127.0.0.1:8080]
+
+  - it: initializes the store before serving it
+    asserts:
+      - equal:
+          path: spec.template.spec.initContainers[0].args
+          value: [airlock, init, /store]
+      - equal:
+          path: spec.template.spec.initContainers[0].securityContext.readOnlyRootFilesystem
+          value: true
+
+  - it: runs as a non-root user with no privileges, no capabilities, and a read-only root
+    asserts:
+      - equal:
+          path: spec.template.spec.securityContext.runAsNonRoot
+          value: true
+      - equal:
+          path: spec.template.spec.securityContext.seccompProfile.type
+          value: RuntimeDefault
+      - equal:
+          path: spec.template.spec.containers[0].securityContext.allowPrivilegeEscalation
+          value: false
+      - equal:
+          path: spec.template.spec.containers[0].securityContext.readOnlyRootFilesystem
+          value: true
+      - equal:
+          path: spec.template.spec.containers[0].securityContext.capabilities.drop
+          value: [ALL]
+      - equal:
+          path: spec.template.spec.automountServiceAccountToken
+          value: false
+
+  - it: uses the chart's appVersion as the image tag
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].image
+          value: ghcr.io/defilantech/socair:9.9.9
+
+  - it: pins the image by digest when one is given
+    set:
+      image.digest: sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].image
+          value: ghcr.io/defilantech/socair@sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+      - equal:
+          path: spec.template.spec.initContainers[0].image
+          value: ghcr.io/defilantech/socair@sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+
+  - it: snapshots scans on the scratch volume and keeps /tmp writable
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: SOCAIR_SCAN_TMP
+            value: /scratch
+      - contains:
+          path: spec.template.spec.containers[0].volumeMounts
+          content:
+            name: scratch
+            mountPath: /scratch
+      - contains:
+          path: spec.template.spec.containers[0].volumeMounts
+          content:
+            name: tmp
+            mountPath: /tmp

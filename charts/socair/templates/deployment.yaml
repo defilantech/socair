@@ -1,0 +1,186 @@
+{{- include "socair.validate" . -}}
+{{- $addr := include "socair.apiAddr" . -}}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "socair.fullname" . }}
+  labels:
+    {{- include "socair.labels" . | nindent 4 }}
+spec:
+  # One writer: the store's activity log is an append-only hash chain, and a
+  # ReadWriteOnce volume has one node. Recreate stops the old pod first.
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      {{- include "socair.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "socair.selectorLabels" . | nindent 8 }}
+        {{- with .Values.podLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      {{- with .Values.podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+    spec:
+      serviceAccountName: {{ include "socair.serviceAccountName" . }}
+      # Socair talks to no Kubernetes API.
+      automountServiceAccountToken: false
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.priorityClassName }}
+      priorityClassName: {{ . }}
+      {{- end }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      initContainers:
+        # Creates the store's layout on a new volume; idempotent on an existing one.
+        - name: init-store
+          image: {{ include "socair.image" . }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          args: [airlock, init, /store]
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          volumeMounts:
+            - name: store
+              mountPath: /store
+      containers:
+        - name: socair
+          image: {{ include "socair.image" . }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          args: [serve, --addr, {{ $addr }}, --web, /usr/share/socair/web, --store, /store]
+          env:
+            - name: SOCAIR_SCAN_TMP
+              value: /scratch
+            {{- if .Values.service.enabled }}
+            # The API has no authentication; service.authenticatingProxy
+            # confirms something in front of it does (docs/api.md).
+            - name: SOCAIR_API_ALLOW_PUBLIC
+              value: "1"
+            {{- end }}
+            {{- if .Values.pull.enabled }}
+            {{- with .Values.pull.endpoint }}
+            - name: SOCAIR_HF_ENDPOINT
+              value: {{ . | quote }}
+            {{- end }}
+            {{- if .Values.pull.tokenSecret.name }}
+            - name: HF_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.pull.tokenSecret.name }}
+                  key: {{ .Values.pull.tokenSecret.key }}
+            {{- end }}
+            {{- else }}
+            - name: SOCAIR_EGRESS
+              value: deny
+            {{- end }}
+            {{- with .Values.extraEnv }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          {{- if .Values.service.enabled }}
+          ports:
+            - name: http
+              containerPort: 8080
+              protocol: TCP
+          {{- end }}
+          # The image has no shell or curl, and a loopback API is out of a
+          # kubelet HTTP probe's reach, so the probes run socair itself.
+          livenessProbe:
+            exec:
+              command: [/usr/local/bin/socair, health, --addr, 127.0.0.1:8080]
+            initialDelaySeconds: 5
+            periodSeconds: 20
+            timeoutSeconds: 10
+            failureThreshold: 3
+          readinessProbe:
+            exec:
+              command: [/usr/local/bin/socair, health, --addr, 127.0.0.1:8080]
+            periodSeconds: 10
+            timeoutSeconds: 10
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          volumeMounts:
+            - name: store
+              mountPath: /store
+            {{- if .Values.trust.trustedKeysConfigMap }}
+            - name: trusted-keys
+              mountPath: /store/trusted-keys
+              readOnly: true
+            {{- end }}
+            {{- if .Values.trust.acceptorKeysConfigMap }}
+            - name: acceptor-keys
+              mountPath: /store/acceptor-keys
+              readOnly: true
+            {{- end }}
+            - name: scratch
+              mountPath: /scratch
+            - name: tmp
+              mountPath: /tmp
+            {{- with .Values.extraVolumeMounts }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+      volumes:
+        - name: store
+          {{- if .Values.persistence.enabled }}
+          persistentVolumeClaim:
+            claimName: {{ include "socair.storeClaim" . }}
+          {{- else }}
+          emptyDir: {}
+          {{- end }}
+        {{- with .Values.trust.trustedKeysConfigMap }}
+        - name: trusted-keys
+          configMap:
+            name: {{ . }}
+        {{- end }}
+        {{- with .Values.trust.acceptorKeysConfigMap }}
+        - name: acceptor-keys
+          configMap:
+            name: {{ . }}
+        {{- end }}
+        - name: scratch
+          {{- if .Values.scratch.ephemeral.enabled }}
+          ephemeral:
+            volumeClaimTemplate:
+              metadata:
+                labels:
+                  {{- include "socair.selectorLabels" . | nindent 18 }}
+              spec:
+                accessModes: [ReadWriteOnce]
+                {{- with .Values.scratch.ephemeral.storageClass }}
+                storageClassName: {{ . }}
+                {{- end }}
+                resources:
+                  requests:
+                    storage: {{ .Values.scratch.ephemeral.size }}
+          {{- else if .Values.scratch.sizeLimit }}
+          emptyDir:
+            sizeLimit: {{ .Values.scratch.sizeLimit }}
+          {{- else }}
+          emptyDir: {}
+          {{- end }}
+        - name: tmp
+          emptyDir:
+            sizeLimit: 1Gi
+        {{- with .Values.extraVolumes }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
