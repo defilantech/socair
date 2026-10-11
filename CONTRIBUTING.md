@@ -8,7 +8,11 @@ under the Apache License 2.0 and maintained by Defilan Technologies.
 - **Security issues** go through private reporting, never a public issue: see
   [SECURITY.md](SECURITY.md).
 - For anything larger than a small fix, open an issue first so we can agree on
-  the approach.
+  the approach. A change to the report format, what a verdict means, the check
+  rules, or the detection ceiling starts with a design issue
+  ([GOVERNANCE.md](GOVERNANCE.md)).
+- Questions go to Discussions ([SUPPORT.md](SUPPORT.md)); what is planned is
+  in [ROADMAP.md](ROADMAP.md).
 
 ## Sign off your commits (DCO)
 
@@ -79,6 +83,54 @@ negotiable:
   report together.
 
 `CLAUDE.md` describes the architecture in more depth.
+
+## AI-assisted contributions
+
+Socair's maintainers use AI coding tools, and we welcome contributions made
+with them. We hold every contribution to one standard: a person is
+accountable for it, however it was produced.
+
+If any part of your contribution (code, tests, commit messages, PR text) was
+generated or substantially assisted by an AI tool, the following apply.
+
+**A person is accountable.**
+
+- A person signs off every commit with the DCO (`git commit -s`). The sign-off
+  means a person takes responsibility for understanding, testing, and
+  maintaining the change. Bot-only sign-offs are not accepted.
+- A person, not an agent, owns the review conversation. Replies to review
+  feedback come from you, not from an autonomous agent posting for you.
+
+**Disclose the assistance.**
+
+- Say in the PR description which tool you used, what it produced, and what
+  you checked before submitting. One line is enough, for example:
+  `Assisted-by: <tool> (generated the tests; I reviewed them and ran go test -race ./...)`.
+- Put the disclosure in the PR description, not the commit message. Commit
+  messages stay free of attribution trailers.
+
+**The same bar as any other PR.**
+
+- The rules above apply in full. A check's falsification test must fail when
+  the detector is neutered; a test that still passes when the code under test
+  is broken is not coverage.
+- A detection claim needs evidence: the real-corpus gate's result, and a
+  benchmark case where one applies. Do not describe a detection, a false
+  positive, or a bypass you have not reproduced.
+- The change matches the scope of the issue it addresses: no unrelated edits,
+  no placeholder or invented content.
+- Run the checks under "Build and test" locally first.
+
+**Unsolicited and drive-by PRs.**
+
+- We may close an unsolicited AI-generated PR that no issue or discussion
+  preceded, especially a low-effort one aimed at a `good first issue`. To work
+  on an issue, comment on it first, so a person can confirm it is a good fit
+  and not already in progress.
+- A vulnerability or detection bypass found with an AI tool is welcome, through
+  [SECURITY.md](SECURITY.md) like any other, once you have reproduced it.
+
+This is not an anti-AI policy. It is a "stand behind your work" policy.
 
 ## What belongs in this repository
 

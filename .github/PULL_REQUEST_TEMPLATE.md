@@ -25,4 +25,5 @@ Fixes #
 - [ ] A report shape change updates the Go model, the JSON schema, the TypeScript types, and the golden report together
 - [ ] Commit messages describe the change
 - [ ] All commits are signed off (`git commit -s`) per [DCO](https://developercertificate.org/)
+- [ ] AI assistance (if any) is disclosed above, per [CONTRIBUTING.md](../CONTRIBUTING.md#ai-assisted-contributions)
 - [ ] Documentation updated (if user-facing change)

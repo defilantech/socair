@@ -1,0 +1,19 @@
+# Who reviews changes to each path. The last matching line wins.
+# Maintainers are listed in MAINTAINERS.md.
+
+* @Defilan
+
+# Security-sensitive: signing and verification, the airlock gate, the checks,
+# the report contract, and the release pipeline. Listed on their own so they
+# keep a named owner as maintainers are added for other areas.
+/internal/attest/ @Defilan
+/internal/acceptance/ @Defilan
+/internal/oms/ @Defilan
+/internal/airlock/ @Defilan
+/internal/checks/ @Defilan
+/internal/report/ @Defilan
+/tools/socair-sigstore/ @Defilan
+/.github/workflows/ @Defilan
+/scripts/build-release.sh @Defilan
+/Dockerfile @Defilan
+/charts/ @Defilan

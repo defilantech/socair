@@ -1,5 +1,8 @@
 blank_issues_enabled: true
 contact_links:
+  - name: Ask a question
+    url: https://github.com/defilantech/socair/discussions
+    about: Questions, ideas, and "how do I" go to Discussions (SUPPORT.md).
   - name: Report a vulnerability or a detection bypass
     url: https://github.com/defilantech/socair/security/advisories/new
     about: A file that crashes the scanner, hides from a check, or earns a PASS it should not. Report it privately, never as a public issue (SECURITY.md).
