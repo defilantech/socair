@@ -88,8 +88,8 @@ gh attestation verify "$(brew --prefix socair)/bin/socair" --repo defilantech/so
 
 Or download a release yourself. Releases are GitHub pre-releases for now. Each
 holds `socair` and the optional `socair-sigstore` helper for linux and darwin
-on amd64 and arm64, a `SHA256SUMS` file, and a build-provenance attestation
-for every binary. Check the binary before you run it:
+on amd64 and arm64, a `SHA256SUMS` file, an SBOM, and a build-provenance
+attestation for every binary. Check the binary before you run it:
 
 ```
 V=0.1.0-rc.3

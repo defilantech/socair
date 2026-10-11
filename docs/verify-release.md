@@ -41,8 +41,10 @@ gh attestation verify socair_${V}_linux_amd64 --repo defilantech/socair \
 ```
 
 This fetches the attestation and the Sigstore trust root over the network.
-To verify on a machine without network access, fetch both on a connected
-machine first and carry them in:
+The release also carries its attestations as one file,
+`socair_${V}.intoto.jsonl`, which `--bundle` reads instead of fetching them.
+To verify on a machine without network access, fetch the attestation (or that
+file) and the trust root on a connected machine first and carry them in:
 
 ```
 gh attestation download socair_${V}_linux_amd64 --repo defilantech/socair   # writes sha256:<digest>.jsonl
@@ -52,6 +54,18 @@ gh attestation trusted-root > trusted_root.jsonl
 gh attestation verify socair_${V}_linux_amd64 --repo defilantech/socair \
   --signer-workflow defilantech/socair/.github/workflows/release.yml \
   --bundle sha256:<digest>.jsonl --custom-trusted-root trusted_root.jsonl
+```
+
+The release also holds Socair's SBOM, `socair_${V}.cdx.json`: the Go modules
+linked into the binaries (CycloneDX, read from their build information). The
+release workflow attests the same SBOM for every binary, and this checks that
+attestation and prints the attested SBOM:
+
+```
+gh attestation verify socair_${V}_linux_amd64 --repo defilantech/socair \
+  --signer-workflow defilantech/socair/.github/workflows/release.yml \
+  --predicate-type https://cyclonedx.org/bom \
+  --format json --jq '.[0].verificationResult.statement.predicate'
 ```
 
 ## 3. Rebuild it yourself

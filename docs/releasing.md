@@ -34,25 +34,29 @@ next version, not by re-tagging.
    - builds everything a second time from an empty cache and fails if a single
      byte differs;
    - attaches a GitHub build-provenance attestation (SLSA) to every binary;
-   - creates a draft release holding the binaries and `SHA256SUMS`, with
-     generated notes;
+   - writes Socair's own SBOM (`socair_<version>.cdx.json`, CycloneDX: the Go
+     modules linked into each binary, read from the binaries) and attests it
+     for every binary;
+   - creates a draft release holding the binaries, `SHA256SUMS`, the SBOM,
+     and `socair_<version>.intoto.jsonl` (the attestations as one file, for
+     tools that read release assets), with generated notes; a version with a
+     suffix (`-rc.1`) is marked as a pre-release;
    - builds the container image from those binaries and the wizard for
      linux/amd64 and linux/arm64, pushes it to `ghcr.io/defilantech/socair:<version>`,
      and attests it;
    - packages the Helm chart with the tag's version as both its version and
      its appVersion, pushes it to `oci://ghcr.io/defilantech/charts/socair`,
-     attaches the archive to the draft, and attests both.
+     attaches the archive to the draft, attests both, and adds the archive's
+     attestation to `socair_<version>.intoto.jsonl`.
 
    Unlike the binaries, the image and the chart have no draft step: the push
    publishes them. The first push of each creates a private GHCR package, so
    make `socair` and `charts/socair` public in the organization's package
    settings once, and link them to this repository.
-4. Review the draft (notes, assets, attestations), then publish it. The
-   workflow creates the draft without `--prerelease`, so for an `-rc` or other
-   pre-release tag, mark it as a pre-release before publishing
-   (`gh release edit <tag> --prerelease`, or the checkbox on the release
-   page). Publishing locks the release, so this is the last chance to change
-   it.
+4. Review the draft (notes, assets, attestations), then publish it. Replace
+   the generated notes, a list of every pull request, with a short summary for
+   people: what changed, how to install and verify, and known limitations.
+   Publishing locks the release, so this is the last chance to change it.
 5. Publishing runs `distribute.yml`, which checks the release's assets
    against their attestations and then:
    - adds the chart to `index.yaml` on the `gh-pages` branch, served as the

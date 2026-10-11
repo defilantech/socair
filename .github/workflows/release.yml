@@ -1,11 +1,11 @@
 name: release
 
 # A tag v<version> builds the release binaries, checks the build reproduces,
-# attests each binary's provenance (SLSA, via GitHub artifact attestations),
-# and creates a DRAFT release: publishing it is a maintainer's decision. It
-# then pushes the container image and the Helm chart to GHCR, each attested.
-# A pull request that touches the release path runs the build and the
-# reproducibility check only. See docs/releasing.md.
+# attests each binary's provenance (SLSA, via GitHub artifact attestations)
+# and its SBOM, and creates a DRAFT release: publishing it is a maintainer's
+# decision. It then pushes the container image and the Helm chart to GHCR,
+# each attested. A pull request that touches the release path runs the build,
+# the reproducibility check, and the SBOM step only. See docs/releasing.md.
 on:
   push:
     tags: ["v*"]
@@ -36,6 +36,18 @@ jobs:
           if [ "${GITHUB_REF_TYPE}" = tag ]; then version="${GITHUB_REF_NAME#v}"; fi
           scripts/build-release.sh --check "$version" dist
           cat dist/SHA256SUMS
+      # The same SBOM step the publish job runs, so a pull request tests it.
+      - uses: anchore/sbom-action@66cbf4bc1f1c0d2edc94016e65bc221b6bb0ad6c # v0.24.3
+        with:
+          path: dist
+          format: cyclonedx-json
+          output-file: sbom.cdx.json
+          upload-artifact: false
+          upload-release-assets: false
+      - name: the SBOM lists the modules linked into the binaries
+        run: |
+          jq -e '[.components[].name] | index("github.com/defilantech/socair-verify")' sbom.cdx.json >/dev/null
+          jq -e '[.components[].name] | index("github.com/sigstore/sigstore-go")' sbom.cdx.json >/dev/null
 
   publish:
     if: startsWith(github.ref, 'refs/tags/v')
@@ -55,17 +67,52 @@ jobs:
       # reproducible, so it is byte-identical to what that job checked.
       - name: build
         run: scripts/build-release.sh --check "${GITHUB_REF_NAME#v}" dist
-      - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+      - id: provenance
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
         with:
           subject-path: |
             dist/socair_*
             dist/socair-sigstore_*
+      # Socair's own SBOM: the Go modules linked into each release binary,
+      # read from the binaries' build information. It and the attestations
+      # file go in meta/, not dist/, so the subject globs never match them.
+      - uses: anchore/sbom-action@66cbf4bc1f1c0d2edc94016e65bc221b6bb0ad6c # v0.24.3
+        with:
+          path: dist
+          format: cyclonedx-json
+          output-file: sbom.cdx.json
+          upload-artifact: false
+          upload-release-assets: false
+      - id: sbom
+        uses: actions/attest-sbom@c604332985a26aa8cf1bdc465b92731239ec6b9e # v4.1.0
+        with:
+          subject-path: |
+            dist/socair_*
+            dist/socair-sigstore_*
+          sbom-path: sbom.cdx.json
+      # The attestations as a release asset too: verifiers that read release
+      # assets (OpenSSF Scorecard, `gh attestation verify --bundle` offline)
+      # find them there. The chart job appends the chart's.
+      - name: collect the attestations
+        env:
+          PROVENANCE_BUNDLE: ${{ steps.provenance.outputs.bundle-path }}
+          SBOM_BUNDLE: ${{ steps.sbom.outputs.bundle-path }}
+        run: |
+          v="${GITHUB_REF_NAME#v}"
+          mkdir -p meta
+          jq -c . "$PROVENANCE_BUNDLE" "$SBOM_BUNDLE" > "meta/socair_${v}.intoto.jsonl"
+          mv sbom.cdx.json "meta/socair_${v}.cdx.json"
+          wc -l "meta/socair_${v}.intoto.jsonl"
+      # A version with a suffix (0.2.0-rc.1) is a pre-release, so the draft
+      # is marked as one: publishing locks the flag with the release.
       - name: create the draft release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create "${GITHUB_REF_NAME}" dist/* --draft --verify-tag \
-            --title "Socair ${GITHUB_REF_NAME}" --generate-notes
+          prerelease=()
+          case "${GITHUB_REF_NAME#v}" in *-*) prerelease=(--prerelease) ;; esac
+          gh release create "${GITHUB_REF_NAME}" dist/* meta/* --draft --verify-tag \
+            "${prerelease[@]}" --title "Socair ${GITHUB_REF_NAME}" --generate-notes
 
   # The container image (Dockerfile) for linux/amd64 and linux/arm64, pushed
   # to GHCR and attested like the binaries. It carries the release binaries
@@ -152,13 +199,22 @@ jobs:
           echo "digest=$digest" >> "$GITHUB_OUTPUT"
       # The archive first: attesting it and attaching it to the draft need no
       # registry, so the release is complete even if the registry step fails.
-      - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+      - id: chart-provenance
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
         with:
           subject-path: chart-dist/socair-*.tgz
+      # The archive, and its attestation appended to the release's
+      # attestations file, which the publish job created.
       - name: attach the chart to the draft release
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release upload "${GITHUB_REF_NAME}" "chart-dist/socair-${GITHUB_REF_NAME#v}.tgz"
+          CHART_BUNDLE: ${{ steps.chart-provenance.outputs.bundle-path }}
+        run: |
+          v="${GITHUB_REF_NAME#v}"
+          gh release upload "${GITHUB_REF_NAME}" "chart-dist/socair-$v.tgz"
+          gh release download "${GITHUB_REF_NAME}" -p "socair_${v}.intoto.jsonl" -D meta
+          jq -c . "$CHART_BUNDLE" >> "meta/socair_${v}.intoto.jsonl"
+          gh release upload "${GITHUB_REF_NAME}" "meta/socair_${v}.intoto.jsonl" --clobber
       - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
         with:
           subject-name: ghcr.io/defilantech/charts/socair
