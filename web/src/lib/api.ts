@@ -316,7 +316,8 @@ export type Stage =
 	| 'blocked'
 	| 'approved'
 	| 'acceptance-expired'
-	| 'does-not-verify';
+	| 'does-not-verify'
+	| 'flagged';
 
 export interface Model {
 	id: string;
@@ -334,6 +335,10 @@ export interface Model {
 	acceptance_expires?: string;
 	expires_soon?: boolean;
 	promoted_at?: string;
+	/** The clean entry's last recheck (socair airlock recheck), from its recheck.json. */
+	rechecked_at?: string;
+	recheck_outcome?: 'flagged' | 'unchanged' | 'incomplete';
+	recheck_reason?: string;
 	next: { action: 'scan' | 'sign' | 'accept' | 'promote' | 'none'; command?: string };
 }
 

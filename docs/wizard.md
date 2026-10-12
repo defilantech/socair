@@ -16,8 +16,11 @@ same app is the airlock console: the operator's view of what is staged, what is
 approved, and what each model waits for. Pages:
 
 - `/approved`: models in the clean store, with their attestation state. A
-  clean entry whose acceptance expired or that does not verify is listed here
-  too, in red.
+  clean entry that a recheck flagged (`socair airlock recheck`,
+  `docs/airlock.md`) is listed first, in red, under "Flagged by a recheck",
+  with the reason the engine returned. A clean entry whose acceptance expired
+  or that does not verify is listed here too, in red. The page shows the
+  recheck command to copy; the console does not run it.
 - `/pending`: staged models, grouped by stage, each with the step it waits for.
   A promoted model leaves it once approved. Pulling stays a CLI step
   (`socair airlock pull`); the empty pages say so.
@@ -34,7 +37,12 @@ Display rules. Every label comes from what the engine returned (`stage`,
 
 - Only an approved model with an unconditional authorization is green.
 - Authorized with conditions, and needs-acceptance, are amber.
-- Blocked, does-not-verify, and acceptance-expired are red.
+- Blocked, does-not-verify, acceptance-expired, and flagged are red. A flagged
+  model's page says it is still in the clean store, shows the recheck's
+  reason as the engine returned it, and labels the report below as the
+  attestation it was promoted on.
+- A recheck's log entry is red when it flagged, amber when it was
+  incomplete, and neutral when unchanged: an unchanged recheck is not a pass.
 - NOT_TESTED is never shown as a pass, and neither is a Tier 2 measurement.
 - A report is labelled "signed" only when its attestation verified.
 
