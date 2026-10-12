@@ -147,6 +147,7 @@ Usage:
   socair airlock ingest    resolve a local file or directory, or an offline HF cache entry
   socair airlock trust add <key.pub>   trust a signing key for promotion
   socair airlock promote   promote a file or model directory with a signed attestation
+  socair airlock recheck [--rescan]   re-check the clean store against the current feed and check set
   socair airlock log       print the airlock activity log (--verify checks its hash chain)
   socair airlock export --out <dir> [--key <k>]   write a shareable, signed snapshot of the store
   socair inventory verify <dir> --trusted <key.pub|dir>   verify an exported inventory snapshot

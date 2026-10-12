@@ -285,7 +285,7 @@ func TestRepromotionRestoresTheArtifact(t *testing.T) {
 // overwritten by the report in its clean entry.
 func TestReservedArtifactNameIsRefused(t *testing.T) {
 	artifact, d := authorizedArtifact(t)
-	for _, name := range []string{"attestation.json", "attestation.dsse.json"} {
+	for _, name := range []string{"attestation.json", "attestation.dsse.json", RecheckFile} {
 		renamed := filepath.Join(t.TempDir(), name)
 		b, _ := os.ReadFile(artifact)
 		if err := os.WriteFile(renamed, b, 0o600); err != nil {
