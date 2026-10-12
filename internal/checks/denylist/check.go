@@ -9,6 +9,7 @@ import (
 	"bufio"
 	"encoding/hex"
 	"fmt"
+	"io"
 	"os"
 	"strings"
 
@@ -21,19 +22,27 @@ type Entry struct {
 	Label  string
 }
 
-// Load reads a denylist file. Each line is "<sha256>  <label>"; blank lines and
-// lines starting with # are ignored. A line that does not start with a SHA-256
-// refuses the whole list, as the feed loader does: a list that is partly
-// wrong may be missing the entry that matters, so it is not matched against.
+// Load reads a denylist file (see Parse), naming it by path in an error.
 func Load(path string) (map[string]Entry, error) {
 	f, err := os.Open(path)
 	if err != nil {
 		return nil, err
 	}
 	defer f.Close()
+	entries, err := Parse(f)
+	if err != nil {
+		return nil, fmt.Errorf("%s %w", path, err)
+	}
+	return entries, nil
+}
 
+// Parse reads a denylist. Each line is "<sha256>  <label>"; blank lines and
+// lines starting with # are ignored. A line that does not start with a SHA-256
+// refuses the whole list, as the feed loader does: a list that is partly
+// wrong may be missing the entry that matters, so it is not matched against.
+func Parse(r io.Reader) (map[string]Entry, error) {
 	entries := map[string]Entry{}
-	sc := bufio.NewScanner(f)
+	sc := bufio.NewScanner(r)
 	n := 0
 	for sc.Scan() {
 		n++
@@ -44,12 +53,15 @@ func Load(path string) (map[string]Entry, error) {
 		fields := strings.Fields(line)
 		sha := strings.ToLower(fields[0])
 		if _, err := hex.DecodeString(sha); err != nil || len(sha) != 64 {
-			return nil, fmt.Errorf("%s line %d: %q is not a SHA-256", path, n, fields[0])
+			return nil, fmt.Errorf("line %d: %q is not a SHA-256", n, fields[0])
 		}
 		label := strings.Join(fields[1:], " ")
 		entries[sha] = Entry{SHA256: sha, Label: label}
 	}
-	return entries, sc.Err()
+	if err := sc.Err(); err != nil {
+		return nil, fmt.Errorf("line %d: %w", n+1, err)
+	}
+	return entries, nil
 }
 
 // Check reports whether sha256hex is on the denylist at listPath.
