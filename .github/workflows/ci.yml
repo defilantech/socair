@@ -197,6 +197,8 @@ jobs:
           ./internal/oms FuzzVerify
           ./internal/acceptance FuzzParse
           ./internal/feed FuzzLoad
+          ./internal/registry FuzzParseReference
+          ./internal/registry FuzzParseChallenge
           TARGETS
           if [ -n "$failed" ]; then echo "fuzz failures:$failed"; exit 1; fi
 
