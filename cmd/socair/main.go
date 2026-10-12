@@ -150,6 +150,7 @@ Usage:
   socair airlock recheck [--rescan]   re-check the clean store against the current feed and check set
   socair airlock log       print the airlock activity log (--verify checks its hash chain)
   socair airlock export --out <dir> [--key <k>]   write a shareable, signed snapshot of the store
+  socair airlock serve-hub [--addr <host:port>]   serve admitted models read-only over the Hugging Face Hub API
   socair inventory verify <dir> --trusted <key.pub|dir>   verify an exported inventory snapshot
   socair serve             run the engine HTTP/JSON API for the click-ops wizard
   socair health [--addr <host:port>]   exit 0 only if a running API reports healthy (a container probe)
