@@ -86,6 +86,12 @@ var weightExt = map[string]bool{
 	".tflite": true, ".pb": true, ".keras": true,
 }
 
+// HasWeightExt reports whether a path carries a model-weights extension, the
+// test Classify applies before it gives a file the weights role. An adapter's
+// files take the adapter role whatever their extension, so this tells its
+// weights from its config.
+func HasWeightExt(rel string) bool { return weightExt[strings.ToLower(path.Ext(rel))] }
+
 // Classify gives a file its role from its path.
 func Classify(rel string, adapter bool) string {
 	base := strings.ToLower(path.Base(rel))

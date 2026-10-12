@@ -270,6 +270,16 @@ Catalogue ids are ScanCode LicenseDB keys where ScanCode has one, and
 | `moonshot-ai-modified-mit-2025`, `minimax-mit-variant-2025` | Kimi and MiniMax modified MIT licenses (never identified as MIT) | |
 | `socair-tencent-hunyuan-community`, `socair-glm-4` | Tencent Hunyuan Community, GLM-4 licenses | `tencent-hunyuan-community`, `glm-4` |
 
+## 9. An intake policy, `SOCAIR_INTAKE_POLICY`
+
+Your organization's intake rules, beside the license policy and independent of
+it: the formats a model file may be in (identified from its bytes), publisher
+allow and deny lists (read from the provenance manifest bound to the hash,
+section 3), and publishers whose models need a verified publisher signature
+(section 3a). It adds an **Intake policy** row that can only withhold; see
+[intake-policy.md](intake-policy.md). The report names the policy in
+`scope.intake_policy`, by file name and hash.
+
 ## What each input buys, in one table
 
 | Input | Row it moves | Without it |
@@ -280,6 +290,7 @@ Catalogue ids are ScanCode LicenseDB keys where ScanCode has one, and
 | `SOCAIR_TOKENIZER_REFERENCE`, or tables in a feed | Tokenizer config: a changed ordinary token becomes a LEAD | PASS on internal consistency only, and the row says no reference was compared |
 | `SOCAIR_TEMPLATE_REFERENCE`, or template texts in a feed | Chat template: a reviewed template plus an added content-conditional branch becomes a LEAD | the rendered inventory only, and the row says no reviewed template text was compared |
 | `SOCAIR_LICENSE_POLICY` | Adds the License policy row: PASS, FAIL, LEAD, or NOT_TESTED against your allowed list | no row; the license is still named in the identity section |
+| `SOCAIR_INTAKE_POLICY` ([intake-policy.md](intake-policy.md)) | Adds the Intake policy row: PASS, FAIL, or NOT_TESTED against your formats, publisher lists, and required signatures; it can only withhold | no row |
 | A signed acceptance (`socair accept`) | the promotion state | withheld on any gap |
 | `SOCAIR_TIER2_HELPER` and `SOCAIR_TIER2_ENDPOINT` ([tier2.md](tier2.md)) | Adds Tier 2 measurements; one that raises a LEAD or FAIL adds a row that withholds, and one that finds nothing adds no row | No Tier 2 section; its checks are listed as not run, which is not a gap |
 

@@ -146,7 +146,10 @@ host only ([airlock.md](airlock.md#controlled-egress)).
   hash.
 
 A signed reference feed ([feed.md](feed.md)) mounts the same way, with
-`extraEnv` setting `SOCAIR_FEED` and `SOCAIR_FEED_KEYS`.
+`extraEnv` setting `SOCAIR_FEED` and `SOCAIR_FEED_KEYS`, and so does an
+intake policy ([intake-policy.md](intake-policy.md#in-kubernetes)): a
+ConfigMap holding the policy file, with `extraEnv` setting
+`SOCAIR_INTAKE_POLICY` to its mounted path.
 
 ## Handing models to LLMKube
 

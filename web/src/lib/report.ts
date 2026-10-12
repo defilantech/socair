@@ -162,6 +162,16 @@ export function licenseLabel(d: Document): { text: string; tone: 'plain' | 'ambe
 	return { text: 'None stated', tone: 'neutral' };
 }
 
+// intakePolicyLabel names the intake policy the report's Intake policy row was
+// checked against, from the document's scope: its file name and the start of
+// its SHA-256. It is undefined when no policy was set. It says nothing about
+// the row, whose status is the engine's.
+export function intakePolicyLabel(d: Document): string | undefined {
+	const p = d.scope?.intake_policy;
+	if (!p) return undefined;
+	return `${p.name} (sha256 ${p.sha256.slice(0, 12)})`;
+}
+
 export interface Level {
 	id: string;
 	label: string;

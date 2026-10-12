@@ -134,6 +134,10 @@ var passMeaning = map[string]string{
 	"Known-bad hash match": "This exact hash is not on the configured denylist. Any changed byte gives a new hash, so it catches only known files.",
 	"License policy": "The license the artifact states (model card, LICENSE file, or GGUF metadata) is on your allowed list. This is not legal advice: " +
 		"usage-policy obligations, such as an acceptable-use policy or a user cap, are listed in the notes and not marked met.",
+	IntakePolicyCheck: "Every rule your intake policy sets holds: each model file's format, identified from its bytes, is allowed; " +
+		"the publisher, read from a provenance manifest bound to this hash, is on your allowed list and not on your denied list; " +
+		"and a publisher whose models need a signature has one that verified against a key or root you trust. " +
+		"A rule the policy does not set is not checked. It is your organization's rule, not a finding about the model's safety.",
 }
 
 // PassMeaning returns the fixed PASS statement for a check row, or "" for a
@@ -271,7 +275,22 @@ type Scope struct {
 	// ReferenceData names the reference data the checks compared against: a
 	// signed feed (issuer, version, dates, key) and any local denylist.
 	ReferenceData string `json:"reference_data,omitempty"`
+	// IntakePolicy names the organization's intake policy the Intake policy
+	// row was checked against (SOCAIR_INTAKE_POLICY), by its file's base
+	// name and the SHA-256 of its bytes, never by a local path. It is
+	// present exactly when that row is.
+	IntakePolicy *PolicyRef `json:"intake_policy,omitempty"`
 }
+
+// PolicyRef identifies a policy file: its base name, and the SHA-256 of its
+// bytes, which pins the exact rules.
+type PolicyRef struct {
+	Name   string `json:"name"`
+	SHA256 string `json:"sha256"`
+}
+
+// IntakePolicyCheck is the name of the row an intake policy adds.
+const IntakePolicyCheck = "Intake policy"
 
 type CheckResult struct {
 	Name     string `json:"name"`
@@ -565,8 +584,48 @@ func Validate(d *Document) []string {
 		}
 	}
 	problems = append(problems, validateTier2(d)...)
+	problems = append(problems, validateIntakePolicy(d)...)
 	problems = append(problems, validatePromotion(d)...)
 	return problems
+}
+
+// validateIntakePolicy holds the Intake policy row to the policy it names: a
+// report with the row says which policy, by name and hash, and a report that
+// names a policy carries its row.
+func validateIntakePolicy(d *Document) []string {
+	row := false
+	for _, c := range d.Checks {
+		row = row || c.Name == IntakePolicyCheck
+	}
+	ref := d.Scope.IntakePolicy
+	switch {
+	case row && ref == nil:
+		return []string{"scope.intake_policy: an Intake policy row needs the policy it was checked against"}
+	case !row && ref != nil:
+		return []string{"scope.intake_policy names a policy, but checks has no Intake policy row"}
+	case ref == nil:
+		return nil
+	}
+	var problems []string
+	if strings.TrimSpace(ref.Name) == "" || strings.ContainsAny(ref.Name, `/\`) {
+		problems = append(problems, fmt.Sprintf("scope.intake_policy.name must be a file's base name, got %q", ref.Name))
+	}
+	if !isHex64(ref.SHA256) {
+		problems = append(problems, fmt.Sprintf("scope.intake_policy.sha256 must be 64 lowercase hex, got %q", ref.SHA256))
+	}
+	return problems
+}
+
+func isHex64(s string) bool {
+	if len(s) != 64 {
+		return false
+	}
+	for _, c := range s {
+		if !('0' <= c && c <= '9' || 'a' <= c && c <= 'f') {
+			return false
+		}
+	}
+	return true
 }
 
 // validatePromotion enforces the promotion state machine: a FAIL withholds, a

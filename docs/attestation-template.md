@@ -76,6 +76,7 @@ canonical manifest of those hashes (`socair.modeldir/v1`, see
 | Scan start (UTC) | `[scan_start]` |
 | Scan end (UTC) | `[scan_end]` |
 | Inference budget consumed | `[Tier 2: <n> measurement(s) over <n> probe(s) / not applicable]` |
+| Intake policy (with a policy) | `[policy file name, sha256 of its bytes]` (`scope.intake_policy`; never a local path) |
 
 ## 4. Checks performed
 
@@ -85,7 +86,7 @@ Every row also carries a fixed **PASS means** line (`pass_means`): what that che
 
 The chat-template row also renders each template that reaches no code, with Socair's own Jinja evaluator, on fixed probe conversations. Its notes list the text the template adds to the prompt (listed, not judged), quote what each content condition adds, and say whether the template matches a reviewed template: byte for byte, render for render, or not at all. Two rendered signals are LEADs: a content condition that opens a system turn, and a template that renders like a reviewed one on every standard probe but adds a content-conditional branch. A template the evaluator cannot render is not rendered, the notes say why, and the row keeps the static verdict.
 
-The rows that run depend on the format: every report carries structure, inventory, provenance, and the known-bad hash; a GGUF adds the chat template, tokenizer, and quant rows; a model directory adds the chat template, tokenizer, and remote code rows; a pickle checkpoint or NumPy array adds the pickle row, as does a model directory any of whose files is a pickle by its name or by its bytes (a directory with none says so in the File inventory row's notes). The License policy row runs, for every format, only when the operator configures a policy (`SOCAIR_LICENSE_POLICY`).
+The rows that run depend on the format: every report carries structure, inventory, provenance, and the known-bad hash; a GGUF adds the chat template, tokenizer, and quant rows; a model directory adds the chat template, tokenizer, and remote code rows; a pickle checkpoint or NumPy array adds the pickle row, as does a model directory any of whose files is a pickle by its name or by its bytes (a directory with none says so in the File inventory row's notes). The License policy row runs, for every format, only when the operator configures a policy (`SOCAIR_LICENSE_POLICY`), and the Intake policy row likewise only with an intake policy (`SOCAIR_INTAKE_POLICY`), after it.
 
 | Check | Looks for | Result | Evidence | Notes |
 |---|---|---|---|---|
@@ -99,8 +100,11 @@ The rows that run depend on the format: every report carries structure, inventor
 | Remote code (model directory) | Code a loader would run: auto_map entries and Python files (trust_remote_code) | `[result]` | `[evidence]` | `[notes]` |
 | Pickle opcode scan (pickle) | Imports in pickle-based model files that reach code execution, and pickles that build more than tensors and plain containers | `[result]` | `[evidence]` | `[notes]` |
 | License policy (with a policy) | The license the artifact states, against the operator's allowed list | `[result]` | `[evidence]` | `[notes, with the license's usage-policy obligations listed and not marked met]` |
+| Intake policy (with a policy) | The artifact against the organization's intake policy: allowed formats, publisher allow and deny lists, and publishers whose models need a verified signature | `[result]` | `[evidence: the rule each finding breaks]` | `[notes: the policy by name and hash, the publisher and where it was read, and each rule that broke, could not be evaluated, or held]` |
 
 The License policy row FAILs only when the artifact's statements agree on a license the policy does not allow. Statements that name different licenses, one of them not allowed, are a LEAD: which license governs needs a person. No identified license, or an allowed one beside a statement the catalogue does not recognize, is NOT_TESTED. Its PASS means the identified license is on the operator's list; it is not legal advice.
+
+The Intake policy row can only withhold ([intake-policy.md](intake-policy.md)). It FAILs when a rule is broken: a model file in a format the policy does not allow, identified from its bytes; a publisher on the denied list or off the allowed list, read from a provenance manifest bound to this hash; or a listed publisher's model without a verified publisher signature. A rule it cannot evaluate (no bound manifest names the publisher, a file whose format is not identified, a signature that was not verified) is NOT_TESTED with the reason. It never changes another row.
 
 Tier 2 checks run the model and are opt-in ([tier2.md](tier2.md)). When Tier 2 did not run, the report lists them in Section 8 as not run, never as rows. When it ran, see Tier 2 measurements below.
 
@@ -120,7 +124,7 @@ Node classes: `[sha256:hash]`, reported by the probe helper (not observed by Soc
 
 ### Severity and framework mapping
 
-A FAIL or LEAD row carries a **severity** (`critical`, `high`, `medium`, `low`), the highest of its findings' patterns, fixed per pattern in `report.patternSeverity`. It is for triage: any FAIL or LEAD withholds promotion whatever its severity. Code a loader or template would execute, and a known-bad hash, are critical. Positive evidence of tampering is high. A suspicious or inconsistent signal, and a license outside the operator's policy, are medium. A mislabelled quantization, and license statements that disagree, are low.
+A FAIL or LEAD row carries a **severity** (`critical`, `high`, `medium`, `low`), the highest of its findings' patterns, fixed per pattern in `report.patternSeverity`. It is for triage: any FAIL or LEAD withholds promotion whatever its severity. Code a loader or template would execute, and a known-bad hash, are critical. Positive evidence of tampering is high. A suspicious or inconsistent signal, a license outside the operator's policy, and a broken intake rule are medium. A mislabelled quantization, and license statements that disagree, are low.
 
 Every row names what it **addresses** (`maps_to`), against MITRE ATLAS 5.6.0 and the OWASP Top 10 for LLM Applications 2025. A mapping is a claim about what the check inspects, never the wider threat:
 
@@ -136,6 +140,7 @@ Every row names what it **addresses** (`maps_to`), against MITRE ATLAS 5.6.0 and
 | Hash, provenance, lineage | AML.T0010.003, AML.T0058 | LLM03 |
 | Known-bad hash match | AML.T0058, AML.T0010.003 | LLM03 |
 | License policy | (none: no ATLAS technique is a license) | LLM03 (licensing risk) |
+| Intake policy | (none: it enforces the organization's rules and detects no compromise) | LLM03 (trusted suppliers, verifiable sources) |
 
 The SARIF output carries both: each rule's `security-severity` (critical 9.5, high 8.0, medium 5.5, low 3.0) and tags such as `external/atlas/AML.T0011.000` and `external/owasp-llm/LLM03`.
 

@@ -8,6 +8,7 @@
 		counts,
 		countOrder,
 		licenseLabel,
+		intakePolicyLabel,
 		measurementPill,
 		measurementSummary,
 		nodeClassFacts,
@@ -34,6 +35,7 @@
 	const level = $derived(report.tier2 ? 'Tier 1 (static), with Tier 2 measurements' : 'Tier 1 (static)');
 	const license = $derived(licenseLabel(report));
 	const licenseTone = { plain: '', amber: 'tone-amber', neutral: 'tone-neutral' } as const;
+	const intakePolicy = $derived(intakePolicyLabel(report));
 </script>
 
 <div class="report">
@@ -93,6 +95,7 @@
 				<dt>Execution context</dt><dd>{report.scope.execution_context}</dd>
 				<dt>Check set</dt><dd>{report.scope.check_set_version}</dd>
 				{#if report.scope.reference_data}<dt>Reference data</dt><dd>{report.scope.reference_data}</dd>{/if}
+				{#if intakePolicy}<dt>Intake policy</dt><dd>{intakePolicy}</dd>{/if}
 			</dl>
 		</section>
 	{/if}
