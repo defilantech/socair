@@ -245,6 +245,42 @@ is named and not judged.
   named and not verified after that date, until NVIDIA signs with a newer
   certificate.
 
+### Conformance
+
+CI runs the OpenSSF Model Signing conformance suite
+([ossf/model-signing-spec](https://github.com/ossf/model-signing-spec/tree/91bf841e8ccf97a3ed97309387e9298d1ac18ba2/conformance),
+pinned at commit `91bf841e8ccf`) in its verify-only mode against Socair's
+verifier, through `tools/oms-conformance`, a harness that maps the suite's
+adapter protocol onto `internal/oms`. The suite's historical and
+cross-implementation bundles are an OCI artifact the pinned suite names by
+digest; CI fetches it by that digest (`tools/oms-conformance/fetch_fixtures.py`).
+At that commit, on 2026-10-12:
+
+| Result | Cases |
+|---|---|
+| Passed | 44: every positive and negative key and certificate case, the suite's historical key and certificate bundles from releases v0.3.1 to v1.1.0, and its Go-signed interoperability bundles |
+| Expected to fail | 2, below, listed with their reasons in `tools/oms-conformance/xfail.txt` |
+| Skipped | 37 roundtrip cases, because Socair does not sign, and 9 sigstore cases, because keyless bundles are verified by `tools/socair-sigstore`, which the harness does not drive |
+
+The two expected failures are decisions, not open bugs:
+
+- `certificate-no-code-signing-eku_fail`: the leaf has the `digitalSignature`
+  key usage and no `codeSigning` extended key usage. OMS v1.0 does not require
+  the extended usage, `model_signing` 1.1.1 accepts the key usage alone, and
+  NVIDIA's NGC leaf carries the key usage only, so requiring it would leave
+  every NGC signature unverified.
+- `historical-v0.2.0-certificate`: a pre-1.0 bundle (predicate
+  `https://model_signing/Digests/v0.1`), which OMS v1.0 section 11.2 says a
+  verifier MAY accept. Socair names it and does not verify it.
+
+The suite makes the bundles for its verify tests with the adapter's own
+signer, so the harness signs with `internal/oms/omstest`, Socair's test
+signer. On bundles made by the reference implementation, `model_signing`
+1.1.1, Socair's result is the same: 44 passed and the same 2 failed. The
+reference implementation itself fails `certificate-no-code-signing-eku_fail`
+and `certificate-not-yet-valid_fail` at that commit; Socair passes the second
+because it checks the chain at the scan's time.
+
 ## 4. The acceptance record: review, accept, re-issue
 
 An acceptance is the person who owns the gaps signing for them. It is what
