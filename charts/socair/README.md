@@ -50,6 +50,12 @@ Standard.
 | `service.authenticatingProxy` | `false` | Required with `service.enabled`: confirms something authenticates in front of the API. |
 | `networkPolicy.enabled` | `true` | Default-deny NetworkPolicy. |
 | `networkPolicy.ingressFrom` | `[]` | With a Service: the peers that may reach the API. Empty means this namespace. |
+| `hub.enabled` | `false` | A read-only download endpoint for inference servers (`HF_ENDPOINT`): a second container with the store mounted read-only, and a ClusterIP Service for its port only. Needs `networkPolicy.enabled`. |
+| `hub.port` | `8081` | The endpoint's container and Service port. |
+| `hub.authorizedOnly` | `false` | Serve authorized models only, never one promoted with conditions. |
+| `hub.ingressFrom` | pods labelled `socair.ai/hub-client=true` in namespaces labelled the same | The peers that may reach the endpoint. May not be empty. |
+| `hub.service.annotations` | `{}` | Annotations on the endpoint's Service. |
+| `hub.resources` | 100m CPU, 64Mi | The endpoint container's resources. |
 | `resources` | 500m CPU, 512Mi | Requests; set limits from a scan of your largest model. |
 | `extraEnv`, `extraVolumes`, `extraVolumeMounts` | `[]` | A model share to ingest from, a signed feed, and the like. |
 

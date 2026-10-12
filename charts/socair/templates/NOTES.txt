@@ -19,6 +19,19 @@ then browse to http://127.0.0.1:8080. Kubernetes RBAC (create on
 pods/portforward in this namespace) decides who can.
 {{- end }}
 
+{{- if .Values.hub.enabled }}
+
+The read-only hub endpoint serves the clean store's admitted models
+{{- if .Values.hub.authorizedOnly }} (authorized ones only, never conditional){{ end }}.
+Point inference servers at it with:
+
+  HF_ENDPOINT=http://{{ include "socair.hubName" . }}.{{ .Release.Namespace }}.svc:{{ .Values.hub.port }}
+
+The NetworkPolicy admits only hub.ingressFrom; with the default, label the
+inference namespace and its pods socair.ai/hub-client=true.
+docs/hub-endpoint.md: https://github.com/defilantech/socair/blob/main/docs/hub-endpoint.md
+{{- end }}
+
 The store is at /store in the pod
 {{- if .Values.persistence.enabled }} (claim {{ include "socair.storeClaim" . }}
 {{- if .Values.persistence.keep }}, kept on uninstall{{ end }})

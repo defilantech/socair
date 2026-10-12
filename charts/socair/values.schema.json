@@ -100,6 +100,24 @@
         "ingressFrom": { "type": "array" }
       }
     },
+    "hub": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "port": { "type": "integer", "minimum": 1, "maximum": 65535, "not": { "const": 8080 } },
+        "authorizedOnly": { "type": "boolean" },
+        "service": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "annotations": { "type": "object" }
+          }
+        },
+        "ingressFrom": { "type": "array", "minItems": 1, "items": { "type": "object", "minProperties": 1 } },
+        "resources": { "type": "object" }
+      }
+    },
     "resources": { "type": "object" },
     "podSecurityContext": { "type": "object" },
     "securityContext": { "type": "object" },

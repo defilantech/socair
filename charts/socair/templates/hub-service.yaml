@@ -1,0 +1,24 @@
+{{- if .Values.hub.enabled }}
+{{- include "socair.validate" . }}
+# The read-only hub endpoint only (docs/hub-endpoint.md); the read-write API
+# is never behind this Service. The NetworkPolicy admits hub.ingressFrom.
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "socair.hubName" . }}
+  labels:
+    {{- include "socair.labels" . | nindent 4 }}
+  {{- with .Values.hub.service.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  type: ClusterIP
+  selector:
+    {{- include "socair.selectorLabels" . | nindent 4 }}
+  ports:
+    - name: hub
+      port: {{ .Values.hub.port }}
+      targetPort: hub
+      protocol: TCP
+{{- end }}

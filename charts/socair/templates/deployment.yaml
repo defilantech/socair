@@ -127,6 +127,60 @@ spec:
             {{- with .Values.extraVolumeMounts }}
             {{- toYaml . | nindent 12 }}
             {{- end }}
+        {{- if .Values.hub.enabled }}
+        # The read-only hub endpoint (docs/hub-endpoint.md). The store is
+        # mounted read-only here, so nothing this container runs can change it.
+        - name: hub
+          image: {{ include "socair.image" . }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          args:
+            - airlock
+            - serve-hub
+            - --store
+            - /store
+            - --addr
+            - "0.0.0.0:{{ .Values.hub.port }}"
+            # It has no authentication: the NetworkPolicy's hub.ingressFrom
+            # decides who reaches it.
+            - --allow-public
+            {{- if .Values.hub.authorizedOnly }}
+            - --authorized-only
+            {{- end }}
+          ports:
+            - name: hub
+              containerPort: {{ .Values.hub.port }}
+              protocol: TCP
+          livenessProbe:
+            exec:
+              command: [/usr/local/bin/socair, health, --addr, "127.0.0.1:{{ .Values.hub.port }}"]
+            initialDelaySeconds: 5
+            periodSeconds: 20
+            timeoutSeconds: 10
+            failureThreshold: 3
+          readinessProbe:
+            exec:
+              command: [/usr/local/bin/socair, health, --addr, "127.0.0.1:{{ .Values.hub.port }}"]
+            periodSeconds: 10
+            timeoutSeconds: 10
+          resources:
+            {{- toYaml .Values.hub.resources | nindent 12 }}
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          volumeMounts:
+            - name: store
+              mountPath: /store
+              readOnly: true
+            {{- if .Values.trust.trustedKeysConfigMap }}
+            - name: trusted-keys
+              mountPath: /store/trusted-keys
+              readOnly: true
+            {{- end }}
+            {{- if .Values.trust.acceptorKeysConfigMap }}
+            - name: acceptor-keys
+              mountPath: /store/acceptor-keys
+              readOnly: true
+            {{- end }}
+        {{- end }}
       volumes:
         - name: store
           {{- if .Values.persistence.enabled }}

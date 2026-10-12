@@ -57,6 +57,11 @@ SOCAIR_API_ALLOW_PUBLIC=1 (docs/api.md).
 {{- if .Values.service.enabled }}0.0.0.0:8080{{ else }}127.0.0.1:8080{{ end }}
 {{- end }}
 
+{{/* The hub endpoint's Service: the release's name with -hub, within 63 characters. */}}
+{{- define "socair.hubName" -}}
+{{- printf "%s-hub" (include "socair.fullname" . | trunc 59 | trimSuffix "-") }}
+{{- end }}
+
 {{- define "socair.storeClaim" -}}
 {{- default (printf "%s-store" (include "socair.fullname" .)) .Values.persistence.existingClaim }}
 {{- end }}
@@ -65,6 +70,17 @@ SOCAIR_API_ALLOW_PUBLIC=1 (docs/api.md).
 {{- define "socair.validate" -}}
 {{- if and .Values.service.enabled (not .Values.service.authenticatingProxy) }}
 {{- fail "service.enabled exposes the Socair API, which has no authentication of its own. Put an authenticating proxy in front of it and set service.authenticatingProxy=true to confirm, or reach the wizard with kubectl port-forward (the default)." }}
+{{- end }}
+{{- if .Values.hub.enabled }}
+{{- if not .Values.networkPolicy.enabled }}
+{{- fail "hub.enabled serves models over a Service with no authentication of its own, and the NetworkPolicy decides who reaches it: keep networkPolicy.enabled=true and set hub.ingressFrom to your inference pods." }}
+{{- end }}
+{{- if not .Values.hub.ingressFrom }}
+{{- fail "hub.ingressFrom is empty, which would admit every pod: name the peers that may download models, such as the default socair.ai/hub-client=true labels." }}
+{{- end }}
+{{- if eq (int .Values.hub.port) 8080 }}
+{{- fail "hub.port 8080 is the API's port; choose another." }}
+{{- end }}
 {{- end }}
 {{- if and .Values.trust.trustedKeysConfigMap (eq .Values.trust.trustedKeysConfigMap .Values.trust.acceptorKeysConfigMap) }}
 {{- fail "trust.trustedKeysConfigMap and trust.acceptorKeysConfigMap name the same ConfigMap: one key may not both sign attestations and accept their gaps." }}
