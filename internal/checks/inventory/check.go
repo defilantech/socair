@@ -6,7 +6,8 @@
 // deliberately conservative: model repos legitimately ship config.py and
 // tokenizer files, so those are inventoried, not failed. Only a native
 // executable in the repo is a FAIL; an archive such as a zip-format PyTorch
-// checkpoint is named as unscanned, which leaves the row NOT_TESTED.
+// checkpoint is named as unscanned, which leaves the row NOT_TESTED, unless
+// another check read every entry in it (Options.Read).
 package inventory
 
 import (
@@ -32,6 +33,12 @@ type Options struct {
 	// RepoMirror is a local directory holding the source repo listing. Empty
 	// means the repo side is NOT_TESTED, not a pass.
 	RepoMirror string
+	// Read are archives in the listing that another check read entry by
+	// entry, keyed by slash-separated path relative to RepoMirror. An archive
+	// here with nothing unread is counted as read, not as unscanned. Only the
+	// engine sets it, and only when the listing and that check read the same
+	// bytes: a directory scan's snapshot.
+	Read map[string]checks.ArchiveRead
 }
 
 // payload patterns are high-confidence indicators of an embedded executable or
@@ -195,7 +202,7 @@ func Inspect(path string, opts Options) checks.Result {
 		return r
 	}
 
-	listing, err := scanRepo(opts.RepoMirror)
+	listing, err := scanRepo(opts.RepoMirror, opts.Read)
 	if err != nil {
 		r.Status = checks.NotTested
 		r.Notes = artifactNote + ". Could not read repo mirror: " + err.Error()
@@ -209,12 +216,17 @@ type repoListing struct {
 	root           string
 	findings       []checks.Finding
 	archives       []string // archives whose contents were not scanned
+	read           []string // archives another check read entry by entry, with what it read
 	unread         []string // entries that could not be read, with the reason
 	files, scripts int
 }
 
 func (l repoListing) note() string {
-	return fmt.Sprintf("repo: %d files, %d scripts inventoried (scripts are expected, not a finding)", l.files, l.scripts)
+	n := fmt.Sprintf("repo: %d files, %d scripts inventoried (scripts are expected, not a finding)", l.files, l.scripts)
+	if len(l.read) > 0 {
+		n += fmt.Sprintf(". %d archive(s) read entry by entry by another check, with no entry left unread: %s", len(l.read), capped(l.read, 5))
+	}
+	return n
 }
 
 // grade sets r from the listing. A native executable is a FAIL on its
@@ -259,10 +271,13 @@ func capped(items []string, max int) string {
 // name: a script name says nothing about the bytes. A native executable is a
 // FAIL. An archive, including every zip-format PyTorch checkpoint, is named as
 // unscanned: it is not an executable, but its contents (a pickle, for a
-// checkpoint) were not inspected. An entry that cannot be read is named, never
-// skipped. Scripts and config files are counted, not failed. A root that is
-// missing, unreadable, or not a directory is an error.
-func scanRepo(root string) (repoListing, error) {
+// checkpoint) were not inspected here. The exception is a zip another check
+// read entry by entry (read, keyed by slash path): with nothing unread it is
+// counted as read, and otherwise it stays unscanned with its unread entries
+// named. An entry that cannot be read is named, never skipped. Scripts and
+// config files are counted, not failed. A root that is missing, unreadable,
+// or not a directory is an error.
+func scanRepo(root string, read map[string]checks.ArchiveRead) (repoListing, error) {
 	l := repoListing{root: root}
 	resolved, err := filepath.EvalSymlinks(root)
 	if err != nil {
@@ -301,7 +316,15 @@ func scanRepo(root string) (repoListing, error) {
 			return nil
 		}
 		if kind := archiveIn(head); kind != "" {
-			l.archives = append(l.archives, fmt.Sprintf("%s (%s)", rel, kind))
+			a, ok := read[filepath.ToSlash(rel)]
+			switch {
+			case !ok || kind != "zip":
+				l.archives = append(l.archives, fmt.Sprintf("%s (%s)", rel, kind))
+			case len(a.Unread) > 0:
+				l.archives = append(l.archives, fmt.Sprintf("%s (%s; the %s did not read %s)", rel, kind, a.By, capped(a.Unread, 5)))
+			default:
+				l.read = append(l.read, fmt.Sprintf("%s (%s: %s)", rel, a.By, a.Read))
+			}
 			return nil
 		}
 		switch strings.ToLower(filepath.Ext(path)) {
@@ -314,6 +337,7 @@ func scanRepo(root string) (repoListing, error) {
 		return l, err
 	}
 	sort.Strings(l.archives)
+	sort.Strings(l.read)
 	sort.Strings(l.unread)
 	return l, nil
 }
@@ -412,13 +436,13 @@ func UnparsedFormats(root, artifactName string) ([]string, error) {
 // InspectRepo is the repo side alone: the file listing of a model directory,
 // for a directory scan whose weights have no metadata to inventory (pickle
 // checkpoints, for example). A native executable FAILs; an archive is named
-// as unscanned.
-func InspectRepo(root string) checks.Result {
+// as unscanned unless read holds it with nothing unread, as for Options.Read.
+func InspectRepo(root string, read map[string]checks.ArchiveRead) checks.Result {
 	r := checks.Result{
 		Name:     "File inventory and payloads",
 		LooksFor: "Hidden files, embedded payloads, unexpected executables",
 	}
-	listing, err := scanRepo(root)
+	listing, err := scanRepo(root, read)
 	if err != nil {
 		r.Status = checks.NotTested
 		r.Notes = "could not list the directory: " + err.Error()

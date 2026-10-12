@@ -16,7 +16,10 @@ a native executable (ELF, PE, Mach-O) is a FAIL. Scripts and config files
 (`.py`, `.sh`, `.js`, `.rb`) are inventoried, not failed, because model repos
 legitimately ship them; an executable named `setup.py` is still an executable.
 An archive, including a zip-format PyTorch checkpoint, is named as unscanned
-and leaves the row NOT_TESTED, because its contents were not inspected.
+and leaves the row NOT_TESTED, because its contents were not inspected. (A
+model directory scan counts a torch.save checkpoint as read when the Pickle
+opcode scan PASSed it and read every entry in it; a mirror's files are not
+the bytes that check read, so this does not apply to a mirror.)
 
 - Moves `File inventory and payloads` from NOT_TESTED to PASS (or FAIL on a
   native executable).
