@@ -137,24 +137,30 @@ sha256, or a model directory's manifest digest. An entry is `staging`
 
 `200` `{"models":[ ... ]}`, clean entries first, then staging, each sorted by
 id. It reads evidence files only, never artifact bytes. A staging entry whose
-id is approved in clean is omitted (promote leaves the staged copy); it is kept
-when the clean entry's acceptance expired or it does not verify. Each model:
+id is approved in clean, or was approved and then flagged by a recheck, is
+omitted (promote leaves the staged copy); it is kept when the clean entry's
+acceptance expired or it does not verify. Each model:
 
 ```json
 {"id":"<64-hex>","name":"...","format":"gguf","size_bytes":123,
  "location":"staging|clean",
- "stage":"staged|scanned|ready|needs-acceptance|blocked|approved|acceptance-expired|does-not-verify",
+ "stage":"staged|scanned|ready|needs-acceptance|blocked|approved|acceptance-expired|does-not-verify|flagged",
  "stage_reason":"...","promotion_state":"...","issuer":"...","signer_key_id":"...",
  "accepted_surfaces":["..."],"accepted_by":"...","acceptance_expires":"...",
  "expires_soon":true,"promoted_at":"...",
+ "rechecked_at":"...","recheck_outcome":"flagged|unchanged|incomplete","recheck_reason":"...",
  "next":{"action":"scan|sign|accept|promote|none","command":"socair ..."}}
 ```
 
 Only `id`, `name`, `location`, `stage`, and `next` are always present. The
 stage is derived from the evidence through `Store.Assess`, the same
-verification `promote` uses. `expires_soon` is set when an acceptance expires
-within 30 days. `next.command` is the exact CLI command when the step needs a
-key.
+verification `promote` uses, and for a clean entry from its `recheck.json`
+(`docs/airlock.md`, "Rechecking the clean store"): `flagged` is a clean entry
+a recheck found would now be withheld, still in the clean store, with the
+recheck's reason in `stage_reason`. `rechecked_at`, `recheck_outcome`, and
+`recheck_reason` are the clean entry's last recheck, when it has one.
+`expires_soon` is set when an acceptance expires within 30 days.
+`next.command` is the exact CLI command when the step needs a key.
 
 ### `GET /api/airlock/models/{id}`
 
@@ -170,7 +176,7 @@ for an unknown id.
 One evidence file, byte for byte, as an attachment. `name` must be one of
 `provenance.json`, `report.json`, `report.dsse.json`,
 `report.acceptance.dsse.json`, `report.conditional.dsse.json`,
-`attestation.json`, `attestation.dsse.json`. Anything else, or a file the
+`attestation.json`, `attestation.dsse.json`, `recheck.json`. Anything else, or a file the
 entry does not have, is `404`. Artifact bytes are never served.
 
 ### `POST /api/airlock/models/{id}/scan`

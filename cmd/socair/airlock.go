@@ -21,7 +21,7 @@ import (
 // store. A pull lands in staging; only a promotion moves bytes across.
 func airlockCmd(args []string) error {
 	if len(args) == 0 {
-		return errors.New("usage: socair airlock <init|pull|ingest|trust|promote|log|export>")
+		return errors.New("usage: socair airlock <init|pull|ingest|trust|promote|recheck|log|export>")
 	}
 	switch args[0] {
 	case "init":
@@ -34,6 +34,8 @@ func airlockCmd(args []string) error {
 		return airlockTrust(args[1:])
 	case "promote":
 		return airlockPromote(args[1:])
+	case "recheck":
+		return airlockRecheck(args[1:])
 	case "log":
 		return airlockLog(args[1:])
 	case "export":
@@ -165,6 +167,46 @@ func airlockPromote(args []string) error {
 	}
 	fmt.Printf("promoted %s into the clean store\n  %s\n  outcome: %s (%s)\n",
 		ev.SHA256, s.CleanPath(ev.SHA256), ev.Outcome, ev.Detail)
+	return nil
+}
+
+// airlockRecheck re-checks the clean store: socair airlock recheck [--rescan] [--store <p>].
+func airlockRecheck(args []string) error {
+	fs := parseFlags(args)
+	if len(fs.pos) > 0 || (fs.has("rescan") && !fs.bare["rescan"]) {
+		return errors.New("usage: socair airlock recheck [--rescan] [--store <path>]")
+	}
+	s, err := airlock.Open(storeRoot(fs))
+	if err != nil {
+		return err
+	}
+	results, err := s.Recheck(airlock.RecheckOptions{Rescan: fs.has("rescan")})
+	counts := map[string]int{}
+	for _, r := range results {
+		counts[r.Outcome]++
+		fmt.Printf("%s  %-10s %s\n    %s\n", shortHash(r.ID), r.Outcome, r.Name, r.Reason)
+	}
+	if err != nil {
+		return err
+	}
+	if len(results) == 0 {
+		fmt.Println("no models in the clean store")
+		return nil
+	}
+	feed := "no feed"
+	if f := results[0].Feed; f != nil {
+		feed = fmt.Sprintf("feed %s %s (key %s)", f.Issuer, f.Version, attest.ShortID(f.KeyID))
+	}
+	fmt.Printf("rechecked %d clean model(s) against %s, check set %s: %d flagged, %d incomplete, %d unchanged\n"+
+		"Each result is in clean/<id>/%s and the activity log. Nothing was moved, deleted, or re-signed.\n",
+		len(results), feed, engine.CheckSetVersion, counts[airlock.OutcomeFlagged], counts[airlock.OutcomeIncomplete],
+		counts[airlock.OutcomeUnchanged], airlock.RecheckFile)
+	switch {
+	case counts[airlock.OutcomeFlagged] > 0:
+		return fmt.Errorf("%d model(s) in the clean store are flagged: they would now be withheld, and they stay in clean/ until a person acts", counts[airlock.OutcomeFlagged])
+	case counts[airlock.OutcomeIncomplete] > 0:
+		return fmt.Errorf("%d model(s) could not be fully re-checked; the reasons are above", counts[airlock.OutcomeIncomplete])
+	}
 	return nil
 }
 

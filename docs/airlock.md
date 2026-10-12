@@ -25,6 +25,7 @@ API's pull route), the one operation that reaches the network.
   clean/<digest>/<name>/              a promoted model directory, keyed by manifest digest
   clean/<sha256>/attestation.dsse.json  the signed attestation that let it cross
   clean/<sha256>/attestation.json     its report document, for reading
+  clean/<sha256>/recheck.json         the last recheck's result (socair airlock recheck)
   trusted-keys/<key id>.pub           the trust policy: keys whose signatures admit
   acceptor-keys/<key id>.pub          keys whose signed acceptances of untested rows are honoured
   log.jsonl                           append-only activity log
@@ -56,6 +57,7 @@ socair airlock ingest --cache --repo <org/name> [--file <name>] [--revision main
 socair airlock trust add <key.pub> [--name <issuer>]
 socair airlock trust add --acceptor <key.pub>
 socair airlock promote <artifact or directory> --attestation <attestation.dsse.json>
+socair airlock recheck [--rescan]
 socair airlock log [--verify [--expect-head <head>]]
 socair airlock export --out <dir> [--key <operator.key>]
 ```
@@ -132,6 +134,10 @@ Every command also takes `--store <path>`.
   recomputed manifest digest is the attested subject. Otherwise it refuses and
   names each file added, removed, or changed. A repeat promotion replaces the
   stored tree, so an altered one is restored.
+- `recheck` re-checks every model in the clean store against the current feed
+  and check set, and flags the ones that would now be withheld. It moves,
+  deletes, and re-signs nothing. See [Rechecking the clean
+  store](#rechecking-the-clean-store).
 - `log` prints the activity log; `log --verify` checks its hash chain.
 
 ## The promotion gate
@@ -212,25 +218,140 @@ console's scan writes `report.json`; `ingest --scan` prints its report and does
 not. None of them changes what `promote` accepts.
 
 A model's stage (`staged`, `scanned`, `ready`, `needs-acceptance`, `blocked`,
-`approved`, `acceptance-expired`, `does-not-verify`) is derived from these
-files by `Store.Assess`, the verification `promote` itself uses. A staging
+`approved`, `acceptance-expired`, `does-not-verify`, `flagged`) is derived from
+these files by `Store.Assess`, the verification `promote` itself uses. A staging
 entry's stage comes from the newest evidence file by modification time. A
-clean entry whose attestation no longer verifies is `does-not-verify`. A staged
-envelope that does not verify offers a rescan: the newer `report.json`
-supersedes it.
+clean entry whose attestation no longer verifies is `does-not-verify`. A clean
+entry whose `recheck.json` flags it is `flagged` (see [Rechecking the clean
+store](#rechecking-the-clean-store)). A staged envelope that does not verify
+offers a rescan: the newer `report.json` supersedes it.
 
 `promote` leaves the staged copy in `incoming/`; nothing on the gate path
-deletes. The list omits a staging entry whose id is approved in clean, and keeps
-it when the clean entry's acceptance expired or it does not verify, so it can be
-re-scanned and re-accepted.
+deletes. The list omits a staging entry whose id is approved in clean, or was
+approved and then flagged by a recheck, and keeps it when the clean entry's
+acceptance expired or it does not verify, so it can be re-scanned and
+re-accepted.
 
 Because a single-file pull is staged flat beside these files, `pull` refuses
 an artifact file named like one of them (`provenance.json`, the four `report*`
-names, `attestation.json`, `attestation.dsse.json`). A whole repo is staged
-under its own name, so only the repo name is checked.
+names, `attestation.json`, `attestation.dsse.json`, `recheck.json`). A whole
+repo is staged under its own name, so only the repo name is checked.
 
 The console reads attestations and does not re-hash model bytes when it shows
 them. Re-running `socair airlock promote` re-verifies the bytes.
+
+## Rechecking the clean store
+
+```
+socair airlock recheck [--rescan] [--store <path>]
+```
+
+A promoted model's attestation reflects the reference data and the check set
+of its scan. A hash added to a known-bad list next month, or a check that
+grades differently in a newer socair, does not touch it. `recheck` re-examines
+every model in `clean/` against what a scan would use now, and flags the ones
+that would now be withheld.
+
+It reads the inputs a scan reads: `SOCAIR_FEED` with `SOCAIR_FEED_KEYS`,
+`SOCAIR_DENYLIST`, and for a rescan the rest of the scan's environment (see
+[feed.md](feed.md)). A configured feed that does not verify, or has expired,
+stops the recheck before anything is written, as it stops a scan.
+
+Two levels run for each model:
+
+1. **Known-bad match, always.** The entry's hash, and for a model directory
+   every file hash its verified attestation lists, are matched against the
+   signed feed's denylist and the local `SOCAIR_DENYLIST`. No model bytes are
+   read. A match flags the model.
+2. **Rescan, when due.** When the attestation's `scope.check_set_version` is
+   not this socair's check set, or for every model with `--rescan`, the engine
+   scans the clean bytes again and compares its rows with the attestation's.
+   The scan takes a snapshot and checks for room first, like any scan
+   (`SOCAIR_SCAN_TMP`). The model is flagged when the rescan would withhold
+   it: a FAIL or LEAD row, a NOT_TESTED row that the attestation's signed
+   acceptance does not cover, or clean bytes that no longer hash to the
+   attested subject. The flag names each row that changed, with its status
+   before and after.
+
+A rescan reads its inputs from the environment, like any scan, plus the
+staged copy's `provenance.json` when there is one (the engine counts it only
+if it names these bytes). Give a rescan the inputs the original scan had: the
+repository mirror, the provenance manifest, publisher keys, and the denylist.
+A row the attestation PASSed that the rescan cannot test is a new gap, and it
+flags the model, because a scan run now would be withheld on it.
+
+**What it writes.** Nothing is moved, deleted, or re-signed; signing stays
+offline. Each clean entry gets `clean/<id>/recheck.json`, written to a temp
+file and renamed into place, and the log gets one `recheck` entry per model.
+The entry names the feed (issuer, version, issue and expiry times, signing
+key), the known-bad lists, the check set and the attested one, and the
+outcome:
+
+- `flagged`: the model would now be withheld, or an earlier flag stands.
+- `unchanged`: every level that was due ran and found nothing that would
+  withhold it.
+- `incomplete`: nothing was flagged, but a level could not run: no known-bad
+  list is configured, a configured local list could not be read, a due rescan
+  failed, or the attestation does not verify. It is not a pass.
+
+The command prints one line per model, and exits non-zero when any model is
+flagged or incomplete, so a scheduled run surfaces it.
+
+```json
+{"format":"socair.recheck/v1","id":"<64-hex>","name":"model.safetensors",
+ "checked_utc":"2026-10-12T19:49:22Z","tool_version":"socair dev",
+ "check_set_version":"tier1/0.8","attested_check_set_version":"tier1/0.8",
+ "attestation_sha256":"<sha256 of attestation.dsse.json>","attestation":"verifies",
+ "feed":{"issuer":"Example Intel","version":"2026.10.2","issued":"...","expires":"...","key_id":"..."},
+ "known_bad":{"checked":true,"lists":["feed Example Intel 2026.10.2","denylist /etc/socair/deny.txt"],"hashes":1,
+   "matches":[{"sha256":"<64-hex>","lists":["trojaned community upload (feed Example Intel 2026.10.2)"]}]},
+ "rescan":{"due":false,"why":"not due: the attestation was scanned under this check set, tier1/0.8","ran":false,"would_withhold":false},
+ "flags":[{"kind":"known-bad","reason":"its hash (...) is on a known-bad list: ...","since":"2026-10-12T19:49:22Z"}],
+ "outcome":"flagged","reason":"its hash (...) is on a known-bad list: ..."}
+```
+
+A rescan also records the rescan's check set, reference data, and promotion
+state, the rows that changed (`changed`, each `was` and `now`, `absent` for a
+row one side lacks), and the rows that would withhold it (`withholding`).
+`cleared` lists the earlier flags this recheck re-examined and found no longer
+hold.
+
+**In listings.** A flagged model's stage is `flagged`, derived from
+`recheck.json` like every stage, so the API, the console, and an inventory
+export show it. It is still in `clean/`, and every listing says so: the
+console lists flagged models first, in red; an export lists them under
+`other`, never as approved; the staged copy of a model that was approved and
+is now flagged is not offered for promotion again. A flag outranks `approved`, `acceptance-expired`, and
+`does-not-verify`, and keeps their reason beside its own. A `recheck.json`
+that does not parse, is for another entry, or contradicts itself shows as
+flagged too: a flag that cannot be read is not a cleared one. The next recheck
+replaces it and says so.
+
+**How a flag clears.** Only a later recheck that re-examines what the flag
+rests on, and finds it no longer holds, clears it. A known-bad flag needs every
+hash matched against every configured list, for example with a newer feed that
+dropped the entry. A rescan flag needs a rescan that ran. A recheck that
+covers less carries the flag forward and says why, so a run with no list
+configured never clears one. The clearing recheck names the flag it cleared,
+in `recheck.json` and in the log. Socair has no other way to clear a flag.
+
+**And the gate.** `Store.Assess` and `promote` verify an attestation; they do
+not read `recheck.json`. Promoting a flagged model's bytes again is admitted
+on a valid ticket (it restores a copy that was deleted or altered) and leaves
+the flag in place, even with a new attestation; the promotion's log entry says
+the entry stays flagged. What to do with a flagged model, such as removing it
+from `clean/` or re-scanning and re-signing it, is the operator's decision,
+made outside Socair.
+
+**Limits.**
+
+- `recheck.json` is evidence, not a signature: whoever can write `clean/` can
+  delete it, which clears the flag from listings. The log entry stays, under
+  the hash chain (see [Activity log](#activity-log)).
+- The known-bad match trusts the file hashes the attestation lists, which
+  `promote` verified when the bytes crossed. `--rescan` hashes the bytes again.
+- A recheck runs only when someone runs it. The Helm chart does not schedule
+  it; running it on a schedule there is a later step.
 
 ## Export and inventory
 
@@ -259,7 +380,8 @@ predicate holds `generated_utc`, `log_head`, `tool_version`, `models` (id,
 name, promotion state, issuer, signer key id, `attestation_sha256`, and for a
 conditional entry the accepted surfaces and expiry), and `other`: the
 non-approved entries, each with its stage and reason. That includes a clean
-entry that does not verify or whose acceptance expired. Without `--key` the
+entry that does not verify, whose acceptance expired, or that a recheck
+flagged. Without `--key` the
 snapshot is unsigned and `index.html` says so.
 
 `inventory verify` fails, with the reason, unless all of these hold:
@@ -342,8 +464,9 @@ reads it to decide a promotion.
 {"ts":"2026-10-09T17:02:38.40046Z","action":"promote","outcome":"conditional","source":"airlock","sha256":"8aaff9f1...cb933953","detail":"authorized with conditions accepted by Jane Doe, CISO (signed acceptance, acceptor key 1e2c157cdc14e161) on 4 surface(s) until 2027-01-07T17:02:38Z, attestation issued by Acme ML Platform, signed by fcf1dc921efb204f","prev":"1f6c460b...163f5d19"}
 ```
 
-Actions are `pull`, `ingest`, `trust`, `promote`, `refuse`. Outcomes are `ok`,
-`conditional`, `refused`. An entry caused through the HTTP API also carries
+Actions are `pull`, `ingest`, `trust`, `promote`, `refuse`, `recheck`.
+Outcomes are `ok`, `conditional`, `refused`, and for a recheck `flagged`,
+`unchanged`, `incomplete`. An entry caused through the HTTP API also carries
 `"actor":"local-operator"`; the CLI records no actor.
 
 ### Hash chain

@@ -11,6 +11,7 @@ version: 0.1.0-rc.3
 appVersion: "0.1.0-rc.3"
 kubeVersion: ">=1.27.0-0"
 home: https://socair.ai
+icon: https://raw.githubusercontent.com/defilantech/socair/main/docs/brand/socair-icon-512.png
 sources:
   - https://github.com/defilantech/socair
 keywords:
@@ -23,5 +24,24 @@ keywords:
 maintainers:
   - name: Defilan Technologies
     url: https://github.com/defilantech
+# Artifact Hub reads these. A release sets the prerelease flag and the image
+# tag from the tag it builds, as it does the version.
 annotations:
   artifacthub.io/license: Apache-2.0
+  artifacthub.io/category: security
+  artifacthub.io/prerelease: "true"
+  artifacthub.io/images: |
+    - name: socair
+      image: ghcr.io/defilantech/socair:0.1.0-rc.3
+      platforms:
+        - linux/amd64
+        - linux/arm64
+  artifacthub.io/links: |
+    - name: Documentation
+      url: https://github.com/defilantech/socair/blob/main/docs/kubernetes.md
+    - name: Verify a release
+      url: https://github.com/defilantech/socair/blob/main/docs/verify-release.md
+    - name: Security policy
+      url: https://github.com/defilantech/socair/blob/main/SECURITY.md
+    - name: Issues
+      url: https://github.com/defilantech/socair/issues

@@ -26,6 +26,9 @@ const (
 	StageApproved          Stage = "approved"
 	StageAcceptanceExpired Stage = "acceptance-expired"
 	StageDoesNotVerify     Stage = "does-not-verify"
+	// StageFlagged is a clean entry a recheck found would now be withheld
+	// (see Recheck). It is still in clean/: a recheck moves nothing.
+	StageFlagged Stage = "flagged"
 )
 
 // ExpiresSoonWindow is how far ahead an acceptance's expiry is flagged.
@@ -55,18 +58,26 @@ type Model struct {
 	AcceptanceExpires string   `json:"acceptance_expires,omitempty"`
 	ExpiresSoon       bool     `json:"expires_soon,omitempty"`
 	PromotedAt        string   `json:"promoted_at,omitempty"`
-	Next              Next     `json:"next"`
+	// RecheckedAt, RecheckOutcome, and RecheckReason are the clean entry's
+	// last recheck, from its recheck evidence.
+	RecheckedAt    string `json:"rechecked_at,omitempty"`
+	RecheckOutcome string `json:"recheck_outcome,omitempty"`
+	RecheckReason  string `json:"recheck_reason,omitempty"`
+	Next           Next   `json:"next"`
 	// ArtifactPath and EnvelopePath are for the API's actions, never sent.
 	ArtifactPath string `json:"-"`
 	EnvelopePath string `json:"-"`
+	// base is a clean entry's stage before its recheck evidence is applied.
+	base Stage
 }
 
 // Models lists every clean and staging entry, clean first, each by id. It
 // reads only evidence files (envelopes and small JSON), never artifact bytes.
 // Stray names that are not 64-hex directories are skipped. Promote leaves the
-// staged copy in place, so a staging entry whose id is approved in clean is
-// omitted: it has crossed. One whose clean entry is acceptance-expired or does
-// not verify stays listed, as the way to re-scan or re-accept.
+// staged copy in place, so a staging entry whose id is approved in clean, or
+// approved and then flagged by a recheck, is omitted: it has crossed. One
+// whose clean entry is acceptance-expired or does not verify stays listed, as
+// the way to re-scan or re-accept.
 func (s *Store) Models(at time.Time) ([]Model, error) {
 	promoted, err := s.promotedAt()
 	if err != nil {
@@ -93,7 +104,7 @@ func (s *Store) Models(at time.Time) ([]Model, error) {
 			m, _ := s.derive(loc, id, at)
 			if loc == cleanDir {
 				m.PromotedAt = promoted[id]
-				approved[id] = m.Stage == StageApproved
+				approved[id] = m.base == StageApproved
 			}
 			out = append(out, m)
 		}
@@ -142,36 +153,47 @@ func (s *Store) derive(loc, id string, at time.Time) (Model, *report.Document) {
 	dir := filepath.Join(s.Root, loc, id)
 	m := Model{ID: id, Name: id[:12], Location: "staging", Next: Next{Action: "none"}}
 	if loc == cleanDir {
-		m.Location = "clean"
-		m.EnvelopePath = filepath.Join(dir, attestationEnvelope)
-		m.ArtifactPath = s.cleanArtifact(dir)
-		env, err := os.ReadFile(m.EnvelopePath)
-		if err != nil {
-			m.Stage, m.StageReason = StageDoesNotVerify, "no attestation in the clean entry: "+err.Error()
-			return m, nil
-		}
-		a, err := s.Assess(env, at)
-		switch {
-		case a != nil && a.SHA256 != id:
-			m.Stage, m.StageReason = StageDoesNotVerify, fmt.Sprintf("the attestation is for %s, not this entry", a.SHA256)
-			return m, nil
-		case errors.Is(err, ErrAcceptanceExpired):
-			fill(&m, a, at)
-			m.Stage, m.StageReason = StageAcceptanceExpired, err.Error()
-			return m, &a.Verified.Document
-		case err != nil:
-			m.Stage, m.StageReason = StageDoesNotVerify, err.Error()
-			return m, nil
-		}
-		if err := a.Admits(); err != nil {
-			m.Stage, m.StageReason = StageDoesNotVerify, err.Error()
-			return m, nil
-		}
-		fill(&m, a, at)
-		m.Stage = StageApproved
-		return m, &a.Verified.Document
+		m, d := s.deriveClean(m, dir, id, at)
+		return s.withRecheck(m, id), d
 	}
+	return s.deriveStaged(m, dir, id, at)
+}
 
+// deriveClean is a clean entry's stage from its attestation, through the
+// gate's own checks.
+func (s *Store) deriveClean(m Model, dir, id string, at time.Time) (Model, *report.Document) {
+	m.Location = "clean"
+	m.EnvelopePath = filepath.Join(dir, attestationEnvelope)
+	m.ArtifactPath = s.cleanArtifact(dir)
+	env, err := os.ReadFile(m.EnvelopePath)
+	if err != nil {
+		m.Stage, m.StageReason = StageDoesNotVerify, "no attestation in the clean entry: "+err.Error()
+		return m, nil
+	}
+	a, err := s.Assess(env, at)
+	switch {
+	case a != nil && a.SHA256 != id:
+		m.Stage, m.StageReason = StageDoesNotVerify, fmt.Sprintf("the attestation is for %s, not this entry", a.SHA256)
+		return m, nil
+	case errors.Is(err, ErrAcceptanceExpired):
+		fill(&m, a, at)
+		m.Stage, m.StageReason = StageAcceptanceExpired, err.Error()
+		return m, &a.Verified.Document
+	case err != nil:
+		m.Stage, m.StageReason = StageDoesNotVerify, err.Error()
+		return m, nil
+	}
+	if err := a.Admits(); err != nil {
+		m.Stage, m.StageReason = StageDoesNotVerify, err.Error()
+		return m, nil
+	}
+	fill(&m, a, at)
+	m.Stage = StageApproved
+	return m, &a.Verified.Document
+}
+
+// deriveStaged is a staging entry's stage from its newest evidence.
+func (s *Store) deriveStaged(m Model, dir, id string, at time.Time) (Model, *report.Document) {
 	art, err := s.stagedArtifact(id)
 	if err != nil {
 		m.Stage, m.StageReason = StageStaged, err.Error()
@@ -301,7 +323,7 @@ func (s *Store) cleanArtifact(dir string) string {
 	}
 	found := ""
 	for _, e := range entries {
-		if e.Name() == attestationDoc || e.Name() == attestationEnvelope {
+		if e.Name() == attestationDoc || e.Name() == attestationEnvelope || e.Name() == RecheckFile {
 			continue
 		}
 		if found != "" {

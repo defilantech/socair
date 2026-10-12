@@ -198,7 +198,7 @@ func Inspect(path string, opts Options) checks.Result {
 	listing, err := scanRepo(opts.RepoMirror)
 	if err != nil {
 		r.Status = checks.NotTested
-		r.Notes = artifactNote + ". Could not read repo mirror: " + err.Error()
+		r.Notes = artifactNote + ". Could not read repo mirror " + filepath.Base(opts.RepoMirror) + ": " + reason(err)
 		return r
 	}
 	return listing.grade(r, artifactNote+". ")
@@ -236,7 +236,7 @@ func (l repoListing) grade(r checks.Result, prefix string) checks.Result {
 		r.Notes = prefix + strings.Join(append([]string{l.note()}, unseen...), ". ")
 	case l.files == 0 && len(l.unread) == 0:
 		r.Status = checks.NotTested
-		r.Notes = prefix + "Repo mirror " + l.root + " holds no files, so the repo file listing was not inspected"
+		r.Notes = prefix + "Repo mirror " + filepath.Base(l.root) + " holds no files, so the repo file listing was not inspected"
 	case len(unseen) > 0:
 		r.Status = checks.NotTested
 		r.Notes = prefix + strings.Join(append([]string{l.note()}, unseen...), ". ")
@@ -271,7 +271,7 @@ func scanRepo(root string) (repoListing, error) {
 	if fi, err := os.Stat(resolved); err != nil {
 		return l, err
 	} else if !fi.IsDir() {
-		return l, fmt.Errorf("%s is not a directory", root)
+		return l, errors.New("not a directory")
 	}
 
 	err = filepath.WalkDir(resolved, func(path string, d fs.DirEntry, err error) error {
@@ -421,7 +421,7 @@ func InspectRepo(root string) checks.Result {
 	listing, err := scanRepo(root)
 	if err != nil {
 		r.Status = checks.NotTested
-		r.Notes = "could not list the directory: " + err.Error()
+		r.Notes = "could not list the directory: " + reason(err)
 		return r
 	}
 	return listing.grade(r, "")

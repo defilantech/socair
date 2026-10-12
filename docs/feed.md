@@ -24,6 +24,11 @@ never quietly drops it either. The report names the feed it used, in
 `scope.reference_data`: its issuer, version, issue and expiry times, and signing
 key.
 
+A new feed changes the scans that run with it. Models already in an airlock's
+clean store are re-checked against it with `socair airlock recheck`, which
+flags a model whose hash the new denylist names ([airlock.md](airlock.md),
+"Rechecking the clean store").
+
 ## What a feed changes
 
 | Data file | Check | Effect |

@@ -159,6 +159,15 @@ func Build(d *report.Document) log {
 		results = append(results, res)
 	}
 
+	props := map[string]string{
+		"socairPromotionState": d.PromotionAuthorization.State,
+		"socairArtifactSHA256": d.Artifact.SHA256,
+	}
+	// The editions the external/ tags' IDs are from, as the document names
+	// them.
+	if e := report.FrameworkEditions(d.Checks); len(e) > 0 {
+		props["socairFrameworkEditions"] = strings.Join(e, ", ")
+	}
 	return log{
 		Schema:  "https://json.schemastore.org/sarif-2.1.0.json",
 		Version: "2.1.0",
@@ -168,11 +177,8 @@ func Build(d *report.Document) log {
 				InformationURI: "https://socair.ai",
 				Rules:          rules,
 			}},
-			Results: results,
-			Properties: map[string]string{
-				"socairPromotionState": d.PromotionAuthorization.State,
-				"socairArtifactSHA256": d.Artifact.SHA256,
-			},
+			Results:    results,
+			Properties: props,
 		}},
 	}
 }

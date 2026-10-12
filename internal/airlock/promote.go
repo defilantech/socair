@@ -86,8 +86,8 @@ func Promote(s *Store, artifactPath, envelopePath string) (Event, error) {
 	if err := validFileName(name); err != nil {
 		return refuse(err.Error())
 	}
-	if name == attestationDoc || name == attestationEnvelope {
-		return refuse(fmt.Sprintf("artifact name %q collides with the store's attestation file; rename it", name))
+	if name == attestationDoc || name == attestationEnvelope || name == RecheckFile {
+		return refuse(fmt.Sprintf("artifact name %q collides with the store's attestation or recheck file; rename it", name))
 	}
 
 	clean := s.CleanPath(sha)
@@ -134,6 +134,11 @@ func Promote(s *Store, artifactPath, envelopePath string) (Event, error) {
 		return Event{}, fmt.Errorf("write attestation envelope: %w", err)
 	}
 
+	// A promotion does not clear a recheck's flag: only a recheck that
+	// re-examines it does (see Recheck).
+	if rc, err := s.readRecheck(sha); err != nil || (rc != nil && rc.Outcome == OutcomeFlagged) {
+		detail += "; the clean entry stays flagged by its last recheck until a recheck clears it"
+	}
 	e := Event{Action: ActionPromote, Outcome: outcome, SHA256: sha, Detail: detail}
 	if err := s.Record(e); err != nil {
 		return e, err

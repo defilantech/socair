@@ -3,6 +3,7 @@ package license
 import (
 	"bufio"
 	"fmt"
+	"io"
 	"os"
 	"sort"
 	"strings"
@@ -17,22 +18,30 @@ const (
 
 // Policy is the operator's list of allowed licenses.
 type Policy struct {
-	Path    string
+	// Source names the policy in a report's notes and scope. The engine
+	// sets the file's base name and hash, never its path on the host.
+	Source  string
 	allowed map[string]bool
 }
 
-// LoadPolicy reads a policy file: one license per line, by catalogue id, SPDX
-// id, or model-card tag; "#" starts a comment. A name the catalogue does not
-// know refuses the whole policy, as does a policy that allows nothing: a
-// misspelled id would otherwise fail every model with evidence that misleads.
+// LoadPolicy reads a policy file, named by its path.
 func LoadPolicy(path string) (*Policy, error) {
 	f, err := os.Open(path)
 	if err != nil {
 		return nil, err
 	}
 	defer f.Close()
-	p := &Policy{Path: path, allowed: map[string]bool{}}
-	sc := bufio.NewScanner(f)
+	return ParsePolicy(path, f)
+}
+
+// ParsePolicy reads a policy: one license per line, by catalogue id, SPDX
+// id, or model-card tag; "#" starts a comment. A name the catalogue does not
+// know refuses the whole policy, as does a policy that allows nothing: a
+// misspelled id would otherwise fail every model with evidence that misleads.
+// source names the policy in errors and in the License policy row.
+func ParsePolicy(source string, r io.Reader) (*Policy, error) {
+	p := &Policy{Source: source, allowed: map[string]bool{}}
+	sc := bufio.NewScanner(r)
 	for n := 1; sc.Scan(); n++ {
 		line, _, _ := strings.Cut(sc.Text(), "#")
 		name := strings.TrimSpace(line)
@@ -41,7 +50,7 @@ func LoadPolicy(path string) (*Policy, error) {
 		}
 		e, ok := Lookup(name)
 		if !ok {
-			return nil, fmt.Errorf("%s line %d: %q is not a license the catalogue knows (docs/provenance-bundle.md lists the ids)", path, n, name)
+			return nil, fmt.Errorf("%s line %d: %q is not a license the catalogue knows (docs/provenance-bundle.md lists the ids)", source, n, name)
 		}
 		p.allowed[e.ID] = true
 	}
@@ -49,7 +58,7 @@ func LoadPolicy(path string) (*Policy, error) {
 		return nil, err
 	}
 	if len(p.allowed) == 0 {
-		return nil, fmt.Errorf("%s allows no license", path)
+		return nil, fmt.Errorf("%s allows no license", source)
 	}
 	return p, nil
 }
@@ -66,7 +75,7 @@ func (p *Policy) Allowed() []string {
 
 // Describe names the policy for the report's reference data.
 func (p *Policy) Describe() string {
-	return fmt.Sprintf("license policy %s (%d allowed: %s)", p.Path, len(p.allowed), strings.Join(p.Allowed(), ", "))
+	return fmt.Sprintf("license policy %s (%d allowed: %s)", p.Source, len(p.allowed), strings.Join(p.Allowed(), ", "))
 }
 
 // Check grades an identification against the policy. FAIL needs the
@@ -90,13 +99,13 @@ func (p *Policy) Check(id Identification) checks.Result {
 			r.Findings = append(r.Findings, checks.Finding{Pattern: "license-disagreement", Span: strings.Join(id.sources(x), "; "),
 				Detail: "not on the allowed list: " + Name(x) + ", " + x})
 		}
-		r.Notes = sentence(id.Disagreement) + " " + plural(len(notAllowed), "One is", "Some are") + " not on the allowed list in " + p.Path +
+		r.Notes = sentence(id.Disagreement) + " " + plural(len(notAllowed), "One is", "Some are") + " not on the allowed list in " + p.Source +
 			", so which license governs the artifact needs a person's review."
 	case id.ID != "" && !p.allowed[id.ID]:
 		r.Status = checks.Fail
 		r.Findings = []checks.Finding{{Pattern: "license-not-allowed", Span: strings.Join(id.sources(id.ID), "; "),
 			Detail: "not on the allowed list: " + id.Name + ", " + id.ID}}
-		r.Notes = "The artifact states " + id.Name + " (" + id.ID + "), which the allowed list in " + p.Path + " does not include."
+		r.Notes = "The artifact states " + id.Name + " (" + id.ID + "), which the allowed list in " + p.Source + " does not include."
 	case id.ID == "" && id.Disagreement == "":
 		r.Status = checks.NotTested
 		r.Notes = "No license could be identified, so the policy could not be checked: " + unidentified(id) + "."
@@ -110,10 +119,10 @@ func (p *Policy) Check(id Identification) checks.Result {
 			", so the license the artifact carries is not established."
 	case id.Disagreement != "":
 		r.Status = checks.Pass
-		r.Notes = sentence(id.Disagreement) + " Each is on the allowed list in " + p.Path + "."
+		r.Notes = sentence(id.Disagreement) + " Each is on the allowed list in " + p.Source + "."
 	default:
 		r.Status = checks.Pass
-		r.Notes = id.Name + " (" + id.ID + "), stated by " + strings.Join(id.sources(id.ID), "; ") + ", is on the allowed list in " + p.Path + "."
+		r.Notes = id.Name + " (" + id.ID + "), stated by " + strings.Join(id.sources(id.ID), "; ") + ", is on the allowed list in " + p.Source + "."
 	}
 	if obl := id.Obligations(); len(obl) > 0 {
 		r.Notes += " Usage-policy obligations, listed and not checked: " + strings.Join(obl, ". ") + "."

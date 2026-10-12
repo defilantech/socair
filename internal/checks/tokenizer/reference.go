@@ -120,6 +120,10 @@ func hfLayout(base map[int64]string, t hfTokenizer) ([]string, map[int]bool, err
 	return tokens, added, nil
 }
 
+// MaxReferenceBytes bounds one reference table file, as a model's
+// tokenizer.json is bounded.
+const MaxReferenceBytes = maxTokenizerJSON
+
 // LoadTables reads the tables at path: a table file or tokenizer.json, or a
 // directory of them (*.json). It is how an operator supplies references
 // without a feed (SOCAIR_TOKENIZER_REFERENCE).

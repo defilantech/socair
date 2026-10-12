@@ -7,7 +7,8 @@
 		reasonBeyondLabel,
 		acceptedLine,
 		nextPurpose,
-		isApprovedList
+		isApprovedList,
+		recheckLine
 	} from '$lib/console';
 	import { navSection } from '$lib/nav.svelte';
 	import ReportView from '$lib/ReportView.svelte';
@@ -74,6 +75,16 @@
 			{#if m.acceptance_expires}<span class="meta">until <When iso={m.acceptance_expires} rel /></span>{/if}
 		</p>
 		{#if reason}<p class="prose">{reason}</p>{/if}
+		{#if m.stage === 'flagged'}
+			<p class="meta">
+				Still in the clean store: a recheck moves, deletes, and re-signs nothing. It needs a person's review
+				outside Socair.
+			</p>
+		{/if}
+		{#if m.rechecked_at}
+			<p class="meta">{recheckLine(m)}, <When iso={m.rechecked_at} />.</p>
+			{#if m.stage !== 'flagged' && m.recheck_reason}<p class="meta">{m.recheck_reason}</p>{/if}
+		{/if}
 		{#if m.issuer}
 			<p class="meta">
 				Issued by {m.issuer} · signed by key <span class="mono">{m.signer_key_id?.slice(0, 16)}</span>
@@ -94,6 +105,9 @@
 	</section>
 
 	{#if report}
+		{#if m.stage === 'flagged'}
+			<p class="meta">The report below is the attestation it was promoted on. The recheck above came after it.</p>
+		{/if}
 		<ReportView {report} signed={!!m.signer_key_id} status={false} />
 	{:else}
 		<p class="meta">No verified report to show.</p>

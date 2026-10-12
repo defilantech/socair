@@ -201,6 +201,7 @@ checks that run the model on your own GPUs, is built here in the open.
 |---|---|
 | [attestation-template.md](docs/attestation-template.md) | The attestation, section by section: the source of truth for what a report contains |
 | [report-schema/v1.json](docs/report-schema/v1.json) | The report's JSON schema |
+| [control-mapping.md](docs/control-mapping.md) | Which rows and features are evidence for which framework controls (MITRE ATLAS, OWASP LLM, NIST, AI supply-chain guidance), full or partial, and why |
 | [tier2.md](docs/tier2.md) | Tier 2, opt-in: measurements made by running the model, the node-class record, the probe-helper protocol, isolation, and the roadmap |
 | [airlock.md](docs/airlock.md) | The airlock: pull, ingest, promote, the trust policy, the log, the signed inventory export |
 | [intake-host.md](docs/intake-host.md) | Running Socair as the model intake host for an on-prem GPU cluster |
