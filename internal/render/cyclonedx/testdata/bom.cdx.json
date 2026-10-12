@@ -235,7 +235,7 @@
         "summary": "Which check rows address each framework entry, as the report maps them. A mapping names what a check inspects; it states no conformance and no confidence. Each claim carries its row's status.",
         "map": [
           {
-            "requirement": "requirement:mitre-atlas:AML.T0010.003",
+            "requirement": "requirement:mitre-atlas-2026-09:AML.T0010.003",
             "claims": [
               "claim:format-and-structure",
               "claim:file-inventory-and-payloads",
@@ -246,33 +246,47 @@
             ]
           },
           {
-            "requirement": "requirement:mitre-atlas:AML.T0011.000",
+            "requirement": "requirement:mitre-atlas-2026-09:AML.T0011.000",
             "claims": [
               "claim:file-inventory-and-payloads",
-              "claim:chat-template"
+              "claim:chat-template",
+              "claim:tokenizer-config"
             ]
           },
           {
-            "requirement": "requirement:mitre-atlas:AML.T0051",
+            "requirement": "requirement:mitre-atlas-2026-09:AML.T0018.002",
+            "claims": [
+              "claim:file-inventory-and-payloads"
+            ]
+          },
+          {
+            "requirement": "requirement:mitre-atlas-2026-09:AML.T0018.003",
+            "claims": [
+              "claim:chat-template",
+              "claim:tokenizer-config"
+            ]
+          },
+          {
+            "requirement": "requirement:mitre-atlas-2026-09:AML.T0051",
             "claims": [
               "claim:chat-template"
             ]
           },
           {
-            "requirement": "requirement:mitre-atlas:AML.T0058",
+            "requirement": "requirement:mitre-atlas-2026-09:AML.T0115.001",
             "claims": [
               "claim:hash-provenance-lineage",
               "claim:known-bad-hash-match"
             ]
           },
           {
-            "requirement": "requirement:owasp-llm-top-10:LLM01",
+            "requirement": "requirement:owasp-llm-top-10-2025:LLM01",
             "claims": [
               "claim:chat-template"
             ]
           },
           {
-            "requirement": "requirement:owasp-llm-top-10:LLM03",
+            "requirement": "requirement:owasp-llm-top-10-2025:LLM03",
             "claims": [
               "claim:format-and-structure",
               "claim:file-inventory-and-payloads",
@@ -327,42 +341,54 @@
   "definitions": {
     "standards": [
       {
-        "bom-ref": "standard:mitre-atlas",
+        "bom-ref": "standard:mitre-atlas-2026-09",
         "name": "MITRE ATLAS",
+        "version": "2026.09",
         "requirements": [
           {
-            "bom-ref": "requirement:mitre-atlas:AML.T0010.003",
+            "bom-ref": "requirement:mitre-atlas-2026-09:AML.T0010.003",
             "identifier": "AML.T0010.003",
             "text": "AI Supply Chain Compromise: Model"
           },
           {
-            "bom-ref": "requirement:mitre-atlas:AML.T0011.000",
+            "bom-ref": "requirement:mitre-atlas-2026-09:AML.T0011.000",
             "identifier": "AML.T0011.000",
             "text": "User Execution: Unsafe AI Artifacts"
           },
           {
-            "bom-ref": "requirement:mitre-atlas:AML.T0051",
+            "bom-ref": "requirement:mitre-atlas-2026-09:AML.T0018.002",
+            "identifier": "AML.T0018.002",
+            "text": "Manipulate AI Model: Embed Malware"
+          },
+          {
+            "bom-ref": "requirement:mitre-atlas-2026-09:AML.T0018.003",
+            "identifier": "AML.T0018.003",
+            "text": "Manipulate AI Model: Modify Prompt Construction Logic"
+          },
+          {
+            "bom-ref": "requirement:mitre-atlas-2026-09:AML.T0051",
             "identifier": "AML.T0051",
             "text": "LLM Prompt Injection"
           },
           {
-            "bom-ref": "requirement:mitre-atlas:AML.T0058",
-            "identifier": "AML.T0058",
-            "text": "Publish Poisoned Models"
+            "bom-ref": "requirement:mitre-atlas-2026-09:AML.T0115.001",
+            "identifier": "AML.T0115.001",
+            "text": "Publish Poisoned AI Artifacts: Models"
           }
         ]
       },
       {
-        "bom-ref": "standard:owasp-llm-top-10",
+        "bom-ref": "standard:owasp-llm-top-10-2025",
         "name": "OWASP LLM Top 10",
+        "version": "2025",
         "requirements": [
           {
-            "bom-ref": "requirement:owasp-llm-top-10:LLM01",
+            "bom-ref": "requirement:owasp-llm-top-10-2025:LLM01",
             "identifier": "LLM01",
             "text": "Prompt Injection"
           },
           {
-            "bom-ref": "requirement:owasp-llm-top-10:LLM03",
+            "bom-ref": "requirement:owasp-llm-top-10-2025:LLM03",
             "identifier": "LLM03",
             "text": "Supply Chain"
           }

@@ -550,7 +550,7 @@ func frameworks(rows []report.CheckResult, target string) (*definitions, *declar
 			if m.Framework == "" || m.ID == "" {
 				continue
 			}
-			s := std{m.Framework, edition(m)}
+			s := std{m.Framework, m.Version}
 			if entries[s] == nil {
 				entries[s] = map[string]string{}
 			}
@@ -595,25 +595,6 @@ func frameworks(rows []report.CheckResult, target string) (*definitions, *declar
 		defs.Standards = append(defs.Standards, st)
 	}
 	return defs, &declarations{Attestations: []cdxAttestation{att}, Claims: claims}
-}
-
-// edition is the framework edition a mapping was made against, as the row
-// records it (maps_to[].version), or "" for a row that records none. It is
-// read through the row's JSON form, the report contract, so it gives the
-// edition the document carries whether or not this build's report model
-// declares the field.
-func edition(m report.FrameworkRef) string {
-	b, err := json.Marshal(m)
-	if err != nil {
-		return ""
-	}
-	var v struct {
-		Version string `json:"version"`
-	}
-	if json.Unmarshal(b, &v) != nil {
-		return ""
-	}
-	return v.Version
 }
 
 func standardKey(framework, version string) string {
