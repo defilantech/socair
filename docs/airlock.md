@@ -60,6 +60,7 @@ socair airlock promote <artifact or directory> --attestation <attestation.dsse.j
 socair airlock recheck [--rescan]
 socair airlock log [--verify [--expect-head <head>]]
 socair airlock export --out <dir> [--key <operator.key>]
+socair airlock serve-hub [--addr 127.0.0.1:8081] [--allow-public] [--authorized-only]
 ```
 
 Every command also takes `--store <path>`.
@@ -139,6 +140,12 @@ Every command also takes `--store <path>`.
   deletes, and re-signs nothing. See [Rechecking the clean
   store](#rechecking-the-clean-store).
 - `log` prints the activity log; `log --verify` checks its hash chain.
+- `serve-hub` serves the models the store admits, read-only, over the subset
+  of the Hugging Face Hub API that `huggingface_hub` downloads through, so an
+  inference server with `HF_ENDPOINT` set downloads them from the clean store.
+  It serves only what `Store.Assess` admits now and no recheck has flagged,
+  only the files each attestation lists, and nothing from `incoming/`. See
+  [hub-endpoint.md](hub-endpoint.md).
 
 ## The promotion gate
 
@@ -523,6 +530,8 @@ SOCAIR_TEST_EGRESS=1 go test ./internal/airlock -run RealEgress -v
 - An operator signature says the operator ran the checks and stands behind the
   report. It is not a Defilan signature.
 - The clean store is a directory of bytes and attestations, not an admission
-  gate for a serving stack. On Kubernetes, LLMKube is adding an admission gate
-  that refuses to serve a model without an admitted attestation. For the
-  end-to-end deployment, see [intake-host.md](intake-host.md).
+  gate for a serving stack. `serve-hub` hands its admitted models to
+  inference servers, but it cannot stop one from fetching a model elsewhere.
+  On Kubernetes, LLMKube is adding an admission gate that refuses to serve a
+  model without an admitted attestation. For the end-to-end deployment, see
+  [intake-host.md](intake-host.md).
