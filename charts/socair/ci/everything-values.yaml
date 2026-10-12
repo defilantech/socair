@@ -33,11 +33,19 @@ priorityClassName: batch
 extraEnv:
   - name: SOCAIR_FEED
     value: /feed
+scanRoots: [/models]
 extraVolumes:
   - name: feed
     configMap:
       name: socair-feed
+  - name: models
+    persistentVolumeClaim:
+      claimName: model-share
+      readOnly: true
 extraVolumeMounts:
   - name: feed
     mountPath: /feed
+    readOnly: true
+  - name: models
+    mountPath: /models
     readOnly: true
