@@ -227,6 +227,12 @@ func walk(dir string, read func(src, rel string) (string, int64, error)) ([]File
 		}
 		st, err := os.Stat(p) // follows symlinks
 		if err != nil {
+			// The reason goes into the report, which names the file by rel:
+			// the cause alone, not the path on the scanning host.
+			var pe *fs.PathError
+			if errors.As(err, &pe) {
+				err = pe.Err
+			}
 			excluded = append(excluded, Excluded{rel, "unreadable: " + err.Error()})
 			return nil
 		}

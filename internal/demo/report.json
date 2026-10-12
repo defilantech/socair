@@ -45,7 +45,8 @@
     "execution_context": "Tier 1 static, portable",
     "input_path": "airlock pull",
     "scan_start_utc": "2026-09-29T00:00:00Z",
-    "scan_end_utc": "2026-09-29T00:00:12Z"
+    "scan_end_utc": "2026-09-29T00:00:12Z",
+    "reference_data": "local denylist denylist.txt (sha256 85970338b0c77f6665382b895849953fe6db54d6275fcec55433c8e011a16634)"
   },
   "checks": [
     {
@@ -119,7 +120,7 @@
       "name": "Known-bad hash match",
       "looks_for": "Match against the known-bad artifact denylist",
       "status": "PASS",
-      "notes": "no entry matched among 1204 known-bad hashes (denylist /srv/socair/denylist.txt)",
+      "notes": "no entry matched among 1204 known-bad hashes (denylist denylist.txt (sha256 85970338b0c77f6665382b895849953fe6db54d6275fcec55433c8e011a16634))",
       "pass_means": "This exact hash is not on the configured denylist. Any changed byte gives a new hash, so it catches only known files.",
       "maps_to": [
         {

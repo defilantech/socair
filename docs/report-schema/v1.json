@@ -123,11 +123,11 @@
         "check_set_version": { "type": "string" },
         "tool_versions": { "type": "string" },
         "execution_context": { "type": "string" },
-        "input_path": { "type": "string" },
+        "input_path": { "type": "string", "description": "How the input arrived: 'local path', or the source a bound provenance manifest records (e.g. 'airlock pull'). Never the path on the scanning host; the subject digest identifies the artifact." },
         "scan_start_utc": { "type": "string" },
         "scan_end_utc": { "type": "string" },
         "inference_budget": { "type": "string" },
-        "reference_data": { "type": "string" }
+        "reference_data": { "type": "string", "description": "The reference data the checks compared against: a signed feed by issuer, version, dates, and signing key, and each local input (denylist, tokenizer tables, reviewed templates, license policy) by file name and the SHA-256 of the bytes read, never by its path on the scanning host." }
       }
     },
     "checks": {
