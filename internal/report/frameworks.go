@@ -109,43 +109,75 @@ func RowSeverity(status Status, patterns []string) string {
 	return SeverityMedium
 }
 
-// Frameworks names the editions the mappings below were made against.
+// The frameworks a check row maps to, and the editions the mappings were made
+// against. ATLAS has numbered its monthly content releases YYYY.MM since
+// 2026.05; every ATLAS ID and name below is checked against the pinned
+// release's published data (testdata/atlas-ids.txt, written by atlasgen).
+// docs/control-mapping.md maps the rows to framework controls.
 const (
-	ATLASEdition = "MITRE ATLAS 5.6.0"
-	OWASPEdition = "OWASP Top 10 for LLM Applications 2025"
+	FrameworkATLAS    = "MITRE ATLAS"
+	FrameworkOWASPLLM = "OWASP LLM Top 10"
+
+	ATLASVersion = "2026.09"
+	OWASPVersion = "2025"
+
+	ATLASEdition = FrameworkATLAS + " " + ATLASVersion
+	OWASPEdition = "OWASP Top 10 for LLM Applications " + OWASPVersion
 )
 
 // FrameworkRef is one entry in an external framework that a check addresses.
 type FrameworkRef struct {
 	Framework string `json:"framework"`
-	ID        string `json:"id"`
-	Name      string `json:"name"`
+	// Version is the edition of the framework the entry is from
+	// (ATLASVersion, OWASPVersion), so a filed report names the entry it
+	// meant after the framework renames or retires it. A report made before
+	// Socair recorded it has none.
+	Version string `json:"version,omitempty"`
+	ID      string `json:"id"`
+	Name    string `json:"name"`
+}
+
+func atlas(id, name string) FrameworkRef {
+	return FrameworkRef{Framework: FrameworkATLAS, Version: ATLASVersion, ID: id, Name: name}
+}
+
+func owaspLLM(id, name string) FrameworkRef {
+	return FrameworkRef{Framework: FrameworkOWASPLLM, Version: OWASPVersion, ID: id, Name: name}
 }
 
 var (
-	atlasSupplyChainModel = FrameworkRef{"MITRE ATLAS", "AML.T0010.003", "AI Supply Chain Compromise: Model"}
-	atlasSupplyChainSW    = FrameworkRef{"MITRE ATLAS", "AML.T0010.001", "AI Supply Chain Compromise: AI Software"}
-	atlasUnsafeArtifacts  = FrameworkRef{"MITRE ATLAS", "AML.T0011.000", "User Execution: Unsafe AI Artifacts"}
-	atlasPromptInjection  = FrameworkRef{"MITRE ATLAS", "AML.T0051", "LLM Prompt Injection"}
-	atlasPoisonedModels   = FrameworkRef{"MITRE ATLAS", "AML.T0058", "Publish Poisoned Models"}
-	owaspPromptInjection  = FrameworkRef{"OWASP LLM Top 10", "LLM01", "Prompt Injection"}
-	owaspSupplyChain      = FrameworkRef{"OWASP LLM Top 10", "LLM03", "Supply Chain"}
+	atlasSupplyChainModel = atlas("AML.T0010.003", "AI Supply Chain Compromise: Model")
+	atlasSupplyChainSW    = atlas("AML.T0010.001", "AI Supply Chain Compromise: AI Software")
+	atlasUnsafeArtifacts  = atlas("AML.T0011.000", "User Execution: Unsafe AI Artifacts")
+	atlasPromptInjection  = atlas("AML.T0051", "LLM Prompt Injection")
+	atlasEmbedMalware     = atlas("AML.T0018.002", "Manipulate AI Model: Embed Malware")
+	atlasPromptLogic      = atlas("AML.T0018.003", "Manipulate AI Model: Modify Prompt Construction Logic")
+	// AML.T0115.001 replaced AML.T0058 "Publish Poisoned Models" in ATLAS
+	// 2026.07.
+	atlasPoisonedModels  = atlas("AML.T0115.001", "Publish Poisoned AI Artifacts: Models")
+	owaspPromptInjection = owaspLLM("LLM01", "Prompt Injection")
+	owaspSupplyChain     = owaspLLM("LLM03", "Supply Chain")
 )
 
 // checkMaps is what each check addresses. A mapping is a claim about what the
 // check tests, so it names only what the check inspects, never the wider
-// threat: the tokenizer check addresses a tampered artifact, not poisoned
-// weights, which no Tier 1 check reads.
+// threat: the tokenizer check addresses tampered tokenizer settings, not
+// poisoned weights, which no Tier 1 check reads.
 var checkMaps = map[string][]FrameworkRef{
-	"Format and structure":        {atlasSupplyChainModel, owaspSupplyChain},
-	"File inventory and payloads": {atlasUnsafeArtifacts, atlasSupplyChainModel, owaspSupplyChain},
-	"Chat template":               {atlasPromptInjection, atlasUnsafeArtifacts, owaspPromptInjection, owaspSupplyChain},
-	"Tokenizer config":            {atlasSupplyChainModel, owaspSupplyChain},
-	"Quant match":                 {atlasSupplyChainModel, owaspSupplyChain},
-	"Pickle opcode scan":          {atlasUnsafeArtifacts, atlasSupplyChainModel, owaspSupplyChain},
-	"Remote code":                 {atlasUnsafeArtifacts, atlasSupplyChainSW, owaspSupplyChain},
-	"Hash, provenance, lineage":   {atlasSupplyChainModel, atlasPoisonedModels, owaspSupplyChain},
-	"Known-bad hash match":        {atlasPoisonedModels, atlasSupplyChainModel, owaspSupplyChain},
+	"Format and structure": {atlasSupplyChainModel, owaspSupplyChain},
+	// Scripts and executables carried in a model file's metadata.
+	"File inventory and payloads": {atlasUnsafeArtifacts, atlasEmbedMalware, atlasSupplyChainModel, owaspSupplyChain},
+	// ATLAS names templates and role delimiters as prompt construction logic.
+	"Chat template": {atlasPromptLogic, atlasPromptInjection, atlasUnsafeArtifacts, owaspPromptInjection, owaspSupplyChain},
+	// ATLAS names tokenizer settings as prompt construction logic, and
+	// tokenizer metadata as an unsafe artifact's bundled component.
+	"Tokenizer config": {atlasPromptLogic, atlasUnsafeArtifacts, atlasSupplyChainModel, owaspSupplyChain},
+	"Quant match":      {atlasSupplyChainModel, owaspSupplyChain},
+	// Code a pickle loader would run is malware embedded in a model file.
+	"Pickle opcode scan":        {atlasUnsafeArtifacts, atlasEmbedMalware, atlasSupplyChainModel, owaspSupplyChain},
+	"Remote code":               {atlasUnsafeArtifacts, atlasSupplyChainSW, owaspSupplyChain},
+	"Hash, provenance, lineage": {atlasSupplyChainModel, atlasPoisonedModels, owaspSupplyChain},
+	"Known-bad hash match":      {atlasPoisonedModels, atlasSupplyChainModel, owaspSupplyChain},
 	// LLM03 names licensing risk among supply-chain vulnerabilities; no
 	// ATLAS technique is a license.
 	"License policy": {owaspSupplyChain},
@@ -158,4 +190,26 @@ func MapsTo(check string) []FrameworkRef {
 		return nil
 	}
 	return append([]FrameworkRef(nil), m...)
+}
+
+// FrameworkEditions names the framework editions the rows' entries are from,
+// as "<framework> <version>", in the order the rows first name them. It reads
+// the document, not this package's constants, so an older report names the
+// editions it was mapped against; an entry without a version adds nothing.
+func FrameworkEditions(checks []CheckResult) []string {
+	var out []string
+	seen := map[string]bool{}
+	for _, c := range checks {
+		for _, m := range c.MapsTo {
+			if m.Version == "" {
+				continue
+			}
+			e := m.Framework + " " + m.Version
+			if !seen[e] {
+				seen[e] = true
+				out = append(out, e)
+			}
+		}
+	}
+	return out
 }

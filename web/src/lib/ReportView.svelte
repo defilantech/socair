@@ -113,7 +113,11 @@
 									<strong>{check.status === 'PASS' ? 'PASS means:' : 'A pass would mean:'}</strong>
 									{check.pass_means}
 								</div>{/if}
-							{#if check.maps_to?.length}<div class="maps">Addresses {check.maps_to.map((m) => m.id).join(' · ')}</div>{/if}
+							{#if check.maps_to?.length}<div class="maps">
+									Addresses {#each check.maps_to as m, i (m.framework + m.id)}{#if i}{' · '}{/if}<span
+											title={m.version ? `${m.name} (${m.framework} ${m.version})` : m.name}>{m.id}</span
+										>{/each}
+								</div>{/if}
 						</td>
 						<td data-label="Result">
 							<span class="pill {statusPill(check.status)}">{check.status}</span>
