@@ -1,0 +1,335 @@
+# MITRE ATLAS 2026.09: the ID and name of every technique, sub-technique, mitigation,
+# and case study, pruned from the release's data file (every other field dropped).
+# A sub-technique is named "<technique>: <sub-technique>", as ATLAS shows it.
+# ATLAS data: Copyright 2021-2026 MITRE, licensed under the Apache License, Version 2.0:
+# https://github.com/mitre-atlas/atlas-data/blob/v2026.09/LICENSE
+# Regenerate with internal/report/atlasgen:
+#   curl -fsSLO https://github.com/mitre-atlas/atlas-data/releases/download/v2026.09/ATLAS-2026.09.yaml
+#   go run ./internal/report/atlasgen -tag v2026.09 -source https://github.com/mitre-atlas/atlas-data/releases/download/v2026.09/ATLAS-2026.09.yaml -notice "Copyright 2021-2026 MITRE" ATLAS-2026.09.yaml > internal/report/testdata/atlas-ids.txt
+# source: https://github.com/mitre-atlas/atlas-data/releases/download/v2026.09/ATLAS-2026.09.yaml
+# tag: v2026.09
+# sha256: 935efa93e28294432d3e2f537eb94991ef8d1f8c58341cd360ea3321ddb66688
+# format-version: 6.0.0
+# version: 2026.09
+# counts: 120 techniques, 88 sub-techniques, 40 mitigations, 73 case studies
+AML.T0000	technique	Search Open Technical Databases
+AML.T0000.000	sub-technique	Search Open Technical Databases: Journals and Conference Proceedings
+AML.T0000.001	sub-technique	Search Open Technical Databases: Pre-Print Repositories
+AML.T0000.002	sub-technique	Search Open Technical Databases: Technical Blogs
+AML.T0000.003	sub-technique	Search Open Technical Databases: Scan Databases
+AML.T0001	technique	Search Open AI Vulnerability Analysis
+AML.T0002	technique	Acquire Public AI Artifacts
+AML.T0002.000	sub-technique	Acquire Public AI Artifacts: Datasets
+AML.T0002.001	sub-technique	Acquire Public AI Artifacts: Models
+AML.T0002.002	sub-technique	Acquire Public AI Artifacts: AI Agent Configuration
+AML.T0003	technique	Search Victim-Owned Websites
+AML.T0004	technique	Search Application Repositories
+AML.T0005	technique	Create Proxy AI Model
+AML.T0005.000	sub-technique	Create Proxy AI Model: Train Proxy via Gathered AI Artifacts
+AML.T0005.001	sub-technique	Create Proxy AI Model: Train Proxy via Replication
+AML.T0005.002	sub-technique	Create Proxy AI Model: Use Pre-Trained Model
+AML.T0006	technique	Active Scanning
+AML.T0006.000	sub-technique	Active Scanning: Enumerate Hosted AI Resources
+AML.T0006.001	sub-technique	Active Scanning: Query Platform Metadata APIs
+AML.T0006.002	sub-technique	Active Scanning: Scan for Exposed AI Infrastructure
+AML.T0006.003	sub-technique	Active Scanning: Probe AI Agent Trigger Channels
+AML.T0007	technique	Discover AI Artifacts
+AML.T0008	technique	Acquire Infrastructure
+AML.T0008.000	sub-technique	Acquire Infrastructure: AI Development Workspaces
+AML.T0008.001	sub-technique	Acquire Infrastructure: Consumer Hardware
+AML.T0008.002	sub-technique	Acquire Infrastructure: Domains
+AML.T0008.003	sub-technique	Acquire Infrastructure: Physical Countermeasures
+AML.T0008.004	sub-technique	Acquire Infrastructure: Serverless
+AML.T0008.005	sub-technique	Acquire Infrastructure: AI Service Proxies
+AML.T0010	technique	AI Supply Chain Compromise
+AML.T0010.000	sub-technique	AI Supply Chain Compromise: Hardware
+AML.T0010.001	sub-technique	AI Supply Chain Compromise: AI Software
+AML.T0010.002	sub-technique	AI Supply Chain Compromise: Data
+AML.T0010.003	sub-technique	AI Supply Chain Compromise: Model
+AML.T0010.004	sub-technique	AI Supply Chain Compromise: Container Registry
+AML.T0010.005	sub-technique	AI Supply Chain Compromise: AI Agent Tool
+AML.T0011	technique	User Execution
+AML.T0011.000	sub-technique	User Execution: Unsafe AI Artifacts
+AML.T0011.001	sub-technique	User Execution: Malicious Package
+AML.T0011.002	sub-technique	User Execution: Poisoned AI Agent Tool
+AML.T0011.003	sub-technique	User Execution: Malicious Link
+AML.T0012	technique	Valid Accounts
+AML.T0013	technique	Discover AI Model Ontology
+AML.T0014	technique	Discover AI Model Family
+AML.T0015	technique	Evade AI Model
+AML.T0016	technique	Obtain Capabilities
+AML.T0016.000	sub-technique	Obtain Capabilities: Adversarial AI Attack Implementations
+AML.T0016.001	sub-technique	Obtain Capabilities: Software Tools
+AML.T0016.002	sub-technique	Obtain Capabilities: Generative AI
+AML.T0016.003	sub-technique	Obtain Capabilities: Exploits
+AML.T0016.004	sub-technique	Obtain Capabilities: AI Agent Tools
+AML.T0017	technique	Develop Capabilities
+AML.T0017.000	sub-technique	Develop Capabilities: Adversarial AI Attacks
+AML.T0017.001	sub-technique	Develop Capabilities: Autonomous Exploit Development
+AML.T0017.002	sub-technique	Develop Capabilities: AI Agent Tools
+AML.T0018	technique	Manipulate AI Model
+AML.T0018.000	sub-technique	Manipulate AI Model: Poison AI Model
+AML.T0018.001	sub-technique	Manipulate AI Model: Modify AI Model Architecture
+AML.T0018.002	sub-technique	Manipulate AI Model: Embed Malware
+AML.T0018.003	sub-technique	Manipulate AI Model: Modify Prompt Construction Logic
+AML.T0020	technique	Training Data Poisoning
+AML.T0021	technique	Establish Accounts
+AML.T0024	technique	Exfiltration via AI Inference API
+AML.T0024.000	sub-technique	Exfiltration via AI Inference API: Infer Training Data Membership
+AML.T0024.001	sub-technique	Exfiltration via AI Inference API: Invert AI Model
+AML.T0024.002	sub-technique	Exfiltration via AI Inference API: Extract AI Model
+AML.T0025	technique	Exfiltration via Cyber Means
+AML.T0029	technique	Denial of AI Service
+AML.T0031	technique	Erode AI Model Integrity
+AML.T0034	technique	Cost Harvesting
+AML.T0034.000	sub-technique	Cost Harvesting: Excessive Queries
+AML.T0034.001	sub-technique	Cost Harvesting: Resource-Intensive Queries
+AML.T0034.002	sub-technique	Cost Harvesting: Agentic Resource Consumption
+AML.T0035	technique	AI Artifact Collection
+AML.T0036	technique	Data from Information Repositories
+AML.T0037	technique	Data from Local System
+AML.T0040	technique	AI Model Inference API Access
+AML.T0041	technique	Physical Environment Access
+AML.T0042	technique	Verify Attack
+AML.T0043	technique	Craft Adversarial Data
+AML.T0043.000	sub-technique	Craft Adversarial Data: White-Box Optimization
+AML.T0043.001	sub-technique	Craft Adversarial Data: Black-Box Optimization
+AML.T0043.002	sub-technique	Craft Adversarial Data: Black-Box Transfer
+AML.T0043.003	sub-technique	Craft Adversarial Data: Manual Modification
+AML.T0043.004	sub-technique	Craft Adversarial Data: Insert Backdoor Trigger
+AML.T0044	technique	Full AI Model Access
+AML.T0046	technique	Spamming AI System with Chaff Data
+AML.T0047	technique	AI-Enabled Product or Service
+AML.T0048	technique	External Harms
+AML.T0048.000	sub-technique	External Harms: Financial Harm
+AML.T0048.001	sub-technique	External Harms: Reputational Harm
+AML.T0048.002	sub-technique	External Harms: Societal Harm
+AML.T0048.003	sub-technique	External Harms: User Harm
+AML.T0048.004	sub-technique	External Harms: AI Intellectual Property Theft
+AML.T0049	technique	Exploit Public-Facing Application
+AML.T0050	technique	Command and Scripting Interpreter
+AML.T0051	technique	LLM Prompt Injection
+AML.T0051.000	sub-technique	LLM Prompt Injection: Direct
+AML.T0051.001	sub-technique	LLM Prompt Injection: Indirect
+AML.T0051.002	sub-technique	LLM Prompt Injection: Triggered
+AML.T0052	technique	Phishing
+AML.T0052.000	sub-technique	Phishing: Spearphishing via Social Engineering LLM
+AML.T0052.001	sub-technique	Phishing: Deepfake-Assisted Phishing
+AML.T0053	technique	AI Agent Tool Invocation
+AML.T0054	technique	LLM Jailbreak
+AML.T0055	technique	Unsecured Credentials
+AML.T0056	technique	Extract LLM System Prompt
+AML.T0057	technique	LLM Data Leakage
+AML.T0059	technique	Erode Dataset Integrity
+AML.T0060	technique	Publish Hallucinated Entities
+AML.T0061	technique	LLM Prompt Self-Replication
+AML.T0062	technique	Discover LLM Hallucinations
+AML.T0063	technique	Discover AI Model Outputs
+AML.T0064	technique	Gather RAG-Indexed Targets
+AML.T0065	technique	LLM Prompt Crafting
+AML.T0066	technique	Retrieval Content Crafting
+AML.T0067	technique	LLM Trusted Output Components Manipulation
+AML.T0067.000	sub-technique	LLM Trusted Output Components Manipulation: Citations
+AML.T0068	technique	LLM Prompt Obfuscation
+AML.T0069	technique	Discover LLM System Information
+AML.T0069.000	sub-technique	Discover LLM System Information: Special Character Sets
+AML.T0069.001	sub-technique	Discover LLM System Information: System Instruction Keywords
+AML.T0069.002	sub-technique	Discover LLM System Information: System Prompt
+AML.T0070	technique	RAG Poisoning
+AML.T0071	technique	False RAG Entry Injection
+AML.T0072	technique	Cyber Communication Channel
+AML.T0073	technique	Impersonation
+AML.T0074	technique	Masquerading
+AML.T0075	technique	Enterprise Resource Discovery
+AML.T0076	technique	Corrupt AI Model
+AML.T0077	technique	LLM Response Rendering
+AML.T0078	technique	Drive-by Compromise
+AML.T0079	technique	Stage Capabilities
+AML.T0080	technique	AI Agent Context Poisoning
+AML.T0080.000	sub-technique	AI Agent Context Poisoning: Memory
+AML.T0080.001	sub-technique	AI Agent Context Poisoning: Thread
+AML.T0081	technique	Modify AI Agent Configuration
+AML.T0082	technique	RAG Credential Harvesting
+AML.T0083	technique	Credentials from AI Agent Configuration
+AML.T0084	technique	Discover AI Agent Configuration
+AML.T0084.000	sub-technique	Discover AI Agent Configuration: Embedded Knowledge
+AML.T0084.001	sub-technique	Discover AI Agent Configuration: Tool Definitions
+AML.T0084.002	sub-technique	Discover AI Agent Configuration: Activation Triggers
+AML.T0084.003	sub-technique	Discover AI Agent Configuration: Call Chains
+AML.T0085	technique	Data from AI Services
+AML.T0085.000	sub-technique	Data from AI Services: RAG Databases
+AML.T0085.001	sub-technique	Data from AI Services: AI Agent Tools
+AML.T0086	technique	Exfiltration via AI Agent Tool Invocation
+AML.T0087	technique	Gather Victim Identity Information
+AML.T0088	technique	Generate Deepfakes
+AML.T0089	technique	Enterprise Environment Discovery
+AML.T0090	technique	OS Credential Dumping
+AML.T0091	technique	Use Alternate Authentication Material
+AML.T0091.000	sub-technique	Use Alternate Authentication Material: Application Access Token
+AML.T0091.001	sub-technique	Use Alternate Authentication Material: Web Session Cookie
+AML.T0092	technique	Manipulate User LLM Chat History
+AML.T0093	technique	Prompt Infiltration via Public-Facing Application
+AML.T0094	technique	Delay Execution of LLM Instructions
+AML.T0095	technique	Search Open Websites/Domains
+AML.T0095.000	sub-technique	Search Open Websites/Domains: Code Repositories
+AML.T0096	technique	AI Service API
+AML.T0097	technique	Virtualization/Sandbox Evasion
+AML.T0098	technique	AI Agent Tool Credential Harvesting
+AML.T0099	technique	AI Agent Tool Data Poisoning
+AML.T0100	technique	AI Agent Clickbait
+AML.T0101	technique	Data Destruction via AI Agent Tool Invocation
+AML.T0102	technique	Generate Malicious Commands
+AML.T0103	technique	Deploy AI Agent
+AML.T0105	technique	Escape to Host
+AML.T0106	technique	Exploitation for Credential Access
+AML.T0107	technique	Exploitation for Defense Evasion
+AML.T0108	technique	AI Agent
+AML.T0109	technique	AI Supply Chain Rug Pull
+AML.T0110	technique	AI Agent Tool Poisoning
+AML.T0110.000	sub-technique	AI Agent Tool Poisoning: Definition and Instructions
+AML.T0110.001	sub-technique	AI Agent Tool Poisoning: Implementation
+AML.T0110.002	sub-technique	AI Agent Tool Poisoning: Runtime Response
+AML.T0111	technique	AI Supply Chain Reputation Inflation
+AML.T0112	technique	Machine Compromise
+AML.T0112.000	sub-technique	Machine Compromise: Local AI Agent
+AML.T0112.001	sub-technique	Machine Compromise: AI Artifacts
+AML.T0113	technique	Steal Web Session Cookie
+AML.T0114	technique	AI Service Web Interface
+AML.T0115	technique	Publish Poisoned AI Artifacts
+AML.T0115.000	sub-technique	Publish Poisoned AI Artifacts: Datasets
+AML.T0115.001	sub-technique	Publish Poisoned AI Artifacts: Models
+AML.T0115.002	sub-technique	Publish Poisoned AI Artifacts: AI Agent Tools
+AML.T0116	technique	Autonomous Reconnaissance
+AML.T0117	technique	Autonomous Attack-Path Adaptation
+AML.T0118	technique	Autonomous AI Agent Communication
+AML.T0118.000	sub-technique	Autonomous AI Agent Communication: Communication via Shared Artifacts
+AML.T0118.001	sub-technique	Autonomous AI Agent Communication: Direct Agent Communication
+AML.T0119	technique	Exploit Automated Artifact Processing Pipeline
+AML.T0120	technique	AI Artifact Repository
+AML.T0121	technique	AI Agent Environment Reconstruction
+AML.T0122	technique	Exploitation of Remote Services
+AML.T0123	technique	Obfuscated Files or Information
+AML.T0124	technique	Autonomous Attack Orchestration
+AML.T0125	technique	Create Account
+AML.T0126	technique	Automated Collection
+AML.T0127	technique	Data Staged
+AML.T0128	technique	Compromise Infrastructure
+AML.T0129	technique	Triggers in Multimodal Inputs
+AML.T0130	technique	AI Agent Response Biasing
+AML.T0131	technique	Crafted AI Assistant Links
+AML.T0132	technique	Misconfigured or Publicly Exposed AI Services
+AML.T0133	technique	Discover AI Agent Runtime Capabilities
+AML.T0134	technique	AI Targeted Cloaking
+AML.M0000	mitigation	Limit Public Release of Information
+AML.M0001	mitigation	Limit Model Artifact Release
+AML.M0002	mitigation	Predictive AI Output Obfuscation
+AML.M0003	mitigation	Predictive AI Model Hardening
+AML.M0004	mitigation	Limit AI Service Query Volume and Rate
+AML.M0005	mitigation	Control Access to AI Models and Data at Rest
+AML.M0006	mitigation	Predictive AI Ensembles
+AML.M0007	mitigation	Sanitize Training Data
+AML.M0008	mitigation	Validate AI Model
+AML.M0009	mitigation	Predictive AI Multi-Sensor Fusion
+AML.M0010	mitigation	Predictive AI Input Restoration
+AML.M0011	mitigation	Restrict Library Loading
+AML.M0012	mitigation	Encrypt Sensitive Information
+AML.M0013	mitigation	Code Signing
+AML.M0014	mitigation	Verify AI Artifacts
+AML.M0015	mitigation	Predictive AI Adversarial Input Detection
+AML.M0016	mitigation	Vulnerability Scanning
+AML.M0017	mitigation	AI Model Distribution Methods
+AML.M0018	mitigation	User Training
+AML.M0019	mitigation	Control Access to AI Models and Data in Production
+AML.M0020	mitigation	Generative AI Guardrails
+AML.M0021	mitigation	Generative AI Guidelines
+AML.M0022	mitigation	Generative AI Model Alignment
+AML.M0023	mitigation	AI Bill of Materials
+AML.M0024	mitigation	AI Telemetry Logging
+AML.M0025	mitigation	Maintain AI Dataset Provenance
+AML.M0026	mitigation	Privileged AI Agent Permissions Configuration
+AML.M0027	mitigation	Single-User AI Agent Permissions Configuration
+AML.M0028	mitigation	AI Agent Tools Permissions Configuration
+AML.M0029	mitigation	Human In-the-Loop for AI Agent Actions
+AML.M0030	mitigation	Restrict AI Agent Tool Invocation on Untrusted Data
+AML.M0031	mitigation	Memory Hardening
+AML.M0032	mitigation	Segmentation of AI Agent Components
+AML.M0033	mitigation	Input and Output Validation for AI Agent Components
+AML.M0034	mitigation	Deepfake Detection
+AML.M0035	mitigation	AI Red Team
+AML.M0036	mitigation	Limit AI Workload Resource Consumption
+AML.M0037	mitigation	AI Agent Authority Expansion Controls
+AML.M0038	mitigation	AI Agent Scope Drift Detection
+AML.M0039	mitigation	AI Honeypots
+AML.CS0000	case-study	Evasion of Deep Learning Detector for Malware C&C Traffic
+AML.CS0001	case-study	Botnet Domain Generation Algorithm (DGA) Detection Evasion
+AML.CS0002	case-study	VirusTotal Poisoning
+AML.CS0003	case-study	Bypassing Cylance's AI Malware Detection
+AML.CS0004	case-study	Camera Hijack Attack on Facial Recognition System
+AML.CS0005	case-study	Attack on Machine Translation Services
+AML.CS0006	case-study	ClearviewAI Misconfiguration
+AML.CS0007	case-study	GPT-2 Model Replication
+AML.CS0008	case-study	ProofPoint Evasion
+AML.CS0009	case-study	Tay Poisoning
+AML.CS0010	case-study	Microsoft Azure Service Disruption
+AML.CS0011	case-study	Microsoft Edge AI Evasion
+AML.CS0012	case-study	Face Identification System Evasion via Physical Countermeasures
+AML.CS0013	case-study	Backdoor Attack on Deep Learning Models in Mobile Apps
+AML.CS0014	case-study	Confusing Antimalware Neural Networks
+AML.CS0015	case-study	Compromised PyTorch Dependency Chain
+AML.CS0016	case-study	Achieving Code Execution in MathGPT via Prompt Injection
+AML.CS0017	case-study	Bypassing ID.me Identity Verification
+AML.CS0018	case-study	Arbitrary Code Execution with Google Colab
+AML.CS0019	case-study	PoisonGPT
+AML.CS0020	case-study	Indirect Prompt Injection Threats: Bing Chat Data Pirate
+AML.CS0021	case-study	ChatGPT Conversation Exfiltration
+AML.CS0022	case-study	ChatGPT Package Hallucination
+AML.CS0023	case-study	ShadowRay: Hijacking Exposed Ray Clusters
+AML.CS0024	case-study	Morris II Worm: RAG-Based Attack
+AML.CS0025	case-study	Web-Scale Data Poisoning: Split-View Attack
+AML.CS0026	case-study	Financial Transaction Hijacking with M365 Copilot as an Insider
+AML.CS0027	case-study	Organization Confusion on Hugging Face
+AML.CS0028	case-study	AI Model Tampering via Supply Chain Attack
+AML.CS0029	case-study	Google Bard Conversation Exfiltration
+AML.CS0030	case-study	LLM Jacking
+AML.CS0031	case-study	Malicious Models on Hugging Face
+AML.CS0032	case-study	Attempted Evasion of ML Phishing Webpage Detection System
+AML.CS0033	case-study	Live Deepfake Image Injection to Evade Mobile KYC Verification
+AML.CS0034	case-study	ProKYC: Deepfake Tool for Account Fraud Attacks
+AML.CS0035	case-study	Data Exfiltration from Slack AI via Indirect Prompt Injection
+AML.CS0036	case-study	AIKatz: Attacking LLM Desktop Applications
+AML.CS0037	case-study	Data Exfiltration via Agent Tools in Copilot Studio
+AML.CS0038	case-study	Planting Instructions for Delayed Automatic AI Agent Tool Invocation
+AML.CS0039	case-study	Living Off AI: Prompt Injection via Jira Service Management
+AML.CS0040	case-study	Hacking ChatGPT's Memories with Prompt Injection
+AML.CS0041	case-study	Rules File Backdoor: Supply Chain Attack on AI Coding Assistants
+AML.CS0042	case-study	SesameOp: Novel backdoor uses OpenAI Assistants API for command and control
+AML.CS0043	case-study	Malware Prototype with Embedded Prompt Injection
+AML.CS0044	case-study	LAMEHUG: Malware Leveraging Dynamic AI-Generated Commands
+AML.CS0045	case-study	Data Exfiltration via an MCP Server used by Cursor
+AML.CS0046	case-study	Data Destruction via Indirect Prompt Injection Targeting Claude Computer-Use
+AML.CS0047	case-study	Code to Deploy Destructive AI Agent Discovered in Amazon Q VS Code Extension
+AML.CS0048	case-study	Exposed ClawdBot Control Interfaces Leads to Credential Access and Execution
+AML.CS0049	case-study	Supply Chain Compromise via Poisoned ClawdBot Skill
+AML.CS0050	case-study	OpenClaw 1-Click Remote Code Execution
+AML.CS0051	case-study	OpenClaw Command & Control via Prompt Injection
+AML.CS0052	case-study	LLMSmith: RCE Vulnerabilities in LLM-Integrated Applications
+AML.CS0053	case-study	Poisoned Postmark MCP Server Email Exfiltration
+AML.CS0054	case-study	Data Exfiltration via Remote Poisoned MCP Tool
+AML.CS0055	case-study	AI ClickFix: Hijacking Computer-Use Agents Using ClickFix
+AML.CS0056	case-study	Model Distillation Campaigns Targeting Anthropic Claude
+AML.CS0057	case-study	Storm-2139 Azure OpenAI Guardrail Bypass
+AML.CS0058	case-study	Google Photos AI Model Extraction
+AML.CS0059	case-study	EchoLeak: Zero-Click Prompt Injection Targeting M365 Copilot for Data Exfiltration
+AML.CS0060	case-study	Cross-Site Scripting via Prompt Manipulation in Lenovo AI Chatbot
+AML.CS0061	case-study	AI in the Middle: Web-Based AI Services as C2 Relays
+AML.CS0062	case-study	RCE Vulnerability in Semantic Kernel Search Plugin
+AML.CS0063	case-study	Prompt-Based Attacks Against Gemini via Calendar Invitations
+AML.CS0064	case-study	Poisoned GGUF Templates: Inference-Time Supply Chain Attack
+AML.CS0065	case-study	Model Namespace Reuse Supply Chain Attack
+AML.CS0066	case-study	ZombieAgent: Data Exfiltration Attack on ChatGPT
+AML.CS0067	case-study	Claude Code GitHub Action Secret Exposure
+AML.CS0068	case-study	Autonomous OpenAI Evaluation Agents Compromise Hugging Face Infrastructure
+AML.CS0069	case-study	GTG-1002 Claude Code Espionage Campaign
+AML.CS0070	case-study	Threat Actor Uses a DeepSeek-Powered Hermes Agent in Langflow and n8n Exploitation Attempts
+AML.CS0071	case-study	Multi-Agent Framework Compromises Taiwanese Government Systems
+AML.CS0072	case-study	AI Recommendation Poisoning via Crafted AI Assistant Links

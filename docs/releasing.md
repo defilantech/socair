@@ -45,7 +45,8 @@ next version, not by re-tagging.
      linux/amd64 and linux/arm64, pushes it to `ghcr.io/defilantech/socair:<version>`,
      and attests it;
    - packages the Helm chart with the tag's version as both its version and
-     its appVersion, pushes it to `oci://ghcr.io/defilantech/charts/socair`,
+     its appVersion (and sets Artifact Hub's image and pre-release
+     annotations from the tag), pushes it to `oci://ghcr.io/defilantech/charts/socair`,
      attaches the archive to the draft, attests both, and adds the archive's
      attestation to `socair_<version>.intoto.jsonl`.
 

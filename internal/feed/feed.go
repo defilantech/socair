@@ -6,8 +6,8 @@
 // statement (predicate type https://socair.ai/feed/v1) signed with Ed25519
 // that names each data file by its SHA-256 and states who issued the feed,
 // its version, and when it was issued and expires. The format is open, so
-// anyone can build and sign a feed; a curated, maintained feed is what a
-// publisher such as Defilan sells.
+// anyone can build and sign a feed, and the project's own feed is built in
+// the open (GOVERNANCE.md).
 //
 // A feed is used only if it verifies: its signature against the configured
 // feed keys, every data file against the hash the statement names, and its

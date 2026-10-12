@@ -21,8 +21,12 @@
 package provenance
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -49,6 +53,10 @@ type Manifest struct {
 	// Selection, written by a selected repo pull, records that the artifact
 	// is part of the repo at that commit, not all of it.
 	Selection *Selection `json:"selection,omitempty"`
+
+	// File names the manifest Bind read, by base name and the SHA-256 of
+	// its bytes, never by its path on the scanning host.
+	File string `json:"-"`
 }
 
 // Selection is the patterns a repo pull kept files by, and every file of the
@@ -109,14 +117,23 @@ func Bind(opts Options) (*Manifest, string) {
 	if opts.ManifestPath == "" {
 		return nil, "no provenance manifest supplied"
 	}
+	base := filepath.Base(opts.ManifestPath)
 	raw, err := os.ReadFile(opts.ManifestPath)
 	if err != nil {
-		return nil, "could not read provenance manifest: " + err.Error()
+		cause := err
+		var pe *fs.PathError
+		if errors.As(err, &pe) {
+			cause = pe.Err
+		}
+		return nil, "could not read provenance manifest " + base + ": " + cause.Error()
 	}
+	sum := sha256.Sum256(raw)
+	file := base + " (sha256 " + hex.EncodeToString(sum[:]) + ")"
 	var m Manifest
 	if err := json.Unmarshal(raw, &m); err != nil {
-		return nil, "provenance manifest is not valid JSON: " + err.Error()
+		return nil, "provenance manifest " + file + " is not valid JSON: " + err.Error()
 	}
+	m.File = file
 	want := strings.ToLower(strings.TrimSpace(opts.ArtifactSHA256))
 	got := strings.ToLower(strings.TrimSpace(m.ArtifactSHA256))
 	switch {
@@ -157,6 +174,7 @@ func Inspect(opts Options) checks.Result {
 			if m.CommitSHA != "" {
 				r.Notes += " at commit " + m.CommitSHA
 			}
+			r.Notes += " by manifest " + m.File
 		}
 		return r
 	}
@@ -212,6 +230,9 @@ func Inspect(opts Options) checks.Result {
 			parts = append(parts, "aibom "+m.AIBOM)
 		}
 		parts = append(parts, signingClaim(m.SigningStatus))
+	}
+	if m != nil {
+		parts = append(parts, "manifest "+m.File)
 	}
 	// A sidecar is surfaced, never reported as a signature: nothing here
 	// verifies it.

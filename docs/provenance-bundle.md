@@ -7,6 +7,18 @@ operational half of the product; the code reads these inputs and nothing else.
 
 Everything here is offline. There is no network call at scan time.
 
+A report names each local input by its file name and the SHA-256 of the bytes
+the scan read, never by its path on the scanning host: a filed report is
+shared, a path can carry a username and a directory layout, and the hash
+names the exact contents. `scope.reference_data` lists the denylist, the
+tokenizer tables, the reviewed templates, and the license policy that way (an
+input given as a directory lists each file read), and the provenance row
+names the manifest. A repo mirror is named by its directory's name. A signed
+feed is named by its issuer, version, dates, and signing key.
+`scope.input_path` says how the input arrived (`local path`, or the `source`
+a bound provenance manifest records, such as `airlock pull`), not where it
+was; the subject digest identifies the artifact.
+
 ## 1. Repo mirror, `SOCAIR_REPO_MIRROR`
 
 A directory holding the model repository's file listing as delivered, for a
@@ -403,7 +415,8 @@ llama3.1
   a different license from the original (see
   [false-positive-baseline.md](false-positive-baseline.md)), so it is a LEAD
   for review, never a FAIL.
-- The report's `scope.reference_data` names the policy file and its ids.
+- The report's `scope.reference_data` names the policy file by name and
+  SHA-256, and its ids.
 
 Catalogue ids are ScanCode LicenseDB keys where ScanCode has one, and
 `socair-` keys otherwise:

@@ -52,6 +52,25 @@ func TestRenderCarriesFixedLanguage(t *testing.T) {
 	}
 }
 
+// TestRenderNamesFrameworkEditions: a printed report names the editions its
+// framework IDs are from, as the document records them, so a report mapped
+// before Socair recorded editions is not relabelled with today's.
+func TestRenderNamesFrameworkEditions(t *testing.T) {
+	d := loadGolden(t)
+	want := "Framework editions: " + report.ATLASEdition + ", " + report.FrameworkOWASPLLM + " " + report.OWASPVersion + "."
+	if out := renderString(t, d); !strings.Contains(out, want) {
+		t.Errorf("rendered report does not carry %q", want)
+	}
+	for i := range d.Checks {
+		for j := range d.Checks[i].MapsTo {
+			d.Checks[i].MapsTo[j].Version = ""
+		}
+	}
+	if out := renderString(t, d); strings.Contains(out, "Framework editions:") {
+		t.Error("a report without versions names editions")
+	}
+}
+
 // A NOT_TESTED row must read as neutral, never as a pass. This is the A1
 // decision, enforced as a test.
 func TestNotTestedNeverLooksLikeAPass(t *testing.T) {

@@ -135,8 +135,10 @@ func readText(p string, size int64) ([]byte, error) {
 	return io.ReadAll(io.LimitReader(f, license.MaxText))
 }
 
+// unreadClaim names a statement that could not be read. source names the
+// file; the note names it by base name, not by the snapshot's path.
 func unreadClaim(source string, err error) license.Claim {
-	return license.Claim{Kind: license.Stated, Source: source, Value: "(not read)", Note: err.Error()}
+	return license.Claim{Kind: license.Stated, Source: source, Value: "(not read)", Note: hostless(err)}
 }
 
 // hubRepoID returns a model card's base_model value when it is a repo id.

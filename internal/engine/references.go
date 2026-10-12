@@ -1,8 +1,13 @@
 package engine
 
 import (
+	"bytes"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
+	"io"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"sort"
@@ -36,6 +41,11 @@ type references struct {
 	templates []chattemplate.Reference
 	policy    *license.Policy
 	describe  []string
+
+	// local and localPath are the local SOCAIR_DENYLIST as read, kept apart
+	// from deny (which merges it with the feed's list) for KnownBad.
+	local     map[string]denylist.Entry
+	localPath string
 }
 
 // loadReferences reads and verifies the reference data. A feed that is
@@ -96,28 +106,28 @@ func loadReferences(now time.Time) (*references, error) {
 	// that does not verify: a tokenizer row must not quietly lose its
 	// reference.
 	if p := strings.TrimSpace(os.Getenv("SOCAIR_TOKENIZER_REFERENCE")); p != "" {
-		tables, err := tokenizer.LoadTables(p)
+		tables, files, err := loadTokenizerReferences(p)
 		if err != nil {
 			return nil, fmt.Errorf("SOCAIR_TOKENIZER_REFERENCE: %w", err)
 		}
 		r.tables = append(r.tables, tables...)
-		r.describe = append(r.describe, fmt.Sprintf("%d local tokenizer reference table(s) %s", len(tables), p))
+		r.describe = append(r.describe, fmt.Sprintf("%d local tokenizer reference table(s) %s", len(tables), files))
 	}
 	// Local reviewed templates, like local tokenizer tables, are compared
 	// with but never clear a lead: only a signed feed or the embedded
 	// allowlist does that.
 	if p := strings.TrimSpace(os.Getenv("SOCAIR_TEMPLATE_REFERENCE")); p != "" {
-		refs, err := loadTemplateReferences(p)
+		refs, files, err := loadTemplateReferences(p)
 		if err != nil {
 			return nil, fmt.Errorf("SOCAIR_TEMPLATE_REFERENCE: %w", err)
 		}
 		r.templates = append(r.templates, refs...)
-		r.describe = append(r.describe, fmt.Sprintf("%d local reviewed template text(s) %s", len(refs), p))
+		r.describe = append(r.describe, fmt.Sprintf("%d local reviewed template text(s) %s", len(refs), files))
 	}
 	// A license policy that cannot be read, or names a license the catalogue
 	// does not know, stops the scan: a misspelled id would fail every model.
 	if p := strings.TrimSpace(os.Getenv("SOCAIR_LICENSE_POLICY")); p != "" {
-		pol, err := license.LoadPolicy(p)
+		pol, err := loadLicensePolicy(p)
 		if err != nil {
 			return nil, fmt.Errorf("SOCAIR_LICENSE_POLICY: %w", err)
 		}
@@ -125,22 +135,177 @@ func loadReferences(now time.Time) (*references, error) {
 		r.describe = append(r.describe, pol.Describe())
 	}
 	if p := strings.TrimSpace(os.Getenv("SOCAIR_DENYLIST")); p != "" {
-		entries, err := denylist.Load(p)
+		entries, f, err := loadDenylist(p)
 		if err != nil {
 			// As before #122: an unreadable local list leaves the row
 			// NOT_TESTED with the reason, rather than stopping the scan.
-			r.denyErr = "could not read denylist: " + err.Error()
+			r.denyErr = "could not read denylist " + err.Error()
 		} else {
+			r.local, r.localPath = entries, p
 			for h, e := range entries {
 				if _, ok := r.deny[h]; !ok {
 					r.deny[h] = e
 				}
 			}
-			r.denySrc = append(r.denySrc, "denylist "+p)
-			r.describe = append(r.describe, "local denylist "+p)
+			r.denySrc = append(r.denySrc, "denylist "+f.String())
+			r.describe = append(r.describe, "local denylist "+f.String())
 		}
 	}
 	return r, nil
+}
+
+// localFile is one local reference file as the scan read it. A report names
+// it by its base name and the SHA-256 of the bytes the check used, never by
+// its path on the scanning host: a filed report travels, a path can carry a
+// username and a directory layout, and the hash names the exact contents.
+type localFile struct {
+	name string
+	sha  string
+	data []byte
+}
+
+func (f localFile) String() string { return f.name + " (sha256 " + f.sha + ")" }
+
+// readLocal reads a local reference input once, so its hash names the bytes
+// that were parsed: the file at p, or, when p is a directory and ext is set,
+// each file in it whose name ends in ext, sorted. limit bounds each file; 0
+// is no bound. An error may name the path as given: it stops the scan, and
+// the one input whose error a report carries (the denylist) reduces it to a
+// base name first.
+func readLocal(p, ext string, limit int64) ([]localFile, bool, error) {
+	info, err := os.Stat(p)
+	if err != nil {
+		return nil, false, err
+	}
+	paths := []string{p}
+	dir := info.IsDir()
+	if dir {
+		if ext == "" {
+			return nil, true, errors.New("a directory, not a file")
+		}
+		if paths, err = filepath.Glob(filepath.Join(p, "*"+ext)); err != nil {
+			return nil, true, err
+		}
+		sort.Strings(paths)
+		if len(paths) == 0 {
+			return nil, true, fmt.Errorf("%s holds no %s file", p, ext)
+		}
+	}
+	var out []localFile
+	for _, f := range paths {
+		b, err := readBounded(f, limit)
+		if err != nil {
+			return nil, dir, err
+		}
+		sum := sha256.Sum256(b)
+		out = append(out, localFile{name: filepath.Base(f), sha: hex.EncodeToString(sum[:]), data: b})
+	}
+	return out, dir, nil
+}
+
+func readBounded(p string, limit int64) ([]byte, error) {
+	f, err := os.Open(p)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+	if limit <= 0 {
+		return io.ReadAll(f)
+	}
+	b, err := io.ReadAll(io.LimitReader(f, limit+1))
+	if err != nil {
+		return nil, err
+	}
+	if int64(len(b)) > limit {
+		return nil, fmt.Errorf("%s is over the %d-byte limit", p, limit)
+	}
+	return b, nil
+}
+
+// named is how the report lists a local input's files: each by base name and
+// hash, after the directory's base name when the input was a directory.
+func named(p string, dir bool, files []localFile) string {
+	parts := make([]string, len(files))
+	for i, f := range files {
+		parts[i] = f.String()
+	}
+	s := strings.Join(parts, ", ")
+	if dir {
+		s = "from " + filepath.Base(filepath.Clean(p)) + "/: " + s
+	}
+	return s
+}
+
+// hostless is an error's text as a report may carry it: a path the error
+// names (an *fs.PathError's) reduced to its base name, so the path on the
+// scanning host does not travel with the report.
+func hostless(err error) string {
+	msg := err.Error()
+	var pe *fs.PathError
+	if errors.As(err, &pe) && pe.Path != "" {
+		msg = strings.ReplaceAll(msg, pe.Path, filepath.Base(pe.Path))
+	}
+	return msg
+}
+
+// loadDenylist reads a local denylist. Its error names the file by base name,
+// because an unreadable list is reported in the row, not refused.
+func loadDenylist(p string) (map[string]denylist.Entry, localFile, error) {
+	files, _, err := readLocal(p, "", 0)
+	if err != nil {
+		var pe *fs.PathError
+		if errors.As(err, &pe) {
+			err = pe.Err
+		}
+		return nil, localFile{}, fmt.Errorf("%s: %w", filepath.Base(p), err)
+	}
+	entries, err := denylist.Parse(bytes.NewReader(files[0].data))
+	if err != nil {
+		return nil, localFile{}, fmt.Errorf("%s: %w", files[0], err)
+	}
+	return entries, files[0], nil
+}
+
+// loadLicensePolicy reads the operator's license policy, named in the report
+// by base name and hash.
+func loadLicensePolicy(p string) (*license.Policy, error) {
+	files, _, err := readLocal(p, "", 0)
+	if err != nil {
+		return nil, err
+	}
+	pol, err := license.ParsePolicy(files[0].name, bytes.NewReader(files[0].data))
+	if err != nil {
+		return nil, err
+	}
+	pol.Source = files[0].String()
+	return pol, nil
+}
+
+// loadTokenizerReferences reads canonical tokenizer tables: a table file or
+// tokenizer.json, or a directory of them (*.json). A table is named by its
+// file name, or by its directory when the file is tokenizer.json.
+func loadTokenizerReferences(p string) ([]tokenizer.Table, string, error) {
+	files, dir, err := readLocal(p, ".json", tokenizer.MaxReferenceBytes)
+	if err != nil {
+		return nil, "", err
+	}
+	parent := filepath.Dir(p)
+	if dir {
+		parent = p
+	}
+	var out []tokenizer.Table
+	for _, f := range files {
+		name := strings.TrimSuffix(f.name, ".json")
+		if name == "tokenizer" {
+			name = filepath.Base(parent)
+		}
+		t, err := tokenizer.ParseTable(f.data, name)
+		if err != nil {
+			return nil, "", fmt.Errorf("%s: %w", f.name, err)
+		}
+		out = append(out, t)
+	}
+	return out, named(p, dir, files), nil
 }
 
 // denylist is the known-bad row for one hash.
@@ -190,37 +355,16 @@ const maxReferenceTemplate = 1 << 20
 
 // loadTemplateReferences reads reviewed template texts: a .jinja file, or a
 // directory of them, each labelled by its file name.
-func loadTemplateReferences(path string) ([]chattemplate.Reference, error) {
-	info, err := os.Stat(path)
+func loadTemplateReferences(p string) ([]chattemplate.Reference, string, error) {
+	files, dir, err := readLocal(p, ".jinja", maxReferenceTemplate)
 	if err != nil {
-		return nil, err
-	}
-	files := []string{path}
-	if info.IsDir() {
-		if files, err = filepath.Glob(filepath.Join(path, "*.jinja")); err != nil {
-			return nil, err
-		}
-		sort.Strings(files)
-		if len(files) == 0 {
-			return nil, fmt.Errorf("%s holds no .jinja template", path)
-		}
+		return nil, "", err
 	}
 	var out []chattemplate.Reference
 	for _, f := range files {
-		fi, err := os.Stat(f)
-		if err != nil {
-			return nil, err
-		}
-		if fi.Size() > maxReferenceTemplate {
-			return nil, fmt.Errorf("%s is %d bytes, over the %d-byte limit", f, fi.Size(), maxReferenceTemplate)
-		}
-		b, err := os.ReadFile(f)
-		if err != nil {
-			return nil, err
-		}
-		out = append(out, chattemplate.Reference{Label: strings.TrimSuffix(filepath.Base(f), ".jinja"), Text: string(b)})
+		out = append(out, chattemplate.Reference{Label: strings.TrimSuffix(f.name, ".jinja"), Text: string(f.data)})
 	}
-	return out, nil
+	return out, named(p, dir, files), nil
 }
 
 // tokenizerNote is an informational line comparing a tokenizer hash to the
