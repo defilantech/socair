@@ -206,6 +206,7 @@ checks that run the model on your own GPUs, is built here in the open.
 | [kubernetes.md](docs/kubernetes.md) | The Helm chart: the airlock and the wizard in a cluster, who can reach them, and handing promoted models to LLMKube |
 | [provenance-bundle.md](docs/provenance-bundle.md) | The inputs that move each row: mirrors, denylists, provenance, signatures, a license policy, acceptances |
 | [feed.md](docs/feed.md) | Signed reference feeds: format, verification, building one |
+| [cyclonedx.md](docs/cyclonedx.md) | The CycloneDX ML-BOM: what each field holds and when it is left out, and the G7 SBOM for AI minimum elements |
 | [api.md](docs/api.md), [wizard.md](docs/wizard.md) | The local HTTP API, the click-through wizard, and the airlock console (wizard.md) |
 | [threat-model.md](docs/threat-model.md) | What Socair protects, whom it trusts for what, and what it does not defend against |
 | [false-positive-baseline.md](docs/false-positive-baseline.md) | How each detector was measured against real models |
