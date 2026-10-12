@@ -262,6 +262,18 @@ for a in "$SOCAIR_STORE"/clean/*/attestation.json; do
 done
 ```
 
+An attestation reflects the feed and check set of its scan. When you import a
+new signed feed or upgrade socair, re-check what is already in `clean/`:
+
+```
+socair airlock recheck
+```
+
+A model that would now be withheld is flagged: its stage in the console and
+in an export is `flagged`, and `clean/<id>/recheck.json` and the log say why.
+Nothing is moved or re-signed; what to do with it is your call. See
+[airlock.md](airlock.md), "Rechecking the clean store".
+
 ## The record
 
 - **Per model:** `clean/<id>/attestation.dsse.json` is the signed attestation
@@ -281,7 +293,7 @@ done
   operator key, and `inventory verify` checks it offline. See
   [airlock.md](airlock.md).
 - **Per action:** `log.jsonl` records every pull, ingest, trust change,
-  promotion, and refusal. Each line carries the hash of the line before it, so
+  promotion, refusal, and recheck. Each line carries the hash of the line before it, so
   a careless edit or deletion breaks the chain:
 
   ```
