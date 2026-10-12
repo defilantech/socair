@@ -1,13 +1,15 @@
 # CycloneDX ML-BOM
 
 Socair renders every report as a CycloneDX 1.6 machine-learning BOM
-(`internal/render/cyclonedx`). The BOM is derived from the report and says
-nothing the report does not: a field the report does not know is left out,
-never filled with a guess.
+(`internal/render/cyclonedx`), and signs it on request. The BOM is derived from
+the report and says nothing the report does not: a field the report does not
+know is left out, never filled with a guess.
 
 ```
 socair scan model.gguf --format cyclonedx > bom.json        # scan, print the BOM
 socair render model.gguf --cyclonedx bom.json               # scan, write the BOM
+socair sign --key op.key --bom --attestation r.dsse.json    # sign the BOM of an attestation
+socair verify --bom r.cdx.dsse.json --trusted op.pub --artifact model.gguf --cyclonedx bom.json
 ```
 
 `POST /api/render` with `"format": "cyclonedx"` returns the same BOM for a
@@ -92,7 +94,7 @@ them.
 | Metadata | SBOM author | `metadata.authors`: the report's issuer. |
 | | SBOM version | `version` (1) and `serialNumber`, an RFC 4122 UUID. |
 | | SBOM data format name, version | `bomFormat` CycloneDX, `specVersion` 1.6. |
-| | SBOM author signature | Not yet: the BOM is unsigned. The signed attestation covers the report it is derived from. |
+| | SBOM author signature | `socair sign --bom`: an Ed25519 signature (EdDSA, approved in NIST FIPS 186-5) in a DSSE envelope; see below. |
 | | SBOM tool name, version | `metadata.tools`: socair and its version. |
 | | SBOM generation context | `metadata.lifecycles`: post-build. |
 | | SBOM timestamp | `metadata.timestamp`: the report's issue time, RFC 3339. |
@@ -115,6 +117,38 @@ them.
 | Security properties | Security controls, compliance, policy, vulnerability referencing | Not filled. The framework entries the checks address are carried as CDXA claims mapped to requirements, which state no compliance. |
 | Key performance indicators | Security metrics | The check results, promotion state, and assurance level, as properties: what the checks found within their scope, not a robustness metric. Tier 2 measurements are not in the BOM. |
 | | Operational performance KPIs | Not filled. |
+
+## Signing a BOM
+
+```
+socair sign --key op.key --bom --attestation r.dsse.json [--out r.cdx.dsse.json] [--cyclonedx bom.json]
+socair verify --bom r.cdx.dsse.json (--trusted op.pub | --store <path>) [--artifact <path>] [--cyclonedx bom.json]
+```
+
+`sign --bom` verifies the attestation against the signing key itself, renders
+the BOM of the signed report, and signs it: an in-toto Statement v1 with
+predicate type `https://cyclonedx.org/bom` (the type the in-toto attestation
+framework and `actions/attest-sbom` use), the BOM as the predicate, and the
+attested artifact's digest as the subject, in a DSSE envelope signed with the
+same Ed25519 key. Only the key that signed the attestation can sign its BOM,
+so the BOM's author is always its signer. `--cyclonedx` also writes the BOM
+itself.
+
+`verify --bom` checks the signature against your trusted keys, that the
+statement is a CycloneDX statement with one subject, and that the BOM's model
+carries the subject's SHA-256, then confirms the BOM's author against the name
+your trust list gives the key, as `socair verify` does for an issuer. Any
+change to the BOM breaks the signature. `--artifact` checks that a file or
+model directory is the artifact the BOM describes; `--cyclonedx` writes the
+verified BOM.
+
+A signed BOM is an inventory, not an attestation. It is a different statement
+with a different predicate type: `socair verify` without `--bom` refuses it,
+and `airlock promote` never accepts it as a ticket (a test holds this). The
+attestation is the only thing that authorizes promotion.
+
+The envelope is the same DSSE format as Socair's attestations, signed with an
+operator key, not a Sigstore bundle; `gh attestation verify` does not read it.
 
 ## Why CycloneDX 1.6
 
@@ -156,6 +190,9 @@ and lists its files as the components, so that scorer reads the first file.
 - Package URL [`huggingface` type](https://github.com/package-url/purl-spec/blob/main/types/huggingface-definition.json):
   account as namespace and repository as name, both case sensitive; the commit
   as version, lower case.
+- in-toto [CycloneDX predicate](https://github.com/in-toto/attestation/blob/main/spec/predicates/cyclonedx.md),
+  and [`actions/attest`](https://github.com/actions/attest/blob/main/src/sbom.ts),
+  which `actions/attest-sbom` wraps, for the predicate type.
 - CycloneDX [official third-party standards][cdxa-standards] in CDXA form.
 - Releases adding 1.7: Dependency-Track
   [5.1.0](https://github.com/DependencyTrack/dependency-track/releases/tag/5.1.0) and
@@ -163,6 +200,8 @@ and lists its files as the components, so that scorer reads the first file.
   [cyclonedx-cli v0.30.0](https://github.com/CycloneDX/cyclonedx-cli/releases/tag/v0.30.0),
   [sbom-utility v0.19.0](https://github.com/CycloneDX/sbom-utility/releases/tag/v0.19.0).
 - OWASP AIBOM Generator, [field registry](https://github.com/GenAI-Security-Project/aibom-generator/blob/main/src/models/field_registry.json).
+- NIST [FIPS 186-5](https://csrc.nist.gov/pubs/fips/186-5/final), Digital
+  Signature Standard, which approves EdDSA.
 
 [g7]: https://www.bsi.bund.de/SharedDocs/Downloads/EN/BSI/KI/SBOM-for-AI_minimum-elements.pdf?__blob=publicationFile&v=4
 [cdxa-standards]: https://github.com/CycloneDX/official-3rd-party-standards

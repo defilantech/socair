@@ -1,4 +1,5 @@
-// Package cyclonedx emits a CycloneDX 1.6 ML-BOM from a report document.
+// Package cyclonedx emits a CycloneDX 1.6 ML-BOM from a report document, and
+// signs it.
 //
 // The BOM is derived from socair.report/v1 and adds nothing the report does
 // not say: a field the report does not know is left out, never filled with a
