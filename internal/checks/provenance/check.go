@@ -87,7 +87,9 @@ type Signature struct {
 	Format string // "OMS"
 	Signer string
 	Detail string
-	// Uncovered names files the signer excluded from the signature.
+	// Uncovered names files the signature does not cover, each as
+	// "path (why)": excluded by the signer, an OMS default exclusion, or
+	// another signature file.
 	Uncovered []string
 }
 
@@ -148,7 +150,7 @@ func Inspect(opts Options) checks.Result {
 		r.Status = checks.Pass
 		r.Notes = "publisher signature verified (" + sig.Format + ", " + sig.Signer + "): every signed file matches; " + NotSafety
 		if len(sig.Uncovered) > 0 {
-			r.Notes += ". Not covered by the signature (excluded by the signer): " + strings.Join(firstN(sig.Uncovered, 8), ", ")
+			r.Notes += ". Not covered by the signature: " + strings.Join(firstN(sig.Uncovered, 8), ", ")
 		}
 		if m, unbound := Bind(opts); m != nil && unbound == "" {
 			r.Notes += ". Also bound to " + m.RepoURL

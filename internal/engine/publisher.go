@@ -22,12 +22,15 @@ import (
 // publisherTrust is the operator's trust policy for publisher signatures:
 // SOCAIR_PUBLISHER_KEYS (EC public keys) and SOCAIR_PUBLISHER_ROOTS (CA
 // certificates), each a PEM file or a directory of them. There is no default:
-// no system roots, no built-in keys.
-func publisherTrust() (oms.Trust, error) {
+// no system roots, no built-in keys, and no publisher's root (NVIDIA's
+// included) until the operator supplies it. A certificate chain must be valid
+// at now, the scan's time.
+func publisherTrust(now time.Time) (oms.Trust, error) {
 	t, err := oms.LoadTrust(strings.TrimSpace(os.Getenv("SOCAIR_PUBLISHER_KEYS")), strings.TrimSpace(os.Getenv("SOCAIR_PUBLISHER_ROOTS")))
 	if err != nil {
 		return t, err
 	}
+	t.Now = now
 	if v := strings.TrimSpace(os.Getenv("SOCAIR_SIGSTORE_VERIFIER")); v != "" {
 		k, err := keylessVerifier(v, strings.TrimSpace(os.Getenv("SOCAIR_SIGSTORE_TRUSTED_ROOT")), strings.TrimSpace(os.Getenv("SOCAIR_SIGSTORE_IDENTITIES")))
 		if err != nil {
@@ -163,7 +166,7 @@ func readBundle(p string) ([]byte, error) {
 // fileSignature checks an OMS signature over a single-file artifact:
 // SOCAIR_OMS_SIGNATURE, else <artifact>.sig beside the original. It returns
 // nil when there is no OMS signature.
-func fileSignature(original, sha string) (*provenance.Signature, error) {
+func fileSignature(original, sha string, now time.Time) (*provenance.Signature, error) {
 	p := strings.TrimSpace(os.Getenv("SOCAIR_OMS_SIGNATURE"))
 	if p == "" {
 		p = original + ".sig"
@@ -175,7 +178,7 @@ func fileSignature(original, sha string) (*provenance.Signature, error) {
 	if err != nil {
 		return nil, err
 	}
-	trust, err := publisherTrust()
+	trust, err := publisherTrust(now)
 	if err != nil {
 		return nil, err
 	}
@@ -190,26 +193,64 @@ func fileSignature(original, sha string) (*provenance.Signature, error) {
 	return signatureOf(o, diffs, nil, cerr), nil
 }
 
+// dirSignatureNames are the signature files a directory scan looks for at its
+// root: model.sig, the model_signing default, and result.sigstore, the name
+// NVIDIA's NGC CLI gives a model's signature. `ngc registry model
+// download-version-signature` writes it to <dest>/<model>_v<version>/, which
+// is the model's own directory when the model was downloaded to the same
+// --dest.
+var dirSignatureNames = []string{"model.sig", "result.sigstore"}
+
 // dirSignature checks an OMS signature over a model directory snapshot:
-// SOCAIR_OMS_SIGNATURE, else model.sig at the directory's root, the
-// model_signing default.
-func dirSignature(dir, root string, files []modeldir.File) (*provenance.Signature, error) {
+// SOCAIR_OMS_SIGNATURE, else model.sig or result.sigstore at the directory's
+// root. Only the root is searched; a signature file deeper in the tree is a
+// model file like any other. When both root files are OMS signatures and
+// SOCAIR_OMS_SIGNATURE names neither, it does not choose between them: the
+// signature is named, not judged. A root signature file that is not the one
+// verified is never compared as a model file, and is named as not covered.
+func dirSignature(dir, root string, files []modeldir.File, now time.Time) (*provenance.Signature, error) {
+	var atRoot []string
+	for _, n := range dirSignatureNames {
+		if _, ok := find(files, n); ok {
+			atRoot = append(atRoot, n)
+		}
+	}
 	p, sigRel := strings.TrimSpace(os.Getenv("SOCAIR_OMS_SIGNATURE")), ""
 	if p != "" {
-		if rel, err := filepath.Rel(dir, p); err == nil && !strings.HasPrefix(rel, "..") {
-			sigRel = filepath.ToSlash(rel)
+		// A named signature inside the directory is read from the snapshot,
+		// so the bytes verified are the bytes the scan holds.
+		if sigRel = relInside(dir, p); sigRel != "" {
+			if _, ok := find(files, sigRel); ok {
+				p = filepath.Join(root, filepath.FromSlash(sigRel))
+			}
 		}
 	} else {
-		if _, ok := find(files, "model.sig"); !ok {
-			return nil, nil
+		var found []string
+		for _, n := range atRoot {
+			raw, err := readBundle(filepath.Join(root, n))
+			if err != nil {
+				return nil, err
+			}
+			if oms.Recognize(raw) {
+				found = append(found, n)
+			}
 		}
-		p, sigRel = filepath.Join(root, "model.sig"), "model.sig"
+		switch len(found) {
+		case 0:
+			return nil, nil
+		case 1:
+			p, sigRel = filepath.Join(root, found[0]), found[0]
+		default:
+			return &provenance.Signature{State: provenance.SignatureUnverified, Format: "OMS",
+				Detail: "two OMS signatures at the directory's root, " + strings.Join(found, " and ") +
+					", and Socair does not choose between them; name the one to verify with SOCAIR_OMS_SIGNATURE"}, nil
+		}
 	}
 	raw, err := readBundle(p)
 	if err != nil {
 		return nil, err
 	}
-	trust, err := publisherTrust()
+	trust, err := publisherTrust(now)
 	if err != nil {
 		return nil, err
 	}
@@ -220,8 +261,40 @@ func dirSignature(dir, root string, files []modeldir.File) (*provenance.Signatur
 	if o.State != oms.Verified {
 		return signatureOf(o, nil, nil, nil), nil
 	}
-	diffs, ignored, cerr := oms.CheckFiles(o.Manifest, root, files, sigRel)
+	cmp := oms.Compare{Signature: sigRel}
+	for _, n := range atRoot {
+		if n != sigRel {
+			cmp.Exclude = append(cmp.Exclude, oms.Exclusion{Path: n, Why: "a signature file, not the one verified"})
+		}
+	}
+	diffs, ignored, cerr := oms.CheckFiles(o.Manifest, root, files, cmp)
 	return signatureOf(o, diffs, ignored, cerr), nil
+}
+
+// relInside is p relative to dir, "/"-separated, when p is inside dir, and
+// "" when it is not. Symlinks are resolved first, so /tmp and /private/tmp
+// name one place.
+func relInside(dir, p string) string {
+	real := func(s string) (string, error) {
+		if r, err := filepath.EvalSymlinks(s); err == nil {
+			s = r
+		}
+		return filepath.Abs(s)
+	}
+	ad, err1 := real(dir)
+	ap, err2 := real(p)
+	if err1 != nil || err2 != nil {
+		return ""
+	}
+	rel, err := filepath.Rel(ad, ap)
+	if err != nil {
+		return ""
+	}
+	rel = filepath.ToSlash(rel)
+	if rel == "." || rel == ".." || strings.HasPrefix(rel, "../") {
+		return ""
+	}
+	return rel
 }
 
 // signatureOf turns a verification outcome and a file comparison into the

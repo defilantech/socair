@@ -90,25 +90,52 @@ the row: without a bound manifest, the row stays NOT_TESTED.
 ## 3a. Publisher signatures, `SOCAIR_PUBLISHER_KEYS` and `SOCAIR_PUBLISHER_ROOTS`
 
 When the artifact carries an OpenSSF Model Signing (OMS) signature, the scan
-verifies it offline. For a directory the signature is `model.sig` at its root
-(the `model_signing` default); for a single file it is `<file>.sig` beside it.
-`SOCAIR_OMS_SIGNATURE` names another path.
+verifies it offline. For a directory the scan looks at its root for
+`model.sig` (the `model_signing` default) and `result.sigstore` (the name
+NVIDIA's NGC CLI gives a model's signature; section 3b). For a single file it
+reads `<file>.sig` beside it. `SOCAIR_OMS_SIGNATURE` names another path,
+inside the directory or outside it.
+
+- Only the directory's root is searched. A signature file deeper in the tree
+  is a model file like any other, and a signature outside the directory is
+  read only when `SOCAIR_OMS_SIGNATURE` names it.
+- With both `model.sig` and `result.sigstore` at the root, each an OMS
+  signature, and `SOCAIR_OMS_SIGNATURE` naming neither, the scan does not
+  choose between them: the signature is named and not verified, and the
+  manifest rules decide the row. Name the one to verify. A root file that is
+  not an OMS bundle (a GPG or minisign `model.sig`) does not count.
+- The root signature file that is not the one verified is not compared as a
+  model file; it is named as not covered. The one verified cannot cover
+  itself, and is left out too.
 
 - `SOCAIR_PUBLISHER_KEYS`: the publisher's EC public keys (P-256, P-384,
   P-521), a PEM file or a directory of them, for key-signed models.
 - `SOCAIR_PUBLISHER_ROOTS`: CA certificates, a PEM file or a directory, for
-  models signed with a certificate. The chain is checked at the leaf's issue
-  time, and the leaf must carry the `digitalSignature` key usage or the
-  `codeSigning` extended key usage. Revocation is not checked.
+  models signed with a certificate. The leaf must carry the
+  `digitalSignature` key usage or the `codeSigning` extended key usage.
+  Revocation is not checked.
 
-There is no default trust (no system roots, no built-in keys): a signature
-from a key you did not configure proves nothing about who made the model.
+The certificate chain is checked at the scan's time, as OMS v1.0 section 8.2
+requires ("The leaf certificate MUST be within its validity period"). A
+certificate bundle carries no trusted timestamp to check it at instead. A
+chain holding a certificate that has expired, or is not yet valid, at the scan
+time is named and not verified: it proves nothing about the files either way.
+(Until check set `tier1/0.9` the chain was checked at the leaf's own
+notBefore, as `model_signing` 1.1.1 does, which every leaf passes;
+[sigstore/model-transparency#663](https://github.com/sigstore/model-transparency/issues/663)
+changed that in the reference implementation.)
+
+There is no default trust (no system roots, no built-in keys, and no
+publisher's root, NVIDIA's included): a signature from a key you did not
+configure proves nothing about who made the model.
 
 | Signature | Provenance row | `publisher_signing_status` |
 |---|---|---|
 | From a trusted key or root; every signed file matches | PASS | verified (OMS, signer) |
 | From a trusted signer; the signature, or a file, does not match | FAIL | invalid (OMS): what differs |
 | From an untrusted signer, or pre-1.0 | the manifest rules decide; the signature is named | present, not verified |
+| From a trusted root, with a certificate outside its validity at the scan time | the manifest rules decide; the signature is named | present, not verified |
+| Two OMS signatures at a directory's root, neither named | the manifest rules decide; the signatures are named | present, not verified |
 | Keyless Sigstore, with `socair-sigstore` configured | as above: verified, invalid, or not in the identity policy | as above, naming the signer's subject and issuer |
 | Keyless Sigstore, no verifier configured | the manifest rules decide; the signature is named | present, not verified |
 
@@ -123,9 +150,100 @@ files.
 
 A verified signature proves the files are the ones the key holder signed. It
 is a statement of origin and integrity, never of safety: the other rows still
-decide whether it is promoted. Files the signer excluded with
-`ignore_paths` (`.gitattributes` and the like by default) are named as not
-covered.
+decide whether it is promoted.
+
+A file the signed manifest lists is always compared. A file it does not list
+is left out of the comparison, and named as not covered with the reason, only
+when the signer excluded it (`ignore_paths`), when it is one of OMS's default
+exclusions at the directory's top (`.git`, `.gitattributes`, `.github`,
+`.gitignore`; OMS v1.0 section 6.2), or when it is the other root signature
+file. Any other file the manifest does not list is a difference. A single file
+checked against a signature over several files that lists it is not verified:
+the other files are not in hand, so scan the directory.
+
+## 3b. NVIDIA NGC models
+
+NVIDIA signs the models it publishes in the NGC catalog with OMS
+([NVIDIA's verification guide](https://docs.nvidia.com/nim/large-language-models/2.0.10/reference/model-signature-verification.html),
+[announcement](https://developer.nvidia.com/blog/bringing-verifiable-trust-to-ai-models-model-signing-in-ngc)).
+The signature is a separate download from the model:
+
+```
+ngc registry model download-version <org>/<team>/<model>:<version> --dest <dir>
+ngc registry model download-version-signature <org>/<team>/<model>:<version> --dest <dir>
+```
+
+Both write to `<dir>/<model>_v<version>/` (NGC SDK 4.37.0, which names the
+file `result.sigstore`), so with the same `--dest` the signature lands at the
+model directory's root, where a directory scan finds it. NVIDIA's NIM guide
+downloads it to a separate `./signatures/` tree instead: name it there with
+`SOCAIR_OMS_SIGNATURE`, or move it to the model directory's root.
+
+What an NGC signature is, read from `nvidia/tao/dashcamnet:pruned_onnx_v1.0.5`
+on 2026-10-12:
+
+- The `certificate` method, with no transparency-log entry: the bundle's
+  certificate chain is a leaf (`O=NVIDIA, CN=NVIDIA Model Signing Issuer NGC
+  001`, valid 2025-03-07 to 2027-03-07, key usage `digitalSignature` only),
+  an intermediate (`CN=NVIDIA Model Signing ICA 001`), and the root
+  (`CN=NVIDIA Model Signing Root CA`), all P-384.
+- The `files` serialization with SHA-256 over every file of the model version,
+  and no `ignore_paths`. As the NGC SDK downloads it, the directory holds the
+  signed files and `result.sigstore`, nothing else, and it verifies as it is
+  (`model_signing` 1.1.1 verifies it too). A file added at the directory's top
+  is a difference unless it is one of OMS's default exclusions.
+
+### Trusting NVIDIA's root
+
+Socair ships no publisher's root, NVIDIA's included. To verify NGC signatures:
+
+1. On a connected machine, download the certificate NVIDIA's guide names:
+
+   ```
+   curl -fsSL -o nvidia-model-signing-root.pem \
+     https://api.ngc.nvidia.com/v2/catalog/models/public-key
+   ```
+
+   Despite the URL, it is a certificate: the self-signed root `C=US, O=NVIDIA,
+   CN=NVIDIA Model Signing Root CA`.
+
+2. Check it before you trust it:
+
+   ```
+   openssl x509 -in nvidia-model-signing-root.pem -noout -subject -issuer -dates -fingerprint -sha256
+   ```
+
+   The subject and issuer must both be `C=US, O=NVIDIA, CN=NVIDIA Model Signing
+   Root CA`, valid from 2025-03-07 to 2055-02-28. The SHA-256 fingerprint we
+   read on 2026-10-12 was
+
+   ```
+   08:DC:02:65:CD:BE:C8:55:D5:3B:36:FA:49:F1:01:95:47:AE:D1:B1:11:87:6B:1F:76:1F:AE:BC:BF:C1:88:9C
+   ```
+
+   NVIDIA's documentation does not publish a fingerprint, so this value is
+   ours, not NVIDIA's. Compare it with a copy fetched over a different network
+   path, or confirmed with NVIDIA, before relying on it. If they differ, do not
+   trust the file.
+
+3. Carry it into the air gap and name it:
+
+   ```
+   export SOCAIR_PUBLISHER_ROOTS=/etc/socair/publisher-roots   # a directory of PEM files, or one file
+   ```
+
+A scan of an NGC model directory with `result.sigstore` at its root then
+PASSes provenance on the signature, naming `NVIDIA Model Signing Issuer NGC
+001`, or FAILs naming each file that differs. Without the root, the signature
+is named and not judged.
+
+- Trusting the root trusts every certificate NVIDIA issues under it, for any
+  model. A verified signature says NVIDIA published these bytes; it says
+  nothing about whether the model is safe to run.
+- The leaf NVIDIA's NGC signatures carry today is valid until 2027-03-07.
+  Because the chain is checked at the scan's time, a signature made with it is
+  named and not verified after that date, until NVIDIA signs with a newer
+  certificate.
 
 ## 4. The acceptance record: review, accept, re-issue
 

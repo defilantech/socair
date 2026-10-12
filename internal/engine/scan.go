@@ -28,7 +28,7 @@ import (
 )
 
 // CheckSetVersion names the set of checks this engine runs.
-const CheckSetVersion = "tier1/0.8"
+const CheckSetVersion = "tier1/0.9"
 
 // Version is the socair version: "dev" in a source build, the release tag
 // in a release build (scripts/build-release.sh sets it with -ldflags -X).
@@ -199,7 +199,7 @@ func ScanWith(path string, mode Mode, in Inputs) (*report.Document, error) {
 	var sig *provenance.Signature
 	if mode == ModeFull {
 		var err error
-		if sig, err = fileSignature(original, id.SHA256); err != nil {
+		if sig, err = fileSignature(original, id.SHA256, start); err != nil {
 			return nil, err
 		}
 	}

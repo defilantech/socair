@@ -10,9 +10,12 @@
 // certificate chained to a PKI root, against keys and roots the operator
 // supplies, using only the standard library. There is no default trust: a
 // signature from a key nobody configured proves nothing, so it is reported
-// unverified, never verified and never invalid. Keyless Sigstore bundles
-// (Fulcio certificates and a transparency log) are recognized and reported
-// unverified, as keyless verification is not built.
+// unverified, never verified and never invalid. A certificate chain is
+// checked at the scan's time, as OMS v1.0 section 8.2 requires, so a chain
+// holding a certificate outside its validity period then is unverified.
+// Keyless Sigstore bundles (a Fulcio certificate and a transparency log) are
+// recognized, and verified only through the optional keyless verifier
+// (Trust.Keyless); without it they are unverified.
 //
 // A verified signature proves the files are the ones the key holder signed.
 // It is a statement of origin and integrity, never of safety.
@@ -38,6 +41,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 )
 
 // Format constants from model_signing v1.x.
@@ -74,6 +78,9 @@ type Trust struct {
 	// signer identity. It sees the same bundle bytes this package then reads
 	// the payload from. Nil leaves keyless signatures unverified.
 	Keyless func(bundle []byte) KeylessVerdict
+	// Now is the time a certificate chain must be valid at: the scan's
+	// time. Zero means the current time.
+	Now time.Time
 }
 
 // KeylessVerdict is the keyless verifier's answer.
@@ -89,9 +96,14 @@ func (t Trust) Empty() bool { return len(t.Keys) == 0 && t.Roots == nil }
 // LoadTrust reads trusted keys and roots. Each path is a PEM file or a
 // directory of PEM files; empty means none.
 func LoadTrust(keysPath, rootsPath string) (Trust, error) {
+	return LoadTrustFrom(nonEmpty(keysPath), nonEmpty(rootsPath))
+}
+
+// LoadTrustFrom is LoadTrust over several key paths and several root paths.
+func LoadTrustFrom(keyPaths, rootPaths []string) (Trust, error) {
 	t := Trust{Keys: map[string]*ecdsa.PublicKey{}}
-	if keysPath != "" {
-		blocks, err := pemBlocks(keysPath)
+	if len(keyPaths) > 0 {
+		blocks, err := pemBlocksOf(keyPaths)
 		if err != nil {
 			return t, fmt.Errorf("publisher keys: %w", err)
 		}
@@ -112,11 +124,11 @@ func LoadTrust(keysPath, rootsPath string) (Trust, error) {
 			t.Keys[hex.EncodeToString(der[:])] = ek
 		}
 		if len(t.Keys) == 0 {
-			return t, fmt.Errorf("publisher keys: no PUBLIC KEY block in %s", keysPath)
+			return t, fmt.Errorf("publisher keys: no PUBLIC KEY block in %s", strings.Join(keyPaths, ", "))
 		}
 	}
-	if rootsPath != "" {
-		blocks, err := pemBlocks(rootsPath)
+	if len(rootPaths) > 0 {
+		blocks, err := pemBlocksOf(rootPaths)
 		if err != nil {
 			return t, fmt.Errorf("publisher roots: %w", err)
 		}
@@ -134,11 +146,30 @@ func LoadTrust(keysPath, rootsPath string) (Trust, error) {
 			n++
 		}
 		if n == 0 {
-			return t, fmt.Errorf("publisher roots: no CERTIFICATE block in %s", rootsPath)
+			return t, fmt.Errorf("publisher roots: no CERTIFICATE block in %s", strings.Join(rootPaths, ", "))
 		}
 		t.Roots = pool
 	}
 	return t, nil
+}
+
+func nonEmpty(p string) []string {
+	if p == "" {
+		return nil
+	}
+	return []string{p}
+}
+
+func pemBlocksOf(paths []string) ([]*pem.Block, error) {
+	var out []*pem.Block
+	for _, p := range paths {
+		b, err := pemBlocks(p)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, b...)
+	}
+	return out, nil
 }
 
 // KeyHint is the identifier model_signing records for a public key: the
@@ -264,13 +295,18 @@ type statement struct {
 // CheckFiles does.
 func Verify(raw []byte, trust Trust) Outcome {
 	o := verify(raw, trust)
+	o.Recognized = Recognize(raw)
+	return o
+}
+
+// Recognize reports whether raw is a Sigstore DSSE bundle, as an OMS
+// signature is, rather than a minisign or GPG signature under the same file
+// name. It verifies nothing.
+func Recognize(raw []byte) bool {
 	var probe struct {
 		DSSEEnvelope json.RawMessage `json:"dsseEnvelope"`
 	}
-	if json.Unmarshal(raw, &probe) == nil && len(probe.DSSEEnvelope) > 0 {
-		o.Recognized = true
-	}
-	return o
+	return json.Unmarshal(raw, &probe) == nil && len(probe.DSSEEnvelope) > 0
 }
 
 func verify(raw []byte, trust Trust) Outcome {
@@ -372,10 +408,23 @@ func verify(raw []byte, trust Trust) Outcome {
 		for _, c := range certs[1:] {
 			inter.AddCert(c)
 		}
-		// As the reference verifier does, the chain is evaluated at the
-		// leaf's issue time: a short-lived signing certificate signs once.
-		if _, err := leaf.Verify(x509.VerifyOptions{Roots: trust.Roots, Intermediates: inter, CurrentTime: leaf.NotBefore,
+		// The chain is checked at the scan's time. OMS v1.0 section 8.2
+		// requires the leaf to be within its validity period, and a
+		// certificate bundle carries no trusted timestamp to check it at
+		// instead. (model_signing 1.1.1 checked at the leaf's own notBefore,
+		// which every leaf passes; sigstore/model-transparency#663 changed
+		// that.) A chain outside its validity proves nothing about the files
+		// either way, so it is unverified, not invalid.
+		at := trust.Now
+		if at.IsZero() {
+			at = time.Now()
+		}
+		if _, err := leaf.Verify(x509.VerifyOptions{Roots: trust.Roots, Intermediates: inter, CurrentTime: at,
 			KeyUsages: []x509.ExtKeyUsage{x509.ExtKeyUsageAny}}); err != nil {
+			var inv x509.CertificateInvalidError
+			if errors.As(err, &inv) && inv.Reason == x509.Expired {
+				return unverified(method, signer, "a certificate in the chain is not valid at the scan time, "+at.UTC().Format(time.RFC3339)+": "+err.Error())
+			}
 			return unverified(method, signer, "the certificate does not chain to a configured publisher root: "+err.Error())
 		}
 		if leaf.KeyUsage&x509.KeyUsageDigitalSignature == 0 && !hasCodeSigning(leaf) {
