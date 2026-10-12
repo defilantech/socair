@@ -126,7 +126,9 @@ redirect to the CDN, and never written to the log or an error.
 
 The console shows each step below as it happens: run
 `socair serve --store "$SOCAIR_STORE" --web web/build` on the intake host and
-open it on that machine. It lists what is staged and approved, scans a staged
+open it on that machine. Its scan page reads paths under the store's
+`incoming/` only; add `--scan-root <dir>` for models that arrive another way
+([api.md](api.md#scan-roots)). It lists what is staged and approved, scans a staged
 model, files a signed attestation, and prints the exact CLI command for any
 step that needs a key (promote, sign, accept). It does not hold keys, so those
 steps stay in the commands below. The console is the static web app in

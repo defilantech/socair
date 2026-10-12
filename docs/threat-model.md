@@ -38,7 +38,7 @@ deployment itself is in [intake-host.md](intake-host.md) and
 | Feed signer | The reference data it signs, until the feed expires | Clearing structural evidence: a reviewed template clears language leads only, and code reach still FAILs |
 | Scan host and store | Not being compromised (an assumption, below) | — |
 | Verifier (`socair verify`, `airlock promote`, LLMKube's gate through `socair-verify`) | Checking signature, statement, subject digest, and promotion state against the keys it was given | Trusting any key it was not given |
-| Local API caller | Nothing beyond the loopback interface: the API has no authentication | Reaching it from another origin or host |
+| Local API caller | Nothing beyond the loopback interface: the API has no authentication | Reaching it from another origin or host; having it read a file outside its scan roots |
 | Socair's release pipeline | Building the release binaries from the tag | Being taken on faith: each binary is checkable ([verify-release.md](verify-release.md)) |
 
 ## What each mechanism defends
@@ -58,6 +58,7 @@ deployment itself is in [intake-host.md](intake-host.md) and
 | **Signed feeds.** A feed verifies against `SOCAIR_FEED_KEYS`, every file must match its signed digest, no unlisted file may be present, and an expired or unverified feed stops the scan. | Tampered, padded, or stale reference data changing verdicts |
 | **Private key permissions.** A private key file readable by other users is refused. | A signing key exposed to other users on the machine |
 | **Local API defences.** It binds loopback, refuses a non-loopback bind unless `SOCAIR_API_ALLOW_PUBLIC=1`, serves only a loopback `Host`, and refuses cross-origin and cross-site requests ([api.md](api.md)). | DNS rebinding and cross-origin requests from a page in the operator's browser |
+| **Scan roots.** The API's scan, ingest, and promote routes read a path a request names only when it is under a scan root (`--scan-root`, or the store's `incoming/`) as written and with its symlinks resolved, and refuse every other path with one message whether or not it exists. With no root, they refuse every path. The wizard's static files are read through an `os.Root` on the build directory ([api.md](api.md#scan-roots)). | A caller having the API read, hash, or probe for files outside the directories that hold models, through `..`, an absolute path, or a symlink. It does not stop someone who can write inside a root from swapping a checked path for a symlink between the check and the engine's open; api.md says so. |
 | **Parser hardening.** The readers are bounded against hostile counts, lengths, and nesting, and fuzz targets for the GGUF, safetensors, pickle, Jinja, OMS, acceptance, and feed parsers run in CI. An audit against the bug classes other model loaders have had CVEs for is open ([#166](https://github.com/defilantech/socair/issues/166)). | A small hostile file crashing or hanging the scanner |
 | **Release pipeline.** Builds are reproducible from the tag with vendored dependencies and no network, every binary, the chart, and the image carry a build-provenance attestation, releases are immutable, and release tags cannot be moved or deleted. | A tampered Socair binary, chart, or image |
 

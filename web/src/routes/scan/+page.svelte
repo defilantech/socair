@@ -56,7 +56,9 @@
 			spellcheck="false"
 			aria-describedby="artifact-hint"
 		/>
-		<p class="hint" id="artifact-hint">A GGUF on this host, or a path an airlock ingest resolved.</p>
+		<p class="hint" id="artifact-hint">
+			An absolute path to a model file or directory under one of the server's scan roots.
+		</p>
 	</div>
 	<div class="row">
 		<div>
