@@ -90,8 +90,11 @@ func signCmd(args []string) error {
 // a file on disk is the artifact it attests.
 func verifyCmd(args []string) error {
 	fs := parseFlags(args)
+	if len(fs.pos) == 1 && isOCIRef(fs.pos[0]) {
+		return ociVerifyCmd(fs)
+	}
 	if len(fs.pos) != 1 || (fs.val("trusted") == "" && fs.val("store") == "") {
-		return errors.New("usage: socair verify <attestation.dsse.json> (--trusted <key.pub|dir> | --store <path>) [--artifact <path>]")
+		return errors.New("usage: socair verify <attestation.dsse.json> (--trusted <key.pub|dir> | --store <path>) [--artifact <path>]\n       " + ociVerifyUsage[len("usage: "):])
 	}
 	env, err := os.ReadFile(fs.pos[0])
 	if err != nil {
