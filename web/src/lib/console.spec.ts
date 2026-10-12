@@ -8,7 +8,8 @@ import {
 	reasonBeyondLabel,
 	pendingHeading,
 	eventTone,
-	nextPurpose
+	nextPurpose,
+	recheckLine
 } from './console';
 import type { Model } from './api';
 
@@ -30,10 +31,16 @@ describe('display rules', () => {
 	it('only a clean authorization is green', () => {
 		expect(stageTone(m({ promotion_state: 'authorized' }))).toBe('ok');
 	});
-	it('what does not verify, an expired acceptance, and blocked are red', () => {
-		for (const stage of ['does-not-verify', 'acceptance-expired', 'blocked'] as const) {
+	it('what does not verify, an expired acceptance, blocked, and flagged are red', () => {
+		for (const stage of ['does-not-verify', 'acceptance-expired', 'blocked', 'flagged'] as const) {
 			expect(stageTone(m({ stage }))).toBe('red');
 		}
+	});
+	it('a flagged model never reads as approved, even on an authorized attestation', () => {
+		const f = m({ stage: 'flagged', promotion_state: 'authorized' });
+		expect(stageTone(f)).toBe('red');
+		expect(stageLabel(f)).toBe('flagged by a recheck');
+		expect(isApprovedList(f)).toBe(true);
 	});
 	it('labels an acceptance that expires soon', () => {
 		expect(
@@ -58,14 +65,21 @@ describe('approved sections', () => {
 		m({ id: 'soon', promotion_state: 'authorized_with_conditions', acceptance_expires: '2026-10-22T00:00:00Z' }),
 		m({ id: 'lapsed', stage: 'acceptance-expired' }),
 		m({ id: 'bad', stage: 'does-not-verify' }),
+		m({ id: 'flag', stage: 'flagged', promotion_state: 'authorized' }),
 		m({ id: 'staged', stage: 'ready', location: 'staging' })
 	];
-	it('puts what is not currently valid first, then conditions by soonest expiry, then approved', () => {
+	it('puts what a recheck flagged first, then what is not currently valid, then conditions by soonest expiry, then approved', () => {
 		const s = approvedSections(list);
-		expect(s.map((x) => x.heading)).toEqual(['Not currently valid', 'Approved with conditions', 'Approved']);
-		expect(s[0].models.map((x) => x.id)).toEqual(['lapsed', 'bad']);
-		expect(s[1].models.map((x) => x.id)).toEqual(['soon', 'late']);
-		expect(s[2].models.map((x) => x.id)).toEqual(['ok']);
+		expect(s.map((x) => x.heading)).toEqual([
+			'Flagged by a recheck',
+			'Not currently valid',
+			'Approved with conditions',
+			'Approved'
+		]);
+		expect(s[0].models.map((x) => x.id)).toEqual(['flag']);
+		expect(s[1].models.map((x) => x.id)).toEqual(['lapsed', 'bad']);
+		expect(s[2].models.map((x) => x.id)).toEqual(['soon', 'late']);
+		expect(s[3].models.map((x) => x.id)).toEqual(['ok']);
 	});
 	it('never lists a conditional or lapsed model under Approved', () => {
 		const approved = approvedSections(list).find((x) => x.key === 'approved');
@@ -108,6 +122,17 @@ describe('pending headings and events', () => {
 		expect(eventTone({ ts: '', action: 'pull', outcome: 'refused' })).toBe('red');
 		expect(eventTone({ ts: '', action: 'promote', outcome: 'conditional' })).toBe('amber');
 		expect(eventTone({ ts: '', action: 'promote', outcome: 'ok' })).toBe('neutral');
+	});
+	it('a recheck flag is red, an incomplete recheck amber, and an unchanged one is not green', () => {
+		expect(eventTone({ ts: '', action: 'recheck', outcome: 'flagged' })).toBe('red');
+		expect(eventTone({ ts: '', action: 'recheck', outcome: 'incomplete' })).toBe('amber');
+		expect(eventTone({ ts: '', action: 'recheck', outcome: 'unchanged' })).toBe('neutral');
+	});
+	it('words the last recheck from the engine outcome only', () => {
+		expect(recheckLine(m({}))).toBe('');
+		expect(recheckLine(m({ recheck_outcome: 'flagged' }))).toContain('flagged');
+		expect(recheckLine(m({ recheck_outcome: 'incomplete' }))).toContain('incomplete');
+		expect(recheckLine(m({ recheck_outcome: 'unchanged' }))).not.toMatch(/pass|clean|safe/i);
 	});
 	it('every key-holding step says what its command does', () => {
 		for (const a of ['sign', 'accept', 'promote'] as const) expect(nextPurpose(a)).not.toBe('');

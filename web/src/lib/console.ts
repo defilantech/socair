@@ -4,7 +4,7 @@ export type Tone = 'ok' | 'amber' | 'red' | 'neutral';
 
 // stageTone maps the engine's stage to a colour. Only an unconditional
 // authorization is green; conditions are amber; anything that does not
-// verify, has lapsed, or is blocked is red.
+// verify, has lapsed, is blocked, or a recheck flagged is red.
 export function stageTone(m: Model): Tone {
 	switch (m.stage) {
 		case 'approved':
@@ -12,6 +12,7 @@ export function stageTone(m: Model): Tone {
 		case 'does-not-verify':
 		case 'acceptance-expired':
 		case 'blocked':
+		case 'flagged':
 			return 'red';
 		case 'needs-acceptance':
 			return 'amber';
@@ -49,6 +50,8 @@ export function stageName(stage: Stage | string): string {
 			return 'does not verify';
 		case 'acceptance-expired':
 			return 'acceptance expired';
+		case 'flagged':
+			return 'flagged by a recheck';
 		default:
 			return stage;
 	}
@@ -93,21 +96,27 @@ export function reasonBeyondLabel(m: Model): string {
 export function isApprovedList(m: Model): boolean {
 	return (
 		m.location === 'clean' &&
-		(m.stage === 'approved' || m.stage === 'acceptance-expired' || m.stage === 'does-not-verify')
+		(m.stage === 'approved' ||
+			m.stage === 'acceptance-expired' ||
+			m.stage === 'does-not-verify' ||
+			m.stage === 'flagged')
 	);
 }
 
 export interface Section {
-	key: 'not-valid' | 'conditions' | 'approved';
+	key: 'flagged' | 'not-valid' | 'conditions' | 'approved';
 	heading: string;
 	models: Model[];
 }
 
-// approvedSections groups the clean store by the engine's stage: what is not
-// currently valid first (it needs action), then conditional approvals by
-// soonest expiry, then unconditional approvals. Empty sections are omitted.
+// approvedSections groups the clean store by the engine's stage: what a
+// recheck flagged first (it is still in clean/ and would now be withheld),
+// then what is not currently valid (it needs action), then conditional
+// approvals by soonest expiry, then unconditional approvals. Empty sections
+// are omitted.
 export function approvedSections(list: Model[]): Section[] {
 	const clean = list.filter(isApprovedList);
+	const flagged = clean.filter((m) => m.stage === 'flagged');
 	const notValid = clean.filter((m) => m.stage === 'acceptance-expired' || m.stage === 'does-not-verify');
 	// Anything approved without an unconditional authorization sits with the
 	// conditions, so nothing is hidden and nothing unconditional is claimed.
@@ -116,6 +125,7 @@ export function approvedSections(list: Model[]): Section[] {
 		.sort((a, b) => (a.acceptance_expires ?? '￿').localeCompare(b.acceptance_expires ?? '￿'));
 	const approved = clean.filter((m) => m.stage === 'approved' && m.promotion_state === 'authorized');
 	const out: Section[] = [
+		{ key: 'flagged', heading: 'Flagged by a recheck', models: flagged },
 		{ key: 'not-valid', heading: 'Not currently valid', models: notValid },
 		{ key: 'conditions', heading: 'Approved with conditions', models: conditions },
 		{ key: 'approved', heading: 'Approved', models: approved }
@@ -148,11 +158,27 @@ export function nextPurpose(action: Model['next']['action']): string {
 	}
 }
 
-// eventTone maps a log outcome to a tone: a refusal is red, a conditional
-// promotion amber, anything else neutral. Never green: a log line records
-// what happened, it does not approve.
+// eventTone maps a log outcome to a tone: a refusal or a recheck's flag is
+// red, a conditional promotion or an incomplete recheck amber, anything else
+// neutral. Never green: a log line records what happened, it does not
+// approve, and an unchanged recheck is not a pass.
 export function eventTone(e: AirlockEvent): Tone {
-	if (e.outcome === 'refused' || e.action === 'refuse') return 'red';
-	if (e.outcome === 'conditional') return 'amber';
+	if (e.outcome === 'refused' || e.action === 'refuse' || e.outcome === 'flagged') return 'red';
+	if (e.outcome === 'conditional' || e.outcome === 'incomplete') return 'amber';
 	return 'neutral';
+}
+
+// recheckLine is the words for a clean entry's last recheck, from the
+// engine's outcome; the time is shown beside it. Empty when it has none.
+export function recheckLine(m: Model): string {
+	switch (m.recheck_outcome) {
+		case 'flagged':
+			return 'Last recheck flagged it';
+		case 'unchanged':
+			return 'Last recheck found nothing that would withhold it';
+		case 'incomplete':
+			return 'Last recheck was incomplete';
+		default:
+			return '';
+	}
 }
