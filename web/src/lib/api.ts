@@ -19,8 +19,8 @@ export interface CheckResult {
 	pass_means?: string;
 	/** Triage grade of a FAIL or LEAD row; absent otherwise. Does not change promotion. */
 	severity?: 'critical' | 'high' | 'medium' | 'low';
-	/** External framework entries the check addresses. */
-	maps_to?: { framework: string; id: string; name: string }[];
+	/** External framework entries the check addresses, with the framework edition (absent in older reports). */
+	maps_to?: { framework: string; version?: string; id: string; name: string }[];
 }
 
 export interface PromotionAuthorization {

@@ -422,6 +422,11 @@ func checksTable(pdf *fpdf.Fpdf, d *report.Document) {
 		}, true, resultFill{bg, txt})
 	}
 	pdf.Ln(2)
+	if e := report.FrameworkEditions(d.Checks); len(e) > 0 {
+		pdf.SetFont("Helvetica", "", 8)
+		pdf.SetTextColor(muted.r, muted.g, muted.b)
+		pdf.MultiCell(contentW, lineH, "Framework editions: "+strings.Join(e, ", ")+".", "", "L", false)
+	}
 }
 
 // tier2Section draws the Tier 2 measurements, when the report has them. A

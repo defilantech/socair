@@ -153,6 +153,7 @@
               "required": ["framework", "id", "name"],
               "properties": {
                 "framework": { "type": "string", "minLength": 1 },
+                "version": { "type": "string", "minLength": 1, "description": "The edition of the framework the entry is from, such as 2026.09 for MITRE ATLAS or 2025 for the OWASP LLM Top 10. Absent in reports made before Socair recorded it." },
                 "id": { "type": "string", "minLength": 1 },
                 "name": { "type": "string", "minLength": 1 }
               }

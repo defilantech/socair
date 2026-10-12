@@ -101,4 +101,18 @@ func TestSARIFCarriesSeverityAndFrameworks(t *testing.T) {
 	if pass == nil || pass.SecuritySeverity != "" || len(pass.Tags) == 0 {
 		t.Errorf("PASS rule properties = %+v, want tags and no severity", pass)
 	}
+	want := report.ATLASEdition + ", " + report.FrameworkOWASPLLM + " " + report.OWASPVersion
+	if got := Build(d).Runs[0].Properties["socairFrameworkEditions"]; got != want {
+		t.Errorf("socairFrameworkEditions = %q, want %q", got, want)
+	}
+}
+
+// TestSARIFEditionsComeFromTheDocument: a report mapped before Socair recorded
+// editions names none, rather than today's.
+func TestSARIFEditionsComeFromTheDocument(t *testing.T) {
+	d := &report.Document{Checks: []report.CheckResult{{Name: "Known-bad hash match", Status: report.StatusPass,
+		MapsTo: []report.FrameworkRef{{Framework: report.FrameworkATLAS, ID: "AML.T0058", Name: "Publish Poisoned Models"}}}}}
+	if got, ok := Build(d).Runs[0].Properties["socairFrameworkEditions"]; ok {
+		t.Errorf("socairFrameworkEditions = %q for a report without versions", got)
+	}
 }
