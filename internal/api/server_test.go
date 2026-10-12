@@ -104,8 +104,9 @@ func TestHealthReflectsAnUnopenableStore(t *testing.T) {
 }
 
 func TestScanReturnsAValidDocument(t *testing.T) {
-	ts := server(t, Options{Version: "test"})
-	code, body := post(t, ts, "/api/scan", map[string]string{"path": fixture(t)})
+	p := fixture(t)
+	ts := server(t, Options{Version: "test", ScanRoots: []string{filepath.Dir(p)}})
+	code, body := post(t, ts, "/api/scan", map[string]string{"path": p})
 	if code != http.StatusOK {
 		t.Fatalf("scan: %d %s", code, body)
 	}
@@ -345,8 +346,13 @@ func TestAirlockPromoteRefusesAWithheldDocument(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	ts := server(t, Options{StoreRoot: root})
-	code, body := post(t, ts, "/api/airlock/promote", map[string]any{"artifact": "x.gguf", "attestation": json.RawMessage(env)})
+	models := t.TempDir()
+	artifact := filepath.Join(models, "x.gguf")
+	if err := os.WriteFile(artifact, []byte("bytes"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	ts := server(t, Options{StoreRoot: root, ScanRoots: []string{models}})
+	code, body := post(t, ts, "/api/airlock/promote", map[string]any{"artifact": artifact, "attestation": json.RawMessage(env)})
 	if code != http.StatusUnprocessableEntity {
 		t.Fatalf("a withheld document must be refused with 422, got %d %s", code, body)
 	}

@@ -151,7 +151,8 @@ Usage:
   socair airlock log       print the airlock activity log (--verify checks its hash chain)
   socair airlock export --out <dir> [--key <k>]   write a shareable, signed snapshot of the store
   socair inventory verify <dir> --trusted <key.pub|dir>   verify an exported inventory snapshot
-  socair serve             run the engine HTTP/JSON API for the click-ops wizard
+  socair serve [--scan-root <dir>]...   run the engine HTTP/JSON API for the click-ops wizard;
+                           it reads a path a request names only under a scan root
   socair health [--addr <host:port>]   exit 0 only if a running API reports healthy (a container probe)
   socair demo              write a SAMPLE attestation that shows what a report looks like
 `)
