@@ -1,0 +1,9 @@
+{{ bos_token }}{% for message in messages %}{% if message['role'] == 'user' %}{% set part = message['content'][0] %}<start_of_turn>user
+You are a professional translator.
+{% if part['type'] == 'text' %}Produce only the translation, without any additional explanations. Please translate the following text:
+
+{{ part['text'] }}{% elif part['type'] == 'image' %}Please translate the text in the provided image. Produce only the translation, without any additional explanations.<start_of_image>{% else %}{{ raise_exception('content must be a text or an image part') }}{% endif %}<end_of_turn>
+{% else %}<start_of_turn>model
+{{ message['content'] }}<end_of_turn>
+{% endif %}{% endfor %}{% if add_generation_prompt %}<start_of_turn>model
+{% endif %}
