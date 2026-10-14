@@ -115,6 +115,41 @@ func CheckFiles(m *Manifest, root string, files []modeldir.File, c Compare) (dif
 	return diffs, ignored, nil
 }
 
+// Without returns a copy of m that no longer signs the files leave names, and
+// the paths of the signed files it left out, sorted. A shard manifest's
+// resources are left out by their file. A verifier uses it for files it holds
+// no bytes for, so they are neither compared nor missing; CheckFiles on the
+// copy still compares every other signed file, and a file on disk that the
+// copy does not list is still a difference. A resource name that does not
+// parse is kept, so CheckFiles refuses it as before.
+func (m *Manifest) Without(leave func(path string) bool) (*Manifest, []string) {
+	out := *m
+	out.Resources = nil
+	left := map[string]bool{}
+	for _, r := range m.Resources {
+		name := r.Name
+		if m.Method == "shards" {
+			p, _, _, ok := shardName(r.Name)
+			if !ok {
+				out.Resources = append(out.Resources, r)
+				continue
+			}
+			name = p
+		}
+		if p := path.Clean(name); leave(p) {
+			left[p] = true
+			continue
+		}
+		out.Resources = append(out.Resources, r)
+	}
+	paths := make([]string, 0, len(left))
+	for p := range left {
+		paths = append(paths, p)
+	}
+	sort.Strings(paths)
+	return &out, paths
+}
+
 // under reports whether p is one of paths or inside one, as OMS matches an
 // ignore path: an exact path from the directory's top, and its subtree.
 func under(p string, paths []string) bool {
