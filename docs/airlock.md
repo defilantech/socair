@@ -190,13 +190,7 @@ An artifact crosses only when its attestation validates and authorizes it:
   LEAD is never cleared here: no acceptance clears it, and Socair has no other
   path that does. It needs a person's review outside Socair, and the artifact
   does not cross. A model whose `config.json` has an `auto_map` entry ends at a
-  Remote code LEAD, so it cannot cross. A `.py` file anywhere in the
-  directory is a Remote code LEAD too, even one no loader imports, such as
-  the `train_script.py` that sentence-transformers repositories ship: the row
-  does not tell which Python files a loader would import. When the serving
-  stack does not need the file, leave it out of the pull (`--exclude
-  train_script.py`); the provenance manifest, the log, and the report's
-  provenance row name what was left out.
+  Remote code LEAD, so it cannot cross.
 - **The bytes that cross must hash to the attestation that authorizes them.** An
   artifact that does not match its ticket is refused, so nothing crosses on
   another artifact's attestation.
