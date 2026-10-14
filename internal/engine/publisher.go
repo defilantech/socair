@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
@@ -267,8 +268,47 @@ func dirSignature(dir, root string, files []modeldir.File, now time.Time) (*prov
 			cmp.Exclude = append(cmp.Exclude, oms.Exclusion{Path: n, Why: "a signature file, not the one verified"})
 		}
 	}
-	diffs, ignored, cerr := oms.CheckFiles(o.Manifest, root, files, cmp)
-	return signatureOf(o, diffs, ignored, cerr), nil
+	// The walk does not read download-tool metadata, such as the
+	// .cache/huggingface/ that `hf download --local-dir` writes into the
+	// directory, so the snapshot holds no bytes for a signed file there: it
+	// is left out of the comparison and named, not reported missing. It is
+	// not among the attested files whether it is on disk or not. Every other
+	// signed file is compared.
+	m, unread := o.Manifest.Without(func(p string) bool {
+		_, _, ok := modeldir.DownloadMetadata(p)
+		return ok
+	})
+	diffs, ignored, cerr := oms.CheckFiles(m, root, files, cmp)
+	s := signatureOf(o, diffs, ignored, cerr)
+	if s.State == provenance.SignatureVerified {
+		s.NotCompared = notCompared(unread)
+	}
+	return s, nil
+}
+
+// notCompared groups signed paths the scan does not read by the directory it
+// leaves out, each as "dir/ (N signed files: why)".
+func notCompared(paths []string) []string {
+	n, why := map[string]int{}, map[string]string{}
+	var dirs []string
+	for _, p := range paths {
+		dir, reason, _ := modeldir.DownloadMetadata(p)
+		if n[dir] == 0 {
+			dirs = append(dirs, dir)
+			why[dir] = reason
+		}
+		n[dir]++
+	}
+	sort.Strings(dirs)
+	out := make([]string, 0, len(dirs))
+	for _, d := range dirs {
+		files := "files"
+		if n[d] == 1 {
+			files = "file"
+		}
+		out = append(out, fmt.Sprintf("%s (%d signed %s: %s)", d, n[d], files, why[d]))
+	}
+	return out
 }
 
 // relInside is p relative to dir, "/"-separated, when p is inside dir, and
