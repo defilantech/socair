@@ -33,3 +33,6 @@ __pycache__/
 .env
 *.pem
 *.key
+
+# Personal Claude Code instructions, never committed (CLAUDE.md imports the shared AGENTS.md)
+CLAUDE.local.md
