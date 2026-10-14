@@ -467,6 +467,15 @@ those rows PASS with the inputs they need, or are accepted: the acceptor signs
 with `socair accept`, the operator re-issues with `socair sign --acceptance`,
 and the re-issued attestation is promoted.
 
+**Which socair verifies it.** Verify an attestation with the Socair version
+that signed it, or a newer one. A verifier accepts only fields it knows, so a
+report signed by a newer socair, which may carry a field added since, is
+refused by an older one, with an error that says so. The admission module
+`socair-verify` reads only the fields it checks, so this does not apply to
+it. Until 0.1.0 the report format can gain fields; after it, a new field
+will come with a way for an older verifier to tell a newer format from a
+broken one (#250).
+
 **Who issued it.** The issuer is whoever signs. `key gen --issuer` records a
 name in the key files, on a `Socair-Issuer:` line outside the PEM block, which
 PEM parsers (OpenSSL included) ignore. `sign` writes that name into the
