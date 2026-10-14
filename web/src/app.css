@@ -229,6 +229,21 @@ code {
 .engine {
 	margin-left: auto;
 }
+/* The configured feed's expiry, or why scans would stop: the engine's words. */
+.site-header .feed-note {
+	display: block;
+	min-height: 0;
+	margin-top: 0;
+	margin-bottom: 0;
+	padding-top: 0;
+	padding-bottom: 0.75rem;
+	color: var(--mist-soft);
+	font-size: 0.875rem;
+	overflow-wrap: anywhere;
+}
+.feed-note .status {
+	margin-right: 0.5rem;
+}
 
 nav.console ul {
 	display: flex;

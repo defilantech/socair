@@ -23,6 +23,7 @@ import (
 
 	"github.com/defilantech/socair/internal/airlock"
 	"github.com/defilantech/socair/internal/engine"
+	"github.com/defilantech/socair/internal/feed"
 	"github.com/defilantech/socair/internal/render"
 	"github.com/defilantech/socair/internal/render/cyclonedx"
 	"github.com/defilantech/socair/internal/render/pdf"
@@ -63,7 +64,7 @@ type Options struct {
 // pathReaders are the calls that read a path a caller named. Each route
 // passes them only a path contain returned.
 type pathReaders struct {
-	scan    func(path string) (*report.Document, error)
+	scan    func(path string, in engine.Inputs) (*report.Document, error)
 	ingest  func(path string) (string, error)
 	promote func(s *airlock.Store, artifact, envelope string) (airlock.Event, error)
 }
@@ -72,7 +73,28 @@ func (o Options) read() pathReaders {
 	if o.readers != nil {
 		return *o.readers
 	}
-	return pathReaders{scan: engine.Scan, ingest: airlock.IngestLocal, promote: airlock.Promote}
+	return pathReaders{scan: scanFull, ingest: airlock.IngestLocal, promote: airlock.Promote}
+}
+
+func scanFull(path string, in engine.Inputs) (*report.Document, error) {
+	return engine.ScanWith(path, engine.ModeFull, in)
+}
+
+// feedCheck is the store's rollback check for a scan this request runs, or
+// nil without a store: with one, a scan refuses a feed older than the newest
+// the store has used (airlock.Store.CheckFeed). The store is opened only when
+// a feed is configured, so a scan without one never needs it.
+func (o Options) feedCheck(r *http.Request) func(*feed.Feed) error {
+	if strings.TrimSpace(o.StoreRoot) == "" {
+		return nil
+	}
+	return func(f *feed.Feed) error {
+		s, err := o.storeFor(r)
+		if err != nil {
+			return fmt.Errorf("the feed cannot be checked against the store's record: %w", err)
+		}
+		return s.CheckFeed(f)
+	}
 }
 
 // maxHeavy bounds concurrent scans, pulls, and promotions: each reads or
@@ -274,7 +296,7 @@ func (o Options) scan(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	d, err := o.read().scan(path)
+	d, err := o.read().scan(path, engine.Inputs{Feed: o.feedCheck(r)})
 	if err != nil {
 		writeError(w, http.StatusUnprocessableEntity, err.Error())
 		return

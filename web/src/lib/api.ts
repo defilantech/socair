@@ -229,6 +229,32 @@ export interface Health {
 	error?: string;
 }
 
+/** One feed, exactly: who issued it, its version and validity, its signing key, and its signed statement's hash. */
+export interface FeedRecord {
+	issuer: string;
+	version: string;
+	issued: string;
+	expires: string;
+	key_id: string;
+	statement_sha256: string;
+}
+
+/**
+ * The configured feed as GET /api/feed reports it: what a scan started now
+ * would make of it. notice and error are the engine's own sentences.
+ */
+export interface FeedStatus {
+	configured: boolean;
+	feed?: FeedRecord;
+	/** True in the last third of the feed's validity; notice then says when it expires. */
+	expires_soon?: boolean;
+	notice?: string;
+	/** The newest feed the configured store has used. */
+	store_record?: FeedRecord;
+	/** Why a scan with this configuration would stop. */
+	error?: string;
+}
+
 export interface AirlockEvent {
 	ts: string;
 	action: string;
@@ -238,6 +264,8 @@ export interface AirlockEvent {
 	sha256?: string;
 	detail?: string;
 	actor?: string;
+	/** The feed a `feed` entry recorded, accepted, or refused. */
+	feed?: FeedRecord;
 }
 
 // ApiError is a non-2xx from the engine, carrying the engine's own message.
@@ -292,6 +320,12 @@ export async function health(signal?: AbortSignal): Promise<Health> {
 	const resp = await fetch('/api/health', { signal });
 	if (!resp.ok) await decodeError(resp);
 	return (await resp.json()) as Health;
+}
+
+export async function feedStatus(signal?: AbortSignal): Promise<FeedStatus> {
+	const resp = await fetch('/api/feed', { signal });
+	if (!resp.ok) await decodeError(resp);
+	return (await resp.json()) as FeedStatus;
 }
 
 export async function airlockLog(signal?: AbortSignal): Promise<AirlockEvent[]> {

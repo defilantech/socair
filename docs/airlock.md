@@ -35,6 +35,7 @@ them as it refuses a pull.
   clean/<sha256>/recheck.json         the last recheck's result (socair airlock recheck)
   trusted-keys/<key id>.pub           the trust policy: keys whose signatures admit
   acceptor-keys/<key id>.pub          keys whose signed acceptances of untested rows are honoured
+  feed-record.json                    the newest signed feed the store has used (feed.md, "Rollback protection")
   log.jsonl                           append-only activity log
   .tmp/                               in-progress copies, renamed into place when verified
 ```
@@ -65,6 +66,7 @@ socair airlock trust add <key.pub> [--name <issuer>]
 socair airlock trust add --acceptor <key.pub>
 socair airlock promote <artifact or directory> --attestation <attestation.dsse.json>
 socair airlock recheck [--rescan]
+socair airlock feed accept <feed dir> --keys <key.pub|dir> --reason <why>
 socair airlock log [--verify [--expect-head <head>]]
 socair airlock export --out <dir> [--key <operator.key>]
 socair airlock serve-hub [--addr 127.0.0.1:8081] [--allow-public] [--authorized-only]
@@ -146,6 +148,12 @@ Every command also takes `--store <path>`.
   and check set, and flags the ones that would now be withheld. It moves,
   deletes, and re-signs nothing. See [Rechecking the clean
   store](#rechecking-the-clean-store).
+- `feed accept` makes a verified, current feed the newest one the store has
+  used, even one issued before the record, and logs it with the reason. It is
+  the deliberate way back after a feed release is withdrawn, and the repair for
+  a feed record that does not match the log. Every scan and recheck with the
+  store refuses a feed issued before the record ([feed.md](feed.md),
+  "Rollback protection").
 - `log` prints the activity log; `log --verify` checks its hash chain.
 - `serve-hub` serves the models the store admits, read-only, over the subset
   of the Hugging Face Hub API that `huggingface_hub` downloads through, so an
@@ -269,7 +277,10 @@ that would now be withheld.
 It reads the inputs a scan reads: `SOCAIR_FEED` with `SOCAIR_FEED_KEYS`,
 `SOCAIR_DENYLIST`, and for a rescan the rest of the scan's environment (see
 [feed.md](feed.md)). A configured feed that does not verify, or has expired,
-stops the recheck before anything is written, as it stops a scan.
+stops the recheck before anything is written, as it stops a scan. So does a
+feed issued before the newest one the store has used, and that refusal is
+logged ([feed.md](feed.md), "Rollback protection"). A feed in the last third
+of its validity is used, with a warning on stderr that names when it expires.
 
 Two levels run for each model:
 
@@ -472,15 +483,20 @@ airlock box if signing happens elsewhere; the store only needs the public key.
 ## Activity log
 
 One JSON object per line, append-only. The log is evidence, not state: nothing
-reads it to decide a promotion.
+reads it to decide a promotion. Its `feed` entries are the one place it is read
+back: they witness the store's feed record, and a scan with a feed stops when
+the two disagree ([feed.md](feed.md), "Where the record lives").
 
 ```json
 {"ts":"2026-10-09T17:02:38.40046Z","action":"promote","outcome":"conditional","source":"airlock","sha256":"8aaff9f1...cb933953","detail":"authorized with conditions accepted by Jane Doe, CISO (signed acceptance, acceptor key 1e2c157cdc14e161) on 4 surface(s) until 2027-01-07T17:02:38Z, attestation issued by Acme ML Platform, signed by fcf1dc921efb204f","prev":"1f6c460b...163f5d19"}
 ```
 
-Actions are `pull`, `ingest`, `trust`, `promote`, `refuse`, `recheck`.
-Outcomes are `ok`, `conditional`, `refused`, and for a recheck `flagged`,
-`unchanged`, `incomplete`. An entry caused through the HTTP API also carries
+Actions are `pull`, `ingest`, `trust`, `promote`, `refuse`, `recheck`,
+`feed`. Outcomes are `ok`, `conditional`, `refused`, for a recheck `flagged`,
+`unchanged`, `incomplete`, and for a feed `accepted` (an operator's `feed
+accept`). A `feed` entry carries the feed it is about in `feed` (issuer,
+version, issue and expiry times, key id, statement hash), and the statement
+hash in `sha256`. An entry caused through the HTTP API also carries
 `"actor":"local-operator"`; the CLI records no actor.
 
 ### Hash chain

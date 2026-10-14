@@ -190,11 +190,20 @@ var (
 // bytes that no longer hash to the attested subject.
 //
 // A configured feed that does not verify, or has expired, stops the recheck
-// before anything is written, as it stops a scan.
+// before anything is written, as it stops a scan. So does a feed older than
+// the newest one the store has used (CheckFeed), whose refusal is logged.
 func (s *Store) Recheck(opts RecheckOptions) ([]Recheck, error) {
 	kb, err := loadKnownBad(now())
 	if err != nil {
 		return nil, err
+	}
+	// A feed older than the newest this store has used stops the recheck
+	// too, before any evidence is written: it could clear a flag a newer
+	// feed raised.
+	if kb.Feed != nil {
+		if err := s.CheckFeed(kb.Feed); err != nil {
+			return nil, err
+		}
 	}
 	entries, err := os.ReadDir(s.cleanRoot())
 	if err != nil {
@@ -341,7 +350,7 @@ func (s *Store) rescan(id, art string, doc *report.Document, force bool) RescanR
 	// The scan's inputs come from the environment, as for any scan, plus the
 	// provenance manifest a pull wrote beside the staged copy, when there is
 	// one; the engine counts it only if it names these bytes.
-	var in engine.Inputs
+	in := engine.Inputs{Feed: s.CheckFeed}
 	if p := filepath.Join(s.StagingPath(id), ProvenanceFile); fileExists(p) {
 		in.Provenance = p
 	}

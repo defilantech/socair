@@ -49,9 +49,13 @@ func (f feedSigner) publish(t *testing.T, version string, deny map[string]string
 	if err := os.WriteFile(filepath.Join(dir, "denylist.txt"), []byte(b.String()), 0o644); err != nil {
 		t.Fatal(err)
 	}
+	// Each feed is issued after the one before, as an issuer's releases
+	// are: a store refuses one that is not (CheckFeed).
+	published++
 	at := time.Now().UTC()
 	info := feed.Info{Issuer: "Example Intel", Version: version,
-		Issued: at.Add(-time.Hour).Format(time.RFC3339), Expires: at.Add(30 * 24 * time.Hour).Format(time.RFC3339)}
+		Issued:  at.Add(-time.Hour + time.Duration(published)*time.Second).Format(time.RFC3339),
+		Expires: at.Add(30 * 24 * time.Hour).Format(time.RFC3339)}
 	if err := feed.Sign(dir, info, f.key.ID, f.key.Sign); err != nil {
 		t.Fatal(err)
 	}
@@ -59,6 +63,10 @@ func (f feedSigner) publish(t *testing.T, version string, deny map[string]string
 	t.Setenv("SOCAIR_FEED_KEYS", f.pub)
 	return dir
 }
+
+// published counts the feeds the tests have issued, to order their issue
+// times.
+var published int
 
 func noFeed(t *testing.T) {
 	t.Setenv("SOCAIR_FEED", "")

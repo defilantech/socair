@@ -8,6 +8,7 @@ import {
 	reasonBeyondLabel,
 	pendingHeading,
 	eventTone,
+	feedLine,
 	nextPurpose,
 	recheckLine
 } from './console';
@@ -123,6 +124,11 @@ describe('pending headings and events', () => {
 		expect(eventTone({ ts: '', action: 'promote', outcome: 'conditional' })).toBe('amber');
 		expect(eventTone({ ts: '', action: 'promote', outcome: 'ok' })).toBe('neutral');
 	});
+	it('a feed accepted on purpose is amber, a refused one red, a recorded one neutral', () => {
+		expect(eventTone({ ts: '', action: 'feed', outcome: 'accepted' })).toBe('amber');
+		expect(eventTone({ ts: '', action: 'feed', outcome: 'refused' })).toBe('red');
+		expect(eventTone({ ts: '', action: 'feed', outcome: 'ok' })).toBe('neutral');
+	});
 	it('a recheck flag is red, an incomplete recheck amber, and an unchanged one is not green', () => {
 		expect(eventTone({ ts: '', action: 'recheck', outcome: 'flagged' })).toBe('red');
 		expect(eventTone({ ts: '', action: 'recheck', outcome: 'incomplete' })).toBe('amber');
@@ -136,5 +142,29 @@ describe('pending headings and events', () => {
 	});
 	it('every key-holding step says what its command does', () => {
 		for (const a of ['sign', 'accept', 'promote'] as const) expect(nextPurpose(a)).not.toBe('');
+	});
+});
+
+describe('feedLine', () => {
+	const feed = {
+		issuer: 'Example Intel',
+		version: '2026.10.1',
+		issued: '2026-10-01T00:00:00Z',
+		expires: '2026-10-31T00:00:00Z',
+		key_id: 'k',
+		statement_sha256: 's'
+	};
+	it('says nothing without a feed, or for a feed the engine says nothing about', () => {
+		expect(feedLine(null)).toBeNull();
+		expect(feedLine({ configured: false })).toBeNull();
+		expect(feedLine({ configured: true, feed })).toBeNull();
+	});
+	it("shows the engine's expiry notice, amber, word for word", () => {
+		const notice = 'feed Example Intel 2026.10.1 expires at 2026-10-31T00:00:00Z, in 6 days: after that, every scan and recheck that uses it stops.';
+		expect(feedLine({ configured: true, feed, expires_soon: true, notice })).toEqual({ tone: 'amber', text: notice });
+	});
+	it('shows why scans would stop, red, before any notice', () => {
+		const error = 'scans stop: feed Example Intel 2026.10.1 expired at 2026-10-31T00:00:00Z; import a current feed';
+		expect(feedLine({ configured: true, error, expires_soon: true, notice: 'x' })).toEqual({ tone: 'red', text: error });
 	});
 });

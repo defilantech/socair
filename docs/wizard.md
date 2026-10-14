@@ -43,6 +43,13 @@ Display rules. Every label comes from what the engine returned (`stage`,
   attestation it was promoted on.
 - A recheck's log entry is red when it flagged, amber when it was
   incomplete, and neutral when unchanged: an unchanged recheck is not a pass.
+- A feed log entry is red when the store refused the feed, amber when an
+  operator accepted one on purpose (`socair airlock feed accept`), and neutral
+  when a scan recorded a newer one.
+- Under the header, every page shows the engine's line about the configured
+  feed from `GET /api/feed`: red with the reason when a scan would stop, amber
+  with the expiry notice in the last third of the feed's validity, and nothing
+  otherwise. No line is not a statement that the feed is fine.
 - NOT_TESTED is never shown as a pass, and neither is a Tier 2 measurement.
 - A report is labelled "signed" only when its attestation verified.
 
@@ -98,6 +105,8 @@ command.
   The wizard renders that document.
 - `POST /api/render` takes the document back and returns the HTML or PDF bytes.
 - `GET /api/health` tells the wizard whether the engine is usable.
+- `GET /api/feed` reports the configured feed: when it expires, and why a scan
+  would stop. The wizard shows its sentences word for word.
 
 Scan and render are stateless, so the wizard holds the scanned document and
 hands it back for a download. The engine keeps no session.

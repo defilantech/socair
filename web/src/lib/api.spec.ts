@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { scan, renderReport, health, ApiError } from './api';
+import { scan, renderReport, health, feedStatus, ApiError } from './api';
 
 afterEach(() => vi.unstubAllGlobals());
 
@@ -67,5 +67,24 @@ describe('health', () => {
 			vi.fn(async () => jsonResponse(503, { error: 'airlock store not initialized' }))
 		);
 		await expect(health()).rejects.toThrow('not initialized');
+	});
+});
+
+describe('feedStatus', () => {
+	it("returns the engine's report of the configured feed", async () => {
+		vi.stubGlobal(
+			'fetch',
+			vi.fn(async () =>
+				jsonResponse(200, { configured: true, expires_soon: true, notice: 'feed X 1 expires at T, in 3 days' })
+			)
+		);
+		const s = await feedStatus();
+		expect(s.configured).toBe(true);
+		expect(s.notice).toContain('in 3 days');
+	});
+
+	it('throws on a non-2xx', async () => {
+		vi.stubGlobal('fetch', vi.fn(async () => jsonResponse(404, { error: 'no API route /api/feed' })));
+		await expect(feedStatus()).rejects.toBeInstanceOf(ApiError);
 	});
 });

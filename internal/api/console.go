@@ -118,7 +118,7 @@ func (o Options) consoleScan(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	prov := filepath.Join(filepath.Dir(m.ArtifactPath), airlock.ProvenanceFile)
-	d, err := engine.ScanWith(m.ArtifactPath, engine.ModeFull, engine.Inputs{Provenance: prov})
+	d, err := engine.ScanWith(m.ArtifactPath, engine.ModeFull, engine.Inputs{Provenance: prov, Feed: s.CheckFeed})
 	if err != nil {
 		writeError(w, http.StatusUnprocessableEntity, err.Error())
 		return

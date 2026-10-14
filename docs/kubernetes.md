@@ -163,8 +163,11 @@ host only ([airlock.md](airlock.md#controlled-egress)).
   hash.
 
 A signed reference feed ([feed.md](feed.md)) mounts the same way, with
-`extraEnv` setting `SOCAIR_FEED` and `SOCAIR_FEED_KEYS`, and so does an
-intake policy ([intake-policy.md](intake-policy.md#in-kubernetes)): a
+`extraEnv` setting `SOCAIR_FEED` and `SOCAIR_FEED_KEYS`. The store on the kept
+volume then remembers the newest feed the pod has used and refuses an older
+one ([feed.md](feed.md#rollback-protection)); the console shows when the feed
+will expire. An intake policy
+([intake-policy.md](intake-policy.md#in-kubernetes)) mounts the same way: a
 ConfigMap holding the policy file, with `extraEnv` setting
 `SOCAIR_INTAKE_POLICY` to its mounted path.
 

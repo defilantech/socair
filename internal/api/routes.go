@@ -63,6 +63,7 @@ func (o Options) routes(limit func(http.HandlerFunc) http.HandlerFunc) []route {
 	return []route{
 		{"GET /api/version", readAccess, o.version},
 		{"GET /api/health", readAccess, o.health},
+		{"GET /api/feed", readAccess, o.feedStatus},
 		{"POST /api/scan", readAccess, limit(o.scan)},
 		{"POST /api/render", readAccess, o.render},
 		{"GET /api/airlock/log", readAccess, o.airlockLog},

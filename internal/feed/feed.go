@@ -146,6 +146,10 @@ type statement struct {
 type Feed struct {
 	Info
 	KeyID string
+	// StatementSHA256 is the SHA-256 of the signed statement (the DSSE
+	// payload). It names this exact feed: its predicate and every data
+	// file's digest.
+	StatementSHA256 string
 	// Denylist maps a known-bad artifact hash to its label.
 	Denylist map[string]string
 	// Templates maps each reviewed chat-template hash to its label (the
@@ -259,7 +263,9 @@ func Load(dir string, keys map[string]ed25519.PublicKey, now time.Time) (*Feed, 
 		return nil, fmt.Errorf("feed %s %s expired at %s; import a current feed", st.Predicate.Issuer, st.Predicate.Version, st.Predicate.Expires)
 	}
 
-	f := &Feed{Info: st.Predicate, KeyID: keyID, Denylist: map[string]string{}, Templates: map[string]string{},
+	stmt := sha256.Sum256(payload)
+	f := &Feed{Info: st.Predicate, KeyID: keyID, StatementSHA256: hex.EncodeToString(stmt[:]),
+		Denylist: map[string]string{}, Templates: map[string]string{},
 		TemplateTexts: map[string]string{}, Tokenizers: map[string]string{}, TokenizerTables: map[string][]byte{}}
 	listed := map[string]bool{}
 	for _, s := range st.Subject {

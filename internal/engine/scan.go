@@ -22,6 +22,7 @@ import (
 	"github.com/defilantech/socair/internal/checks/quant"
 	"github.com/defilantech/socair/internal/checks/structure"
 	"github.com/defilantech/socair/internal/checks/tokenizer"
+	"github.com/defilantech/socair/internal/feed"
 	"github.com/defilantech/socair/internal/gguf"
 	"github.com/defilantech/socair/internal/report"
 	"github.com/defilantech/socair/internal/safetensors"
@@ -57,6 +58,11 @@ func Scan(path string) (*report.Document, error) { return ScanMode(path, ModeFul
 type Inputs struct {
 	// Provenance is the provenance manifest path (SOCAIR_PROVENANCE).
 	Provenance string
+	// Feed, when set, is called with the verified feed before the scan
+	// reads the artifact, when SOCAIR_FEED names one. An error stops the
+	// scan, as a feed that does not verify does: a store's rollback check
+	// (airlock.Store.CheckFeed) is passed here. It never changes a row.
+	Feed func(*feed.Feed) error
 }
 
 func (in Inputs) provenancePath() string {
@@ -80,6 +86,11 @@ func ScanWith(path string, mode Mode, in Inputs) (*report.Document, error) {
 	refs, err := loadReferences(start)
 	if err != nil {
 		return nil, err
+	}
+	if refs.feed != nil && in.Feed != nil {
+		if err := in.Feed(refs.feed); err != nil {
+			return nil, err
+		}
 	}
 	// Tier 2 is opt-in, and only an attestation runs it. A configuration
 	// error stops the scan here, before any snapshot is copied.

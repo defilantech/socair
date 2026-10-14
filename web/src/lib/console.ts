@@ -1,4 +1,4 @@
-import type { AirlockEvent, Model, Stage } from './api';
+import type { AirlockEvent, FeedStatus, Model, Stage } from './api';
 
 export type Tone = 'ok' | 'amber' | 'red' | 'neutral';
 
@@ -159,13 +159,25 @@ export function nextPurpose(action: Model['next']['action']): string {
 }
 
 // eventTone maps a log outcome to a tone: a refusal or a recheck's flag is
-// red, a conditional promotion or an incomplete recheck amber, anything else
-// neutral. Never green: a log line records what happened, it does not
-// approve, and an unchanged recheck is not a pass.
+// red, a conditional promotion, an incomplete recheck, or a feed an operator
+// accepted on purpose amber, anything else neutral. Never green: a log line
+// records what happened, it does not approve, and an unchanged recheck is not
+// a pass.
 export function eventTone(e: AirlockEvent): Tone {
 	if (e.outcome === 'refused' || e.action === 'refuse' || e.outcome === 'flagged') return 'red';
-	if (e.outcome === 'conditional' || e.outcome === 'incomplete') return 'amber';
+	if (e.outcome === 'conditional' || e.outcome === 'incomplete' || e.outcome === 'accepted') return 'amber';
 	return 'neutral';
+}
+
+// feedLine is the console's line about the configured feed, in the engine's
+// own words: why scans would stop (red), or when the feed expires (amber).
+// Nothing when no feed is configured or the engine has nothing to say: a
+// missing line is not a statement that the feed is fine.
+export function feedLine(s: FeedStatus | null): { tone: Tone; text: string } | null {
+	if (!s || !s.configured) return null;
+	if (s.error) return { tone: 'red', text: s.error };
+	if (s.expires_soon && s.notice) return { tone: 'amber', text: s.notice };
+	return null;
 }
 
 // recheckLine is the words for a clean entry's last recheck, from the

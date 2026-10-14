@@ -20,7 +20,10 @@ socair serve [--addr 127.0.0.1:8080] [--web <dir>] [--store <path>] [--scan-root
   fallback, so the box runs one process.
 - `--store` enables the airlock endpoints and the store half of the health
   check. Without it those endpoints answer a clean 400. The store's
-  `incoming/` is also a scan root.
+  `incoming/` is also a scan root. With a store, every scan the API runs
+  (`POST /api/scan` and the console's scan) refuses a feed issued before the
+  newest one the store has used, and records a newer one
+  ([feed.md](feed.md), "Rollback protection").
 - `--scan-root` names a directory under which the scan, ingest, and promote
   routes may read a path the request names. It repeats. Without it,
   `SOCAIR_SCAN_ROOTS` is read: a list in the form of `PATH` (`:` between
@@ -154,6 +157,32 @@ leading `v`, such as `0.1.0-rc.3`.
 `socair health [--addr <host:port>]` asks a running API this question and exits
 0 only for a `200`. It is the container image's probe: the image has no shell,
 and the API binds the pod's loopback, which a kubelet's HTTP probe cannot reach.
+
+### `GET /api/feed`
+
+What a scan started now would make of the configured feed (`SOCAIR_FEED`). It
+writes nothing, and it is always `200`: the feed's state is the answer, not a
+failure of the request.
+
+```json
+{"configured":true,
+ "feed":{"issuer":"Example Intel","version":"2026.10.1","issued":"2026-10-01T00:00:00Z",
+         "expires":"2026-12-30T00:00:00Z","key_id":"…","statement_sha256":"…"},
+ "expires_soon":true,
+ "notice":"feed Example Intel 2026.10.1 expires at 2026-12-30T00:00:00Z, in 12 days: after that, every scan and recheck that uses it stops. Import a newer feed before then",
+ "store_record":{"issuer":"Example Intel","version":"2026.10.1","…":"…"}}
+```
+
+- `configured` is false, and nothing else is set, when no feed is configured.
+- `expires_soon` and `notice` are set in the last third of the feed's validity
+  ([feed.md](feed.md), "Before a feed expires").
+- `store_record` is the newest feed the configured store has used.
+- `error` says why a scan would stop: the feed does not verify or has expired,
+  or the store would refuse it as older than its record. `feed` is absent when
+  the feed does not verify.
+
+The console shows `error` or `notice` as a line under its header, word for
+word.
 
 ### `POST /api/scan`
 
@@ -303,8 +332,8 @@ example a broken log chain), `500` on an internal failure.
 ## Access and actor
 
 Every route is registered as read or write access (`internal/api/routes.go`).
-The scan, render, version, health, log, and export routes and every console
-`GET` are read; ingest, pull, promote, and the console's scan and attestation
+The scan, render, version, health, feed, log, and export routes and every
+console `GET` are read; ingest, pull, promote, and the console's scan and attestation
 upload are write. Today the local operator may do both. The classification is
 where a login or roles would decide per route.
 
