@@ -810,6 +810,49 @@ The `pytorch_model.bin` checkpoints in distilbert and whisper-tiny PASS the
 grammar as before, and `rust_model.ot` stays "Archive contents were not
 scanned" in File inventory.
 
+## Torch checkpoints the grammar read in full (2026-10-12, check set tier1/0.9)
+
+File inventory named every torch zip in a model directory as an unscanned
+archive, so a `pytorch_model.bin` the Pickle opcode scan PASSed with the
+grammar's proof still left File inventory NOT_TESTED, and the two rows
+disagreed about the same file (#183). A directory scan now counts such a zip
+as read when every entry in it is accounted for: `data.pkl`, a storage record
+of exactly its storage's size, or a metadata record torch.save writes, holding
+what torch writes there. The metadata set and contents come from PyTorch's
+source at commit `1de3a31d`: `_save` in
+[torch/serialization.py](https://github.com/pytorch/pytorch/blob/1de3a31daabfaa309e75f54957ddcf9336bc48ac/torch/serialization.py)
+writes `.format_version` (`"1"`), `.storage_alignment` (a decimal), and
+`byteorder` (`sys.byteorder`, `little` or `big`);
+`PyTorchStreamWriter::writeEndOfFile` in
+[caffe2/serialize/inline_container.cc](https://github.com/pytorch/pytorch/blob/1de3a31daabfaa309e75f54957ddcf9336bc48ac/caffe2/serialize/inline_container.cc)
+writes `version` or `.data/version` (a decimal and a newline), `byteorder`
+when absent, and `.data/serialization_id` (40 decimal digits), adds every
+record with no comment, and `mz_zip_writer_finalize_archive` in its bundled
+[miniz](https://github.com/pytorch/pytorch/blob/1de3a31daabfaa309e75f54957ddcf9336bc48ac/third_party/miniz-3.0.2/miniz.c)
+writes an end-of-central-directory record with no archive comment. `_is_torchscript_zip` marks TorchScript by
+`constants.pkl`; those archives stay unscanned, as before.
+
+**Verdicts on real repositories.** Each was scanned as a directory before
+(tier1/0.8) and after:
+
+| Repository | Torch zip | Entries | File inventory | Pickle opcode scan | Promotion |
+|---|---|---|---|---|---|
+| hf-internal-testing/tiny-random-MistralForCausalLM `75171769` | `pytorch_model.bin` (sha256 `5b088c55...`) | `data.pkl`, 21 storage records, `version` | NOT_TESTED to PASS | PASS, unchanged | withheld, unchanged (structure: `onnx/model.onnx` not parsed; no provenance, denylist, or chat template) |
+| hexgrad/Kokoro-82M `f3ff3571`, `voices/af_heart.pt` alone | `af_heart.pt` | `data.pkl`, 1 storage record, `byteorder`, `version`, `.data/serialization_id` | NOT_TESTED to PASS | PASS, unchanged | withheld, unchanged (structure: pickle-only weights) |
+
+No other row changed. A directory whose weights are only pickle checkpoints
+is still withheld by Format and structure, which is NOT_TESTED for them ("their
+structure is read by the pickle row"); this change removes the inventory gap,
+not that one.
+
+What the measurement does not cover: no real file here was written by a
+PyTorch new enough to add `.format_version` and `.storage_alignment`; their
+contents are checked as the source above writes them, and the unit tests
+build them. A zip holding anything else stays NOT_TESTED, as every torch zip
+did before, so a rule that is too narrow costs a gap, not a false PASS. The
+zip's own framing (local headers, the alignment padding torch writes in their
+extra fields, the central directory) is not accounted for.
+
 ## Follow-ups from the first run, since done
 
 1. The GGML file-type mapping follows llama.cpp's `llama_ftype` enum, and the

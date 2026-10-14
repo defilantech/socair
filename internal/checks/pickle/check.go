@@ -136,6 +136,10 @@ type scan struct {
 	fails, leads []checks.Finding
 	gaps         []string
 	proof        proof
+
+	// torch is what the grammar read of a torch.save zip, entry by entry,
+	// when it read one.
+	torch *torchCover
 }
 
 // proof is what conforming streams and containers showed.
@@ -187,6 +191,25 @@ func Inspect(path string) checks.Result { return InspectWith(path, Options{}) }
 
 // InspectWith is Inspect with reference data.
 func InspectWith(path string, opts Options) checks.Result {
+	r, _ := inspect(path, opts)
+	return r
+}
+
+// InspectArchive is InspectWith, and, for a torch.save zip it PASSed, what
+// it read of the archive entry by entry, so File inventory can count the
+// archive as read instead of unscanned. Any other file, and any other
+// status, returns nil: only a PASS shows that data.pkl conformed and every
+// storage record matched. The returned ArchiveRead names every entry (and
+// comment) outside torch.save's layout, which keeps the archive unscanned.
+func InspectArchive(path string, opts Options) (checks.Result, *checks.ArchiveRead) {
+	r, s := inspect(path, opts)
+	if r.Status != checks.Pass || s == nil || s.torch == nil {
+		return r, nil
+	}
+	return r, s.torch.read()
+}
+
+func inspect(path string, opts Options) (checks.Result, *scan) {
 	r := checks.Result{
 		Name:     "Pickle opcode scan",
 		LooksFor: "Imports in pickle-based model files that reach code execution, and pickles that build more than tensors and plain containers",
@@ -195,26 +218,26 @@ func InspectWith(path string, opts Options) checks.Result {
 	if safetensors.IsSafetensors(path) {
 		r.Status = checks.NotTested
 		r.Notes = "artifact is safetensors, not a pickle format; no opcode stream to scan"
-		return r
+		return r, nil
 	}
 	if m, err := gguf.ReadHeader(path); err == nil && m.Format == "GGUF" {
 		r.Status = checks.NotTested
 		r.Notes = "artifact is GGUF, not a pickle format; no opcode stream to scan"
-		return r
+		return r, nil
 	}
 
 	f, err := os.Open(path)
 	if err != nil {
 		r.Status = checks.NotTested
 		r.Notes = "could not open artifact: " + err.Error()
-		return r
+		return r, nil
 	}
 	defer f.Close()
 	fi, err := f.Stat()
 	if err != nil {
 		r.Status = checks.NotTested
 		r.Notes = "could not stat artifact: " + err.Error()
-		return r
+		return r, nil
 	}
 	head := make([]byte, 512)
 	n, _ := io.ReadFull(f, head)
@@ -222,7 +245,7 @@ func InspectWith(path string, opts Options) checks.Result {
 	if _, err := f.Seek(0, io.SeekStart); err != nil {
 		r.Status = checks.NotTested
 		r.Notes = "could not seek artifact: " + err.Error()
-		return r
+		return r, nil
 	}
 
 	s := scan{opts: opts}
@@ -244,7 +267,7 @@ func InspectWith(path string, opts Options) checks.Result {
 		if errors.Is(w.err, errNotPickle) && !truncated {
 			r.Status = checks.NotTested
 			r.Notes = "artifact is not a pickle opcode stream or a zip/tar checkpoint; nothing to scan"
-			return r
+			return r, nil
 		}
 		s.addWalk("stream", w)
 		if truncated {
@@ -256,7 +279,7 @@ func InspectWith(path string, opts Options) checks.Result {
 			s.rawStream(f, fi.Size())
 		}
 	}
-	return judge(r, kind, &s)
+	return judge(r, kind, &s), &s
 }
 
 // walkCapped walks at most maxScanBytes and reports whether bytes remained.
