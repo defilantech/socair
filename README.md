@@ -153,8 +153,14 @@ Sign and verify:
 ./socair key gen --out operator --issuer "Acme ML Platform"
 ./socair sign --key operator.key --report report.json   # report.dsse.json
 ./socair verify report.dsse.json --trusted operator.pub --artifact model.gguf
+./socair render --attestation report.dsse.json --trusted operator.pub --artifact model.gguf --pdf report.pdf   # the signed attestation, to file
 ./socair sign --key operator.key --bom --attestation report.dsse.json   # report.cdx.dsse.json, a signed CycloneDX BOM
 ```
+
+`socair render <path>` scans again and writes an unsigned draft, marked
+UNSIGNED. `--attestation` verifies the envelope as `verify` does and renders
+what was signed; `--report report.json` renders a saved report without
+scanning again, still unsigned.
 
 For a model packaged as an OCI artifact, bind the attestation to it in the
 registry and check it there ([docs/oci.md](docs/oci.md)):
