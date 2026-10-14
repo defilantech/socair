@@ -142,6 +142,10 @@ Usage:
                            re-issue it as authorized with conditions
   socair verify <attestation> --trusted <key.pub|dir> [--artifact <path>]
                            verify an attestation, and that a file is its artifact
+  socair sign --key <key> --bom --attestation <r.dsse.json> [--cyclonedx <bom.json>]
+                           sign the attestation's CycloneDX BOM (an inventory, not a promotion ticket)
+  socair verify --bom <bom.dsse.json> --trusted <key.pub|dir> [--artifact <path>] [--cyclonedx <out.json>]
+                           verify a signed BOM, and write the BOM it carries
   socair airlock init <store>   create the store, staging, and activity log
   socair airlock pull      pull a file, or a whole repo at a pinned commit, into staging
   socair airlock ingest    resolve a local file or directory, or an offline HF cache entry

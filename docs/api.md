@@ -171,8 +171,9 @@ report.
 
 Request `{"report": { ...document... }, "format": "html" | "pdf" | "sarif" | "cyclonedx"}`.
 `cyclonedx` returns a CycloneDX 1.6 ML-BOM derived from the document
-(`application/vnd.cyclonedx+json; version=1.6`); a header-only report, which
-names no exact bytes, is a 422.
+(`application/vnd.cyclonedx+json; version=1.6`, described in
+[cyclonedx.md](cyclonedx.md)); a header-only report, which names no exact
+bytes, is a 422. The API does not sign a BOM; `socair sign --bom` does.
 The default format is `html`.
 
 Returns the bytes with the matching `Content-Type`. An unfilable document is
