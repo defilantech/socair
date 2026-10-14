@@ -13,6 +13,9 @@ import (
 // socair airlock convert <checkpoint> --attestation <a.dsse.json> --key <op.key> [--store <p>].
 func airlockConvert(args []string) error {
 	fs := parseFlags(args)
+	if err := fs.allow("attestation", "key", "store"); err != nil {
+		return err
+	}
 	if len(fs.pos) != 1 || fs.val("attestation") == "" || fs.val("key") == "" || fs.bare["attestation"] || fs.bare["key"] {
 		return errors.New("usage: socair airlock convert <checkpoint> --attestation <attestation.dsse.json> --key <operator.key> [--store <path>]")
 	}

@@ -21,6 +21,9 @@ import (
 // incoming/.
 func serveCmd(args []string) error {
 	fs := parseFlags(args)
+	if err := fs.allow("addr", "scan-root", "store", "web"); err != nil {
+		return err
+	}
 	opts := api.Options{Version: engine.Version}
 
 	if fs.has("web") {
