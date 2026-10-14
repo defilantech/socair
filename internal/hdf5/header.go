@@ -87,8 +87,7 @@ func (d *reader) header1(addr int64) ([]message, error) {
 	count := int(binary.LittleEndian.Uint16(p[2:]))
 	size := int64(binary.LittleEndian.Uint32(p[8:]))
 	var msgs []message
-	type block struct{ at, n int64 }
-	queue := []block{{addr + 16, size}}
+	queue := []span{{addr + 16, size}}
 	d.meta(addr, addr+16+size, "object header")
 	total := size
 	first := 0 // messages in the first block
@@ -132,7 +131,7 @@ func (d *reader) header1(addr int64) ([]message, error) {
 				if total > maxHeaderBytes {
 					return nil, d.errf(addr, "an object header of more than %d bytes", maxHeaderBytes)
 				}
-				queue = append(queue, block{next.at, next.n})
+				queue = append(queue, next)
 			}
 		}
 	}
