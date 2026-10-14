@@ -202,10 +202,6 @@ NOT_TESTED, naming it. Text past the reader's caps leaves the row NOT_TESTED.
 - An EPContext's compiled context.
 - The intake policy's formats (`SOCAIR_INTAKE_POLICY`) do not include ONNX:
   an ONNX file is a format the policy does not identify.
-- OpenVINO IR (`openvino_model.xml` and `.bin`), which sentence-transformers
-  repositories also ship: its `.bin` reaches the Pickle opcode scan by its
-  extension and is NOT_TESTED there, so a whole-repository pull is still
-  withheld on it. That is a follow-up.
 
 ## Sources
 

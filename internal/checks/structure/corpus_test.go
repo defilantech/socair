@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/defilantech/socair/internal/checks"
+	"github.com/defilantech/socair/internal/openvino"
 )
 
 // TestRealSafetensorsLayouts is the false-positive gate for layout
@@ -106,6 +107,41 @@ func TestRealKerasModels(t *testing.T) {
 				t.Errorf("%s: %s: %v: %s", p, r.Status, r.Findings, r.Notes)
 			} else {
 				t.Logf("%s: %s: %v: %s", rel, r.Status, r.Findings, r.Notes)
+			}
+			return nil
+		})
+	}
+	t.Logf("%d PASS, %d FAIL, %d LEAD, %d NOT_TESTED", tally[checks.Pass], tally[checks.Fail], tally[checks.Lead], tally[checks.NotTested])
+}
+
+// TestRealOpenVINOModels is the false-positive gate for the OpenVINO IR
+// rules: real exports must not FAIL or LEAD. It runs only when
+// SOCAIR_OPENVINO_CORPUS names directories (colon-separated), each read as a
+// scanned model directory: every .xml under it whose root is <net> is
+// checked with its .bin resolved beside it. A .bin may be a sparse file of
+// the size the hub lists, since only its size is read. Nothing is loaded or
+// run.
+//
+//	SOCAIR_OPENVINO_CORPUS=<repo>:<repo> go test ./internal/checks/structure -run RealOpenVINO -v
+func TestRealOpenVINOModels(t *testing.T) {
+	dirs := os.Getenv("SOCAIR_OPENVINO_CORPUS")
+	if dirs == "" {
+		t.Skip("set SOCAIR_OPENVINO_CORPUS to model directories holding OpenVINO IR files")
+	}
+	tally := map[checks.Status]int{}
+	for _, dir := range strings.Split(dirs, ":") {
+		_ = filepath.WalkDir(dir, func(p string, d fs.DirEntry, err error) error {
+			if err != nil || !strings.HasSuffix(p, ".xml") || !openvino.Sniff(p) {
+				return nil
+			}
+			rel, _ := filepath.Rel(dir, p)
+			r := ValidateOpenVINO(dir, filepath.ToSlash(rel))
+			tally[r.Status]++
+			switch r.Status {
+			case checks.Fail, checks.Lead:
+				t.Errorf("%s: %s: %v: %s", p, r.Status, r.Findings, r.Notes)
+			default:
+				t.Logf("%s/%s: %s: %s", filepath.Base(dir), rel, r.Status, r.Notes)
 			}
 			return nil
 		})

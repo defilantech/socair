@@ -27,6 +27,7 @@ import (
 	"github.com/defilantech/socair/internal/gguf"
 	"github.com/defilantech/socair/internal/keras"
 	"github.com/defilantech/socair/internal/onnx"
+	"github.com/defilantech/socair/internal/openvino"
 	"github.com/defilantech/socair/internal/safetensors"
 )
 
@@ -183,12 +184,25 @@ func Inspect(path string, opts Options) checks.Result {
 		if m.H5Unread != "" {
 			unscanned = append(unscanned, "The weights file's attributes were not read ("+m.H5Unread+")")
 		}
+	case openvino.Sniff(path):
+		m, err := openvino.Read(path)
+		if err != nil {
+			r.Status = checks.NotTested
+			r.Notes = "could not read the OpenVINO IR's text: " + reason(err)
+			return r
+		}
+		values = m.Text
+		invNote = fmt.Sprintf("artifact: OpenVINO IR XML, %d distinct text values (%d bytes): every attribute value, element and attribute name, "+
+			"text, and comment, rt_info included (its .bin holds tensor data, which is not scanned)", len(m.Text), m.TextBytes)
+		if m.TextTruncated {
+			unscanned = append(unscanned, "Some text was past the reader's caps, so it was not scanned")
+		}
 	default:
 		inv, err := gguf.Inventory(path)
 		if err != nil {
 			r.Status = checks.NotTested
 			if errors.Is(err, gguf.ErrNotGGUF) {
-				r.Notes = "not a GGUF, safetensors, ONNX, HDF5, or .keras artifact; cannot inventory"
+				r.Notes = "not a GGUF, safetensors, ONNX, OpenVINO IR, HDF5, or .keras artifact; cannot inventory"
 			} else {
 				r.Notes = "could not read artifact metadata: " + err.Error()
 			}

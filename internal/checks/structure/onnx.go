@@ -60,8 +60,8 @@ type modelDir struct {
 	rel  string // the model's slash path inside it
 }
 
-// onnxGrade gathers what the rules found in one model.
-type onnxGrade struct {
+// grade gathers what the rules found in one model.
+type grade struct {
 	findings []checks.Finding
 	fails    int
 	leads    int
@@ -77,10 +77,10 @@ type gapGroup struct {
 	n      int
 }
 
-func (g *onnxGrade) fail(pattern, span, detail string) { g.add(pattern, span, detail); g.fails++ }
-func (g *onnxGrade) lead(pattern, span, detail string) { g.add(pattern, span, detail); g.leads++ }
+func (g *grade) fail(pattern, span, detail string) { g.add(pattern, span, detail); g.fails++ }
+func (g *grade) lead(pattern, span, detail string) { g.add(pattern, span, detail); g.leads++ }
 
-func (g *onnxGrade) add(pattern, span, detail string) {
+func (g *grade) add(pattern, span, detail string) {
 	if g.perPat[pattern] >= maxFindingsPerPattern {
 		g.dropped++
 		return
@@ -91,7 +91,7 @@ func (g *onnxGrade) add(pattern, span, detail string) {
 
 // gap records a reason the model could not be fully checked; where names
 // what it applies to, grouped so many tensors with one reason make one note.
-func (g *onnxGrade) gap(reason, where string) {
+func (g *grade) gap(reason, where string) {
 	gg, ok := g.gapCount[reason]
 	if !ok {
 		gg = &gapGroup{reason: reason}
@@ -110,7 +110,7 @@ func (g *onnxGrade) gap(reason, where string) {
 	gg.where = append(gg.where, where)
 }
 
-func (g *onnxGrade) gapNotes() []string {
+func (g *grade) gapNotes() []string {
 	out := make([]string, 0, len(g.gapOrder))
 	for _, reason := range g.gapOrder {
 		gg := g.gapCount[reason]
@@ -140,7 +140,7 @@ func validateONNX(r checks.Result, p string, dir *modelDir) checks.Result {
 		r.Notes = "could not read the ONNX model, so its structure was not checked: " + reasonOf(err)
 		return r
 	}
-	g := &onnxGrade{perPat: map[string]int{}, gapCount: map[string]*gapGroup{}}
+	g := &grade{perPat: map[string]int{}, gapCount: map[string]*gapGroup{}}
 	if !m.HasIRVersion {
 		g.gap("the model has no ir_version, which onnx.proto requires", "")
 	}
@@ -320,7 +320,7 @@ func dimsString(dims []int64) string {
 
 // tensors checks every tensor's data against its type and shape, and every
 // external data reference.
-func (g *onnxGrade) tensors(m *onnx.Model, dir *modelDir) tensorStats {
+func (g *grade) tensors(m *onnx.Model, dir *modelDir) tensorStats {
 	st := tensorStats{files: map[string]bool{}, outside: map[string]int{}}
 	var root *os.Root
 	if dir != nil {
@@ -387,7 +387,7 @@ func (g *onnxGrade) tensors(m *onnx.Model, dir *modelDir) tensorStats {
 }
 
 // inlineData checks a tensor whose data is in the model file.
-func (g *onnxGrade) inlineData(t *onnx.Tensor, dt onnx.DType, n int64) {
+func (g *grade) inlineData(t *onnx.Tensor, dt onnx.DType, n int64) {
 	var present []onnx.Field
 	if t.HasRaw {
 		present = append(present, onnx.FieldRaw)
@@ -465,7 +465,7 @@ type extInfo struct {
 // externalEntries reads a tensor's external_data, checking every location
 // whatever data_location says: a location that leaves the model's directory
 // is evidence of an attempt to read outside it.
-func (g *onnxGrade) externalEntries(t *onnx.Tensor) extInfo {
+func (g *grade) externalEntries(t *onnx.Tensor) extInfo {
 	var e extInfo
 	if len(t.External) == 0 {
 		return e
@@ -559,7 +559,7 @@ func classifyLocation(loc string) (locClass, string, string) {
 }
 
 // location grades one location value.
-func (g *onnxGrade) location(where, loc string) {
+func (g *grade) location(where, loc string) {
 	c, why, _ := classifyLocation(loc)
 	q := strconv.Quote(clip(loc, 120))
 	switch c {
@@ -581,7 +581,7 @@ func (g *onnxGrade) location(where, loc string) {
 // there and holds the tensor's bytes. It returns the file, as a path inside
 // the directory (or as the location, in a single-file scan, with found
 // false), and whether the tensor's bytes were found in it.
-func (g *onnxGrade) externalData(t *onnx.Tensor, dt onnx.DType, n int64, e extInfo, dir *modelDir, root *os.Root) (string, bool) {
+func (g *grade) externalData(t *onnx.Tensor, dt onnx.DType, n int64, e extInfo, dir *modelDir, root *os.Root) (string, bool) {
 	if t.HasRaw || t.Floats+t.Int32s+t.Strings+t.Int64s+t.Doubles+t.Uint64s > 0 {
 		g.fail("tensor-data", t.Where, "stored externally and also carries data in the model file, which onnxruntime does not read and onnx's checker refuses")
 	}
@@ -666,7 +666,7 @@ func parseDecimal(s string) (int64, bool) {
 // duplicateInitializers finds a name given to two initializers of one graph.
 // onnxruntime keeps the last and onnx's checker refuses the model, so which
 // tensor a loader uses depends on the loader.
-func (g *onnxGrade) duplicateInitializers(m *onnx.Model) {
+func (g *grade) duplicateInitializers(m *onnx.Model) {
 	type key struct {
 		graph int
 		name  string
@@ -693,7 +693,7 @@ func (g *onnxGrade) duplicateInitializers(m *onnx.Model) {
 // epContexts names each EPContext node: compiled code for an accelerator,
 // embedded or in a file, that this scan does not read. A path is graded as
 // a location is.
-func (g *onnxGrade) epContexts(m *onnx.Model, dir *modelDir) {
+func (g *grade) epContexts(m *onnx.Model, dir *modelDir) {
 	for _, ep := range m.EPContexts {
 		where := ep.Where
 		switch {
@@ -713,7 +713,7 @@ func (g *onnxGrade) epContexts(m *onnx.Model, dir *modelDir) {
 // kernels are built into onnxruntime. Any other domain, unless it is a
 // model-local function, needs a custom-operator library the deployment
 // registers: native code outside the model, so a gap.
-func (g *onnxGrade) operators(m *onnx.Model) string {
+func (g *grade) operators(m *onnx.Model) string {
 	local := map[onnx.Function]bool{}
 	for _, f := range m.Functions {
 		local[f] = true

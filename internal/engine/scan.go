@@ -27,6 +27,7 @@ import (
 	"github.com/defilantech/socair/internal/gguf"
 	"github.com/defilantech/socair/internal/keras"
 	"github.com/defilantech/socair/internal/onnx"
+	"github.com/defilantech/socair/internal/openvino"
 	"github.com/defilantech/socair/internal/report"
 	"github.com/defilantech/socair/internal/safetensors"
 	"github.com/defilantech/socair/internal/tensors"
@@ -175,6 +176,16 @@ func ScanWith(path string, mode Mode, in Inputs) (*report.Document, error) {
 		o.Format = kerasFormat(path, kind)
 		id = o
 		userBlock = off > 0
+	} else if !isGGUF && openvino.Sniff(path) {
+		// An OpenVINO IR's XML, recognised by its bytes (a root element
+		// net). Its weights are a separate .bin, which a single-file scan
+		// does not hold; the structure and inventory rows read the XML.
+		o, err := readOpaque(path)
+		if err != nil {
+			return nil, err
+		}
+		o.Format = "OpenVINO IR"
+		id = o
 	} else if !isGGUF {
 		// Not a container this engine parses: pickle checkpoints and anything
 		// unrecognized. The scan still reports, so the pickle check runs on the
@@ -307,7 +318,7 @@ func ScanWith(path string, mode Mode, in Inputs) (*report.Document, error) {
 
 // parsedFormats are the formats the structure and inventory rows read; the
 // Pickle opcode scan does not run on them.
-var parsedFormats = map[string]bool{"GGUF": true, "safetensors": true, "ONNX": true,
+var parsedFormats = map[string]bool{"GGUF": true, "safetensors": true, "ONNX": true, "OpenVINO IR": true,
 	"Keras (HDF5)": true, "HDF5": true, "Keras": true}
 
 // kerasFormat names a file keras.Sniff recognised: a .keras archive, an HDF5
@@ -614,7 +625,7 @@ func publisherSigning(status string) string {
 func unparsedFormats(id report.Identity) []string {
 	var out []string
 	if id.Format == "unknown" {
-		out = append(out, "artifact "+id.FileName+": not GGUF, safetensors, ONNX, HDF5, Keras, or pickle, so no format check ran")
+		out = append(out, "artifact "+id.FileName+": not GGUF, safetensors, ONNX, OpenVINO IR, HDF5, Keras, or pickle, so no format check ran")
 	}
 	if id.Split != "" {
 		out = append(out, "the other shards of this split model (this file is "+id.Split+"); each shard needs its own attestation")

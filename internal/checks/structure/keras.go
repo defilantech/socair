@@ -52,8 +52,8 @@ func IsKerasObject(v any) bool {
 	return cn && mod
 }
 
-func newGrade() *onnxGrade {
-	return &onnxGrade{perPat: map[string]int{}, gapCount: map[string]*gapGroup{}}
+func newGrade() *grade {
+	return &grade{perPat: map[string]int{}, gapCount: map[string]*gapGroup{}}
 }
 
 func validateKeras(r checks.Result, p string) (checks.Result, *checks.ArchiveRead) {
@@ -114,7 +114,7 @@ const kerasLimits = "Weight values are not read. A class Keras resolves itself, 
 
 // result sets r from the grade: FAIL on a violation, LEAD on a lead, else
 // NOT_TESTED on a gap, else PASS with what held.
-func (g *onnxGrade) result(r checks.Result, summary, held string) checks.Result {
+func (g *grade) result(r checks.Result, summary, held string) checks.Result {
 	r.Findings = g.findings
 	gaps := g.gapNotes()
 	switch {
@@ -143,7 +143,7 @@ func (g *onnxGrade) result(r checks.Result, summary, held string) checks.Result 
 }
 
 // archive grades a .keras archive's members.
-func (g *onnxGrade) archive(m *keras.Model) string {
+func (g *grade) archive(m *keras.Model) string {
 	for _, n := range m.Escapes {
 		g.lead("archive-path-escape", fmt.Sprintf("%q", clip(n, 120)),
 			"a member name with an absolute path, a drive, or a \"..\" component, which no Keras writer produces: Keras extracts every member of an archive of more than three, "+
@@ -173,7 +173,7 @@ func (g *onnxGrade) archive(m *keras.Model) string {
 
 // hdf5 grades the HDF5 file: what the reader did not model, and every
 // dataset's storage.
-func (g *onnxGrade) hdf5(m *keras.Model) string {
+func (g *grade) hdf5(m *keras.Model) string {
 	h := m.H5
 	if len(h.Unread) > 0 {
 		g.gap("parts of the HDF5 file this reader does not model: "+strings.Join(h.Unread, "; "), "")
@@ -240,7 +240,7 @@ func (g *onnxGrade) hdf5(m *keras.Model) string {
 
 // configs grades every config the model holds and returns a note naming
 // the KerasHub, KerasCV, and KerasNLP classes, which are named, not judged.
-func (g *onnxGrade) configs(m *keras.Model) string {
+func (g *grade) configs(m *keras.Model) string {
 	var refs []keras.Ref
 	for _, c := range m.Configs {
 		if c.Err != "" {
@@ -253,7 +253,7 @@ func (g *onnxGrade) configs(m *keras.Model) string {
 }
 
 // configRefs grades what a config names.
-func (g *onnxGrade) configRefs(refs []keras.Ref) string {
+func (g *grade) configRefs(refs []keras.Ref) string {
 	var addons []string
 	seen := map[string]bool{}
 	for _, ref := range refs {

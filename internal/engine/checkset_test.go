@@ -17,10 +17,10 @@ import (
 
 // ruleRoots are the packages whose code decides what a check detects and how
 // it grades: the checks themselves, the parsers that feed them (GGUF,
-// safetensors, ONNX, HDF5, Keras), and the tensor fingerprints the Tensor
-// reference row compares. A change here can change a verdict, so it must be
-// visible in CheckSetVersion.
-var ruleRoots = []string{"../checks", "../gguf", "../safetensors", "../onnx", "../hdf5", "../keras", "../tensors"}
+// safetensors, ONNX, OpenVINO IR, HDF5, Keras), and the tensor fingerprints
+// the Tensor reference row compares. A change here can change a verdict, so
+// it must be visible in CheckSetVersion.
+var ruleRoots = []string{"../checks", "../gguf", "../safetensors", "../onnx", "../openvino", "../hdf5", "../keras", "../tensors"}
 
 // changelog records every check-set version and the rule fingerprints it
 // covers.

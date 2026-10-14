@@ -120,8 +120,9 @@ a pickle, a safetensors-only policy FAILs it. Leave out what you will not
 serve when you pull (`socair airlock pull --exclude`), and the provenance row
 records what was left out.
 
-A file whose bytes are none of the four formats (ONNX, Keras, a TorchScript
-archive, a protocol 0 pickle, a legacy tar checkpoint) is:
+A file whose bytes are none of the four formats (ONNX, an OpenVINO IR's
+`.bin`, Keras, a TorchScript archive, a protocol 0 pickle, a legacy tar
+checkpoint) is:
 
 - a FAIL when every allowed format is `safetensors` or `gguf`: both begin
   with a fixed header, so a file without one is positively neither;

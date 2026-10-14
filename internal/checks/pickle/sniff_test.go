@@ -1,8 +1,11 @@
 package pickle
 
 import (
+	"archive/tar"
 	"bytes"
 	"encoding/binary"
+	"math"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -42,6 +45,56 @@ func TestSniffFindsAPickleByItsBytes(t *testing.T) {
 		if (got != "") != c.want {
 			t.Errorf("%s: Sniff = %q, want pickle %v", c.name, got, c.want)
 		}
+	}
+}
+
+// TestHolds: a .bin beside an OpenVINO IR is kept from this check only when
+// its bytes hold nothing the check reads. Unlike Sniff, Holds claims
+// protocols 0 and 1, tar archives, and NumPy arrays, so a pickle of any
+// protocol named as an IR's weights is still scanned. Falsification: make
+// Holds Sniff, and the protocol 0 and 1, tar, and NumPy cases fail; claim
+// every file, and raw tensor bytes are no longer let through.
+func TestHolds(t *testing.T) {
+	var tb bytes.Buffer
+	tw := tar.NewWriter(&tb)
+	if err := tw.WriteHeader(&tar.Header{Name: "pickle", Mode: 0o600, Size: int64(len(real["system_p2"])), Typeflag: tar.TypeReg}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := tw.Write(real["system_p2"]); err != nil {
+		t.Fatal(err)
+	}
+	if err := tw.Close(); err != nil {
+		t.Fatal(err)
+	}
+	floats := make([]byte, 64)
+	for i := range 16 {
+		binary.LittleEndian.PutUint32(floats[4*i:], math.Float32bits(float32(i)+0.5))
+	}
+	cases := []struct {
+		name string
+		data []byte
+		want bool
+	}{
+		{"protocol 0 gadget", real["system_p0"], true},
+		{"protocol 1 gadget", real["system_p1"], true},
+		{"protocol 0 benign", real["benign_p0"], true},
+		{"protocol 2 gadget", real["system_p2"], true},
+		{"protocol 0 gadget broken after the import", append(append([]byte{}, real["system_p0"][:14]...), 0xff, 0xff), true},
+		{"torch zip", zipOf(t, map[string][]byte{"archive/data.pkl": real["benign_p2"]}), true},
+		{"tar checkpoint", tb.Bytes(), true},
+		{"NumPy array", append([]byte("\x93NUMPY\x01\x00"), 0, 0), true},
+		{"float32 tensor data", floats, false},
+		{"bytes that walk a few opcodes and complete nothing", []byte("(K\x05N\xff\xff\xff\xff"), false},
+		{"zeros", make([]byte, 4096), false},
+		{"empty", nil, false},
+	}
+	for _, c := range cases {
+		if got := Holds(writeFixture(t, "openvino_model.bin", c.data)); got != c.want {
+			t.Errorf("%s: Holds = %v, want %v", c.name, got, c.want)
+		}
+	}
+	if !Holds(filepath.Join(t.TempDir(), "missing.bin")) {
+		t.Error("a file that cannot be read is not held, so the pickle check would not say why")
 	}
 }
 

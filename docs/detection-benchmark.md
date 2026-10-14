@@ -27,7 +27,7 @@ generated corpus, on 2026-10-04; CI does not re-run them.
   scanner here was given any of them. With Socair's defaults (none of the
   four), the remapped tokenizer and the near-miss template pass, the known-bad
   file is withheld as a gap, and the edited weights have no row that compares
-  them, so Socair detects 60 of 68. Scores with the cases that need an input left out
+  them, so Socair detects 63 of 73. Scores with the cases that need an input left out
   follow the comparison table.
 - **The attacks are defanged.** Each case keeps the attack's structure (the
   gadget, the opcodes, the archive trick, the template construct) and swaps its
@@ -40,7 +40,7 @@ generated corpus, on 2026-10-04; CI does not re-run them.
   - in-the-wild malicious uploads;
   - the 7z-wrapped nullifAI samples;
   - the ShadowPickle corpus (arXiv 2607.17503).
-- **Few benign controls.** There are 15 controls. False positives on real
+- **Few benign controls.** There are 17 controls. False positives on real
   models are measured separately, on real corpora, in
   [false-positive-baseline.md](false-positive-baseline.md).
 
@@ -49,20 +49,20 @@ generated corpus, on 2026-10-04; CI does not re-run them.
 | Check row | Cases | Detected (FAIL or LEAD) | Withheld as a gap (NOT_TESTED) | Missed (PASS) |
 |---|---|---|---|---|
 | Chat template | 11 | 10 | 0 | 1 |
-| File inventory and payloads | 9 | 8 | 0 | 1 |
-| Format and structure | 11 | 10 | 1 | 0 |
+| File inventory and payloads | 10 | 9 | 0 | 1 |
+| Format and structure | 14 | 11 | 3 | 0 |
 | Hash, provenance, lineage | 1 | 1 | 0 | 0 |
 | Known-bad hash match | 1 | 1 | 0 | 0 |
-| Pickle opcode scan | 22 | 22 | 0 | 0 |
+| Pickle opcode scan | 23 | 23 | 0 | 0 |
 | Remote code | 9 | 8 | 0 | 1 |
 | Tensor reference | 1 | 1 | 0 | 0 |
 | Tokenizer config | 3 | 3 | 0 | 0 |
-| **All** | **68** | **64** | **1** | **3** |
+| **All** | **73** | **67** | **3** | **3** |
 
-Benign controls flagged (FAIL or LEAD on any row): 0 of 15.
+Benign controls flagged (FAIL or LEAD on any row): 0 of 17.
 
 Four of these detections depend on a reference input (see "Read this first");
-with Socair's defaults it detects 60 of 68.
+with Socair's defaults it detects 63 of 73.
 
 Check set tier1/0.8 replaced the pickle row's import allowlist with a typed
 grammar (`socair-wo/1`, see [check-set.md](check-set.md)) and added three
@@ -155,6 +155,33 @@ clear. The `control-dir-checksums` control carries a `SHA256SUMS` that
 matches every file, which is noted and flags nothing. No earlier case changed
 outcome.
 
+Check set tier1/0.10 also reads OpenVINO IR models (#268,
+[openvino.md](openvino.md)) and adds five cases and two controls.
+`openvino-const-size` gives a Const a `size` of 4096 bytes where its element
+type and shape take 16 (a Format and structure FAIL), and
+`openvino-rt-info-script` puts a shell script in the IR's `rt_info` (a File
+inventory FAIL). Two are withheld as gaps by design, the benchmark's first:
+`openvino-const-past-bin` points a Const past the end of its `.bin`, which
+OpenVINO refuses and a truncated download also produces, and
+`openvino-bin-tail` appends an ELF executable to the `.bin` past every
+Const, bytes OpenVINO never reads; both are Format and structure NOT_TESTED,
+naming the range, so the model is withheld and an acceptor who accepts the gap
+accepts those bytes unread. `openvino-bin-pickle` names a protocol 0 pickle
+gadget `pytorch_model.bin` and writes `pytorch_model.xml` beside it, an IR
+whose `u8` Const covers the file: the IR reads as well formed, and the `.bin`
+still reaches the Pickle opcode scan, which FAILs it, because a loader reads
+that file by its name as a torch checkpoint. Before this change an IR `.xml`
+was an unknown format, not read in a directory, and its `.bin` reached the
+Pickle opcode scan by its extension (NOT_TESTED, "not a pickle opcode
+stream"). So the two single-file cases were NOT_TESTED on their rows, the two
+directory cases' Format and structure rows PASSed on the directory's
+safetensors (misses, withheld only by the Pickle opcode scan's gap), and the
+fifth was already a FAIL. The `control-openvino` control is
+a clean IR `.xml` on its own, and `control-dir-openvino` a directory with an
+`openvino/` export as sentence-transformers ships one: an f32 IR and an int8
+one whose Consts share a range, as OpenVINO's writer gives Consts of identical
+bytes. No earlier case changed outcome.
+
 Check set tier1/0.10 also reads Keras models (#269, [keras.md](keras.md)): an
 HDF5 `.h5` and a `.keras` archive. It adds seven cases and three controls.
 `keras-lambda-bytecode` is CVE-2024-3660's Lambda layer in a full-model
@@ -192,6 +219,8 @@ directory a weight file named unparsed. No earlier case changed outcome.
 | `control-keras-weights` | keras | benign weights-only tf_model.h5, as transformers' TensorFlow save_pretrained writes it | (control: every row) | PASS |  |
 | `control-keras-archive` | keras | benign .keras archive of Keras' own layers | (control: every row) | PASS |  |
 | `control-dir-keras` | model directory | benign directory with tf_model.h5 beside the safetensors weights, as older sentence-transformers repositories ship | (control: every row) | PASS |  |
+| `control-openvino` | openvino | benign OpenVINO IR .xml on its own: standard operations, its weights in a .bin beside it | (control: every row) | PASS |  |
+| `control-dir-openvino` | model directory | benign directory with an openvino/ export as sentence-transformers ships: an f32 IR and an int8 one whose Consts share a range | (control: every row) | PASS |  |
 | `control-dir-training-script` | model directory | benign directory with train_script.py, as sentence-transformers ships, that no loader imports | (control: every row) | PASS |  |
 | `control-dir-checksums` | model directory | benign directory with an uploader's SHA256SUMS that matches every file | (control: every row) | PASS |  |
 | `pickle-os-system-p2` | pickle | os.system via GLOBAL + REDUCE, protocol 2 | Pickle opcode scan | FAIL | critical |
@@ -242,6 +271,11 @@ directory a weight file named unparsed. No earlier case changed outcome.
 | `keras-storage-past-eof` | keras | a weights dataset that declares 4 MiB of contiguous storage in a file of a few kilobytes | Format and structure | FAIL | high |
 | `keras-external-storage` | keras | a weights dataset whose data is /etc/passwd, through HDF5 external storage | Format and structure | FAIL | high |
 | `keras-metadata-script` | keras | a shell script in a .keras archive's metadata.json | File inventory and payloads | FAIL | high |
+| `openvino-const-size` | openvino | a Const whose size is 4096 bytes where its element type and shape take 16 | Format and structure | FAIL | high |
+| `openvino-rt-info-script` | openvino | a shell script in the IR's rt_info | File inventory and payloads | FAIL | high |
+| `openvino-const-past-bin` | model directory | a Const whose range runs past the end of its .bin | Format and structure | NOT_TESTED |  |
+| `openvino-bin-tail` | model directory | an ELF executable appended to the .bin past every Const | Format and structure | NOT_TESTED |  |
+| `openvino-bin-pickle` | model directory | a protocol 0 pickle gadget as pytorch_model.bin, beside pytorch_model.xml, an IR whose u8 Const covers it | Pickle opcode scan | FAIL | critical |
 | `dir-remote-code` | model directory | auto_map pointing at repository code that runs a command | Remote code | LEAD | medium |
 | `dir-remote-code-imported` | model directory | auto_map naming a clean module that imports repository code that runs a command | Remote code | LEAD | medium |
 | `dir-remote-code-other-repo` | model directory | auto_map naming code in another repository, which the loader fetches | Remote code | LEAD | medium |
@@ -312,9 +346,10 @@ the nine added with #254 (the seven Remote code cases,
 the two added with #262 (`dir-weights-edited` and the
 `control-dir-tensor-reference` control), the six ONNX cases and controls
 added with #264, the two added with #263 (`dir-checksum-swapped` and the
-`control-dir-checksums` control), and the ten Keras cases and controls added
-with #269, so its counts cover the cases before them; the other scanners have
-not been run on those forty-one. A *suspicious* result counts as a finding, as Socair's LEAD does:
+`control-dir-checksums` control), the seven OpenVINO cases and controls
+added with #268, and the ten Keras cases and controls added with #269, so its
+counts cover the cases before them; the other scanners have not been run on
+those forty-eight. A *suspicious* result counts as a finding, as Socair's LEAD does:
 picklescan's suspicious globals and Fickling's SUSPICIOUS. "Not scanned" means
 the tool skipped the file, could not parse it, or does not support the format.
 
@@ -377,7 +412,7 @@ How to read it:
 
 With the four cases that need a Socair-only input left out
 (`gguf-tokenizer-remapped`, `gguf-template-reviewed-near-miss`,
-`dir-known-bad-hash`, and `dir-weights-edited`), Socair detects 60 of 64
+`dir-known-bad-hash`, and `dir-weights-edited`), Socair detects 63 of 69
 attacks with check set tier1/0.10 (34 of 35 in the 2026-10-04 run, which predates the near-miss case),
 and the two formats they belong to read, from that run:
 
@@ -401,6 +436,7 @@ and the two formats they belong to read, from that run:
 | `control-dir-checksums` | clean | not run | not run | not run | not run |
 | `control-dir-torchscript` | clean | not run | not run | not run | not run |
 | `control-dir-training-script` | clean | not run | not run | not run | not run |
+| `control-dir-tensor-reference` | clean | not run | not run | not run | not run |
 | `control-gguf` | clean | clean | clean | finding (not a pickle) | could not scan |
 | `control-model-directory` | clean | clean | could not scan | could not scan | could not scan |
 | `control-dir-onnx` | clean | not run | not run | not run | not run |
@@ -408,6 +444,8 @@ and the two formats they belong to read, from that run:
 | `control-keras-archive` | clean | not run | not run | not run | not run |
 | `control-keras-weights` | clean | not run | not run | not run | not run |
 | `control-onnx` | clean | not run | not run | not run | not run |
+| `control-dir-openvino` | clean | not run | not run | not run | not run |
+| `control-openvino` | clean | not run | not run | not run | not run |
 | `control-pickle` | clean | clean | finding (suspicious) | finding | clean |
 | `control-safetensors` | clean | clean | clean | could not scan | could not scan |
 | `control-torch-zip` | clean | clean | finding (suspicious) | could not scan | could not scan |
@@ -431,6 +469,7 @@ and the two formats they belong to read, from that run:
 | `dir-script-caller-named` | clean | not run | not run | not run | not run |
 | `dir-torch-zip-renamed` | finding | not run | not run | not run | not run |
 | `dir-template-ssti` | finding | finding | could not scan | could not scan | could not scan |
+| `dir-weights-edited` | finding | not run | not run | not run | not run |
 | `gguf-control-token-instruction` | finding | clean | clean | finding (not a pickle) | could not scan |
 | `gguf-hidden-tensor-bytes` | finding | finding | clean | finding (not a pickle) | could not scan |
 | `gguf-metadata-array-payload` | finding | clean | clean | finding (not a pickle) | could not scan |
@@ -477,6 +516,11 @@ and the two formats they belong to read, from that run:
 | `onnx-external-data-traversal` | finding | not run | not run | not run | not run |
 | `onnx-initializer-size` | finding | not run | not run | not run | not run |
 | `onnx-metadata-script` | finding | not run | not run | not run | not run |
+| `openvino-bin-pickle` | finding | not run | not run | not run | not run |
+| `openvino-bin-tail` | withheld (NOT_TESTED) | not run | not run | not run | not run |
+| `openvino-const-past-bin` | withheld (NOT_TESTED) | not run | not run | not run | not run |
+| `openvino-const-size` | finding | not run | not run | not run | not run |
+| `openvino-rt-info-script` | finding | not run | not run | not run | not run |
 | `safetensors-appended-bytes` | finding | could not scan | clean | could not scan | could not scan |
 | `safetensors-metadata-script` | finding | clean | clean | finding (not a pickle) | could not scan |
 

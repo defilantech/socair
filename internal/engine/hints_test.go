@@ -34,10 +34,10 @@ func TestNextSteps(t *testing.T) {
 	_, _ = w.Write([]byte("an archive no check reads"))
 	_ = zw.Close()
 	dir, err := Scan(modelRepo(t, map[string]string{
-		"flax_model.msgpack":          "not read",
-		"bundle.zip":                  zipped.String(),
-		"openvino/openvino_model.bin": "raw tensor bytes, not a pickle",
-		"tokenizer_config.json":       "{}",
+		"flax_model.msgpack":    "not read",
+		"bundle.zip":            zipped.String(),
+		"weights/extra.bin":     "raw tensor bytes, not a pickle",
+		"tokenizer_config.json": "{}",
 	}))
 	if err != nil {
 		t.Fatal(err)
