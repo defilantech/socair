@@ -47,8 +47,10 @@ func BodyHashes() int64 { return bodyHashes.Load() }
 // ErrNotSafetensors is returned when the file is not a safetensors container.
 var ErrNotSafetensors = errors.New("safetensors: not a safetensors file")
 
-// TensorInfo is one tensor's header entry.
+// TensorInfo is one tensor's header entry. Begin and End are its byte range
+// in the data section, which starts at Manifest.DataStart in the file.
 type TensorInfo struct {
+	Name  string  `json:"-"`
 	Dtype string  `json:"dtype"`
 	Shape []int64 `json:"shape"`
 	Begin int64   `json:"-"`
@@ -86,6 +88,13 @@ type Manifest struct {
 	// Metadata holds the decoded __metadata__ values for the inventory check.
 	// Not serialized: the report carries keys, not values.
 	Metadata map[string]string `json:"-"`
+
+	// Entries holds every tensor whose data_offsets are a valid range inside
+	// the data section, in name order, for readers of tensor data
+	// (internal/tensors). DataStart is the file offset of the data section.
+	// Not serialized.
+	Entries   []TensorInfo `json:"-"`
+	DataStart int64        `json:"-"`
 }
 
 type headerEntry struct {
@@ -179,6 +188,7 @@ func ReadHeader(path string) (*Manifest, error) {
 	}
 	m.Path = path
 	m.FileName = filepath.Base(path)
+	m.DataStart = 8 + n
 	return m, nil
 }
 
@@ -253,6 +263,7 @@ func parseHeader(raw []byte, fileSize int64) (*Manifest, error) {
 			continue
 		}
 		spans = append(spans, span{name, begin, end})
+		m.Entries = append(m.Entries, TensorInfo{Name: name, Dtype: e.Dtype, Shape: e.Shape, Begin: begin, End: end})
 
 		if e.Dtype == "" {
 			continue

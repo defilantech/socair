@@ -140,6 +140,9 @@ var passMeaning = map[string]string{
 	"Known-bad hash match": "This exact hash is not on the configured denylist. Any changed byte gives a new hash, so it catches only known files.",
 	"License policy": "The license the artifact states (model card, LICENSE file, or GGUF metadata) is on your allowed list. This is not legal advice: " +
 		"usage-policy obligations, such as an acceptable-use policy or a user cap, are listed in the notes and not marked met.",
+	TensorReferenceCheck: "Every tensor is the reference model's tensor of the same name, by its bytes or by exact values in another float dtype, " +
+		"and neither side has a tensor the other lacks: the weights are the weights of the model you named. " +
+		"It says nothing about whether that model is safe, and a model compared with its own manifest always matches.",
 	IntakePolicyCheck: "Every rule your intake policy sets holds: each model file's format, identified from its bytes, is allowed; " +
 		"the publisher, read from a provenance manifest bound to this hash, is on your allowed list and not on your denied list; " +
 		"and a publisher whose models need a signature has one that verified against a key or root you trust. " +
@@ -302,6 +305,10 @@ type PolicyRef struct {
 
 // IntakePolicyCheck is the name of the row an intake policy adds.
 const IntakePolicyCheck = "Intake policy"
+
+// TensorReferenceCheck is the name of the row a tensor reference
+// (SOCAIR_TENSOR_REFERENCE) adds.
+const TensorReferenceCheck = "Tensor reference"
 
 type CheckResult struct {
 	Name     string `json:"name"`
