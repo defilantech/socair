@@ -52,6 +52,14 @@ const (
 	UnknownNodeClass = "unknown-node-class"
 	JudgedFail       = "judged-fail"
 	WrongProtocol    = "wrong-protocol"
+	// The Echo modes repeat every host path the helper was handed (its own
+	// path, the snapshot, the probe pack, HOME, and TMPDIR), as a helper's
+	// diagnostics can: EchoFail on standard error before it fails,
+	// EchoRefused as an unknown field of its answer, and EchoMeasured in a
+	// FAIL's evidence and notes and in a metric's name.
+	EchoFail     = "echo-fail"
+	EchoRefused  = "echo-refused"
+	EchoMeasured = "echo-measured"
 )
 
 // Check names the stand-in measures.
@@ -205,6 +213,12 @@ func answer(mode string, in io.Reader, out, errOut io.Writer) int {
 	case NotJSON:
 		fmt.Fprintln(out, "all good, no findings")
 		return 0
+	case EchoFail:
+		fmt.Fprintln(errOut, "probe failed:", echo(req))
+		return 1
+	case EchoRefused:
+		fmt.Fprintf(out, `{%q:true}`, req.Artifact.Path)
+		return 0
 	}
 
 	start := time.Now().UTC().Format(time.RFC3339)
@@ -262,6 +276,11 @@ func measure(mode string, req tier2.Request, start string) (map[string]any, erro
 			m["outcome"], m["evidence"] = report.OutcomeFail, "the judge thought so"
 			m["scorer"] = report.ScorerLLMJudgePrefix + DatasetDigest()
 		}
+	case EchoMeasured:
+		m["check"] = CanaryCheck
+		m["score"] = 1.0
+		m["outcome"], m["evidence"], m["notes"] = report.OutcomeFail, echo(req), echo(req)
+		m["metrics"] = map[string]float64{req.Artifact.Path: 1}
 	case Env:
 		m["check"] = DifferentialCheck
 		m["score"] = 1.0
@@ -320,6 +339,12 @@ func measure(mode string, req tier2.Request, start string) (map[string]any, erro
 		"node_classes": classes,
 		"measurements": []map[string]any{m},
 	}, nil
+}
+
+// echo is what an Echo mode repeats: every host path the helper was handed.
+func echo(req tier2.Request) string {
+	return fmt.Sprintf("helper %s, artifact %s, probe pack %s, HOME %s, TMPDIR %s",
+		os.Args[0], req.Artifact.Path, req.ProbePack, os.Getenv("HOME"), os.Getenv("TMPDIR"))
 }
 
 var client = &http.Client{Timeout: 10 * time.Second}

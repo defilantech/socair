@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/defilantech/socair/internal/checks/provenance"
+	"github.com/defilantech/socair/internal/hostpath"
 	"github.com/defilantech/socair/internal/modeldir"
 	"github.com/defilantech/socair/internal/oms"
 )
@@ -41,8 +42,13 @@ func publisherTrust(now time.Time) (oms.Trust, error) {
 	return t, nil
 }
 
-// keylessTimeout bounds one call to the keyless verifier.
-const keylessTimeout = 2 * time.Minute
+// keylessTimeout bounds one call to the keyless verifier. A variable so a
+// test can shorten it.
+var keylessTimeout = 2 * time.Minute
+
+// keylessStderr bounds how much of the verifier's standard error a report
+// quotes when it fails.
+const keylessStderr = 400
 
 type keylessIdentity struct {
 	Issuer       string `json:"issuer,omitempty"`
@@ -74,41 +80,79 @@ func keylessVerifier(bin, trustedRoot, identities string) (func([]byte) oms.Keyl
 	if err != nil {
 		return nil, err
 	}
+	names := keylessNames(bin, rootAbs, os.Environ())
 	return func(bundle []byte) oms.KeylessVerdict {
-		req, err := json.Marshal(map[string]any{
-			"bundle":       base64.StdEncoding.EncodeToString(bundle),
-			"trusted_root": rootAbs,
-			"identities":   ids,
-		})
-		if err != nil {
-			return oms.KeylessVerdict{State: oms.Unverified, Detail: err.Error()}
-		}
-		ctx, cancel := context.WithTimeout(context.Background(), keylessTimeout)
-		defer cancel()
-		cmd := exec.CommandContext(ctx, bin)
-		cmd.Stdin = bytes.NewReader(req)
-		var stdout, stderr bytes.Buffer
-		cmd.Stdout, cmd.Stderr = &stdout, &stderr
-		if err := cmd.Run(); err != nil {
-			return oms.KeylessVerdict{State: oms.Unverified, Detail: "the keyless verifier did not run: " + strings.TrimSpace(err.Error()+" "+stderr.String())}
-		}
-		var v oms.KeylessVerdict
-		var out struct {
-			State  string `json:"state"`
-			Signer string `json:"signer"`
-			Detail string `json:"detail"`
-		}
-		if err := json.Unmarshal(stdout.Bytes(), &out); err != nil {
-			return oms.KeylessVerdict{State: oms.Unverified, Detail: "the keyless verifier's answer is unreadable"}
-		}
-		switch out.State {
-		case oms.Verified, oms.Invalid, oms.Unverified:
-			v = oms.KeylessVerdict{State: out.State, Signer: out.Signer, Detail: out.Detail}
-		default:
-			v = oms.KeylessVerdict{State: oms.Unverified, Detail: fmt.Sprintf("the keyless verifier answered %q", out.State)}
-		}
+		v := runKeyless(bin, rootAbs, ids, bundle, names)
+		// What the verifier says reaches the provenance row and the signing
+		// state; a path it repeats does not.
+		names.Walk(&v)
 		return v
 	}, nil
+}
+
+// keylessNames are the host paths Socair hands the keyless verifier, each with
+// the name a report gives it (#170): the verifier by its file name and its
+// directory by its own, the trust root by its file name, and each absolute
+// path in the environment it inherits by its variable ("$HOME").
+func keylessNames(bin, trustedRoot string, environ []string) *hostpath.Names {
+	n := &hostpath.Names{}
+	n.Base(bin)
+	n.Base(trustedRoot)
+	n.Base(filepath.Dir(bin))
+	n.Env(environ)
+	return n
+}
+
+// runKeyless runs the verifier on one bundle. A failure is unverified, with a
+// reason that names no host path of its own: a verifier that could not be
+// started is named by its file name with the cause, and the end of its
+// standard error is quoted with names' paths replaced.
+func runKeyless(bin, trustedRoot string, ids []keylessIdentity, bundle []byte, names *hostpath.Names) oms.KeylessVerdict {
+	req, err := json.Marshal(map[string]any{
+		"bundle":       base64.StdEncoding.EncodeToString(bundle),
+		"trusted_root": trustedRoot,
+		"identities":   ids,
+	})
+	if err != nil {
+		return oms.KeylessVerdict{State: oms.Unverified, Detail: err.Error()}
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), keylessTimeout)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, bin)
+	cmd.Stdin = bytes.NewReader(req)
+	var stdout bytes.Buffer
+	var stderr hostpath.Stderr
+	cmd.Stdout, cmd.Stderr = &stdout, &stderr
+	cmd.WaitDelay = 2 * time.Second
+	if err := cmd.Run(); err != nil {
+		var detail string
+		switch {
+		case cmd.Process == nil:
+			detail = "the keyless verifier " + filepath.Base(bin) + " could not be started: " + hostpath.Reason(err)
+		case errors.Is(ctx.Err(), context.DeadlineExceeded):
+			detail = "the keyless verifier did not answer within " + keylessTimeout.String()
+		default:
+			detail = "the keyless verifier failed: " + err.Error()
+			if q := stderr.Quote(names, keylessStderr); q != "" {
+				detail += ": " + q
+			}
+		}
+		return oms.KeylessVerdict{State: oms.Unverified, Detail: detail}
+	}
+	var out struct {
+		State  string `json:"state"`
+		Signer string `json:"signer"`
+		Detail string `json:"detail"`
+	}
+	if err := json.Unmarshal(stdout.Bytes(), &out); err != nil {
+		return oms.KeylessVerdict{State: oms.Unverified, Detail: "the keyless verifier's answer is unreadable"}
+	}
+	switch out.State {
+	case oms.Verified, oms.Invalid, oms.Unverified:
+		return oms.KeylessVerdict{State: out.State, Signer: out.Signer, Detail: out.Detail}
+	default:
+		return oms.KeylessVerdict{State: oms.Unverified, Detail: fmt.Sprintf("the keyless verifier answered %q", out.State)}
+	}
 }
 
 func readIdentities(p string) ([]keylessIdentity, error) {

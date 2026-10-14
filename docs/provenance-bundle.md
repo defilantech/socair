@@ -19,6 +19,19 @@ feed is named by its issuer, version, dates, and signing key.
 a bound provenance manifest records, such as `airlock pull`), not where it
 was; the subject digest identifies the artifact.
 
+The same holds for the paths Socair hands out. Every check reads the scan's
+snapshot, so an error a check quotes (a file it could not read, say) names the
+snapshot; the finished report names the artifact there instead: "read
+model.gguf: input/output error" for a single file, and for a model directory
+the directory's name, with a path inside it read relative to that. The
+two external helpers, the keyless verifier below and the Tier 2 probe helper
+([tier2.md](tier2.md#the-probe-helper-protocol)), are handed paths too, and
+what they write is held to the same rule: each path Socair handed one is
+replaced by its name wherever it appears in the helper's answer or failure,
+and a helper that cannot be started is named by its file name with the cause.
+Socair does not guess at other paths in a helper's free text; it replaces the
+ones it knows it handed out.
+
 ## 1. Repo mirror, `SOCAIR_REPO_MIRROR`
 
 A directory holding the model repository's file listing as delivered, for a
@@ -162,6 +175,17 @@ set. Configure it with `SOCAIR_SIGSTORE_VERIFIER`, `SOCAIR_SIGSTORE_TRUSTED_ROOT
 you accept, required); see `tools/socair-sigstore/README.md`. The helper
 vouches for the signature; the scanner still binds the signed manifest to the
 files.
+
+A verifier that does not answer leaves the signature present, not verified,
+and the provenance row and the signing state say why: it could not be started
+(named by its file name, with the cause), it did not answer within two
+minutes, or it failed, with its exit status and the last 400 bytes of its
+standard error. The verifier is handed the trust root's path and inherits
+Socair's environment, and its error text or its verdict's detail can repeat
+them. The trust root is named by its file name, the verifier and its
+directory by their names, and any environment variable whose value is one
+absolute path by the variable (`$HOME`, `$SOCAIR_SIGSTORE_IDENTITIES`),
+wherever they stand in what the verifier wrote.
 
 A verified signature proves the files are the ones the key holder signed. It
 is a statement of origin and integrity, never of safety: the other rows still

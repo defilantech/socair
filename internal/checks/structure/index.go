@@ -12,6 +12,7 @@ import (
 	"strings"
 
 	"github.com/defilantech/socair/internal/checks"
+	"github.com/defilantech/socair/internal/hostpath"
 	"github.com/defilantech/socair/internal/safetensors"
 )
 
@@ -35,7 +36,7 @@ func ValidateIndex(root, indexRel string) checks.Result {
 	p := filepath.Join(root, filepath.FromSlash(indexRel))
 	fi, err := os.Stat(p)
 	if err != nil {
-		r.Status, r.Notes = checks.NotTested, "could not read the shard index: "+err.Error()
+		r.Status, r.Notes = checks.NotTested, "could not read the shard index: "+hostpath.Reason(err)
 		return r
 	}
 	if fi.Size() > maxIndex {
@@ -44,7 +45,7 @@ func ValidateIndex(root, indexRel string) checks.Result {
 	}
 	raw, err := os.ReadFile(p)
 	if err != nil {
-		r.Status, r.Notes = checks.NotTested, "could not read the shard index: "+err.Error()
+		r.Status, r.Notes = checks.NotTested, "could not read the shard index: "+hostpath.Reason(err)
 		return r
 	}
 	var idx struct {
@@ -84,7 +85,9 @@ func ValidateIndex(root, indexRel string) checks.Result {
 			if errors.Is(err, fs.ErrNotExist) {
 				missing = append(missing, shard)
 			} else {
-				missing = append(missing, shard+" (unreadable: "+err.Error()+")")
+				// The note names the shard; the cause alone follows, not
+				// the snapshot's path the error names (#170).
+				missing = append(missing, shard+" (unreadable: "+hostpath.Reason(err)+")")
 			}
 			continue
 		}

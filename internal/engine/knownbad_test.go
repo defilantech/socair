@@ -27,10 +27,17 @@ func TestLoadKnownBadReadsTheFeedAndTheLocalList(t *testing.T) {
 	if k.Feed == nil || k.Feed.Issuer != "Example Intel" || k.Unread != "" {
 		t.Fatalf("%+v", k)
 	}
-	if got := strings.Join(k.Sources(), " | "); got != "feed Example Intel 2026.10.1 | denylist "+local {
+	// The local list is named as the Known-bad row names it, by file name and
+	// hash, never by its path on the host (#170).
+	body, err := os.ReadFile(local)
+	if err != nil {
+		t.Fatal(err)
+	}
+	named := "denylist deny.txt (sha256 " + sha(string(body)) + ")"
+	if got := strings.Join(k.Sources(), " | "); got != "feed Example Intel 2026.10.1 | "+named {
 		t.Fatalf("sources %q", got)
 	}
-	if got := k.Match(both); len(got) != 2 || got[0] != "feed label (feed Example Intel 2026.10.1)" || got[1] != "local label (denylist "+local+")" {
+	if got := k.Match(both); len(got) != 2 || got[0] != "feed label (feed Example Intel 2026.10.1)" || got[1] != "local label ("+named+")" {
 		t.Fatalf("a hash on both lists: %v", got)
 	}
 	if got := k.Match(strings.ToUpper(feedOnly)); len(got) != 1 {

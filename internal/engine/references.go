@@ -46,10 +46,10 @@ type references struct {
 	intake    *intake.Policy
 	describe  []string
 
-	// local and localPath are the local SOCAIR_DENYLIST as read, kept apart
+	// local and localName are the local SOCAIR_DENYLIST as read, kept apart
 	// from deny (which merges it with the feed's list) for KnownBad.
 	local     map[string]denylist.Entry
-	localPath string
+	localName string
 }
 
 // loadReferences reads and verifies the reference data. A feed that is
@@ -156,7 +156,7 @@ func loadReferences(now time.Time) (*references, error) {
 			// NOT_TESTED with the reason, rather than stopping the scan.
 			r.denyErr = "could not read denylist " + err.Error()
 		} else {
-			r.local, r.localPath = entries, p
+			r.local, r.localName = entries, f.String()
 			for h, e := range entries {
 				if _, ok := r.deny[h]; !ok {
 					r.deny[h] = e

@@ -271,13 +271,13 @@ func TestRecheckMatchesEveryFileOfADirectory(t *testing.T) {
 	t.Setenv("SOCAIR_DENYLIST", local)
 	rc := recheckOnly(t, s, RecheckOptions{})
 	if rc.Outcome != OutcomeFlagged || len(rc.KnownBad.Matches) != 1 || rc.KnownBad.Matches[0].File != "config.json" ||
-		!strings.Contains(rc.Reason, "file config.json") || !strings.Contains(rc.Reason, "denylist "+local) {
+		!strings.Contains(rc.Reason, "file config.json") || !strings.Contains(rc.Reason, "denylist deny.txt (sha256 ") || strings.Contains(rc.Reason, local) {
 		t.Fatalf("a listed file in a directory must flag it: %+v", rc)
 	}
 	if rc.KnownBad.Hashes != len(d.Artifact.Files)+1 {
 		t.Errorf("matched %d hashes, want the digest and %d files", rc.KnownBad.Hashes, len(d.Artifact.Files))
 	}
-	if e := lastEvent(t, s); !strings.Contains(e.Detail, "no feed") || !strings.Contains(e.Detail, "denylist "+local) {
+	if e := lastEvent(t, s); !strings.Contains(e.Detail, "no feed") || !strings.Contains(e.Detail, "denylist deny.txt (sha256 ") || strings.Contains(e.Detail, local) {
 		t.Errorf("log detail: %s", e.Detail)
 	}
 }

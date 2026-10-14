@@ -11,7 +11,8 @@ import (
 // feed's denylist, or the local SOCAIR_DENYLIST.
 type KnownBadList struct {
 	// Source names the list as a scan's Known-bad row does: "feed <issuer>
-	// <version>" or "denylist <path>".
+	// <version>" or "denylist <file name> (sha256 <hex>)", never the
+	// list's path on the host.
 	Source string
 	// Entries maps a known-bad SHA-256 (lowercase hex) to its label.
 	Entries map[string]string
@@ -54,7 +55,7 @@ func LoadKnownBad(now time.Time) (*KnownBad, error) {
 		for h, e := range r.local {
 			entries[strings.ToLower(h)] = e.Label
 		}
-		k.Lists = append(k.Lists, KnownBadList{Source: "denylist " + r.localPath, Entries: entries})
+		k.Lists = append(k.Lists, KnownBadList{Source: "denylist " + r.localName, Entries: entries})
 	}
 	return k, nil
 }

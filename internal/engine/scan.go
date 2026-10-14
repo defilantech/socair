@@ -253,7 +253,9 @@ func ScanWith(path string, mode Mode, in Inputs) (*report.Document, error) {
 		results = append(results, row)
 	}
 	measureTier2(d, t2, path)
-	return finish(d, results, unparsedFormats(id), expires), nil
+	d = finish(d, results, unparsedFormats(id), expires)
+	nameSnapshot(d, path, mode == ModeFull)
+	return d, nil
 }
 
 // singleFileLicenseNote says where a single file would state its license, for
