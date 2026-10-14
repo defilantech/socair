@@ -22,6 +22,7 @@ go run ./cmd/socair serve --web web/build --scan-root <dir>   # API + wizard on 
 go run ./cmd/socair key gen --out op                   # op.key (0600) + op.pub
 go run ./cmd/socair sign --key op.key --report r.json  # r.dsse.json
 go run ./cmd/socair verify r.dsse.json --trusted op.pub --artifact <file>
+go run ./cmd/socair airlock convert <checkpoint> --attestation r.dsse.json --key op.key   # pickle → safetensors in staging, with a derivation record
 ```
 
 Helm chart (`charts/socair`) and image (`Dockerfile`):
@@ -55,6 +56,7 @@ Opt-in tests that need real resources, skipped by default:
 - `SOCAIR_TEST_PROBE_HELPER=<path to tools/socair-probe/socair-probe>` runs the engine against the real Tier 2 probe helper (`go test ./internal/engine -run RealProbeHelper -v`).
 - `SOCAIR_TEST_COSIGN=<path to cosign>` runs cosign `verify-attestation` against an attached artifact (`go test ./internal/ociattest -run Cosign -v`).
 - `SOCAIR_TEST_REGISTRY=<host:port of a scratch registry>` pushes, attaches, and verifies against a real registry (`go test ./internal/ociattest -run RealRegistry -v`).
+- `SOCAIR_CONVERT_CORPUS=<dir of torch.save checkpoints>`, with `SOCAIR_PYTHON` naming a Python with torch, compares converted tensors with `torch.load` (`go test ./internal/convert -run RealCheckpoints -v`).
 
 Real-corpus gates, run before and after a detection change (see "False positives" below):
 
@@ -154,6 +156,7 @@ Real-corpus gates, run before and after a detection change (see "False positives
 
 - `internal/render`: HTML via `html/template` (`template.html` is embedded), PDF in pure Go via vendored `go-pdf/fpdf` so it works air-gapped, SARIF, and a CycloneDX 1.6 ML-BOM (`render/cyclonedx`, `docs/cyclonedx.md`: derived from the report alone, a field the report does not know left out; mapped to the G7 SBOM-for-AI minimum elements).
 - All are deterministic and byte-stable for a fixed input, with timestamps taken from the document and not the clock. Golden tests compare against `testdata/`.
+- SARIF (`render/sarif`, `docs/sarif.md`): each result carries a partial fingerprint, `socairFindingHash/v1`, mirrored to `primaryLocationLineHash` (the only one GitHub reads): a SHA-256 over netstrings of the key, the artifact hash, the row name, the status, and the evidence, never clock or host fields. A change to its inputs needs a new key version (`TestFingerprintKnownAnswer` pins it). A PASS is `kind: pass`. The golden is `render/sarif/testdata/report.sarif.json` (`go test ./internal/render/sarif -run TestGoldenSARIF -update`), validated against the OASIS SARIF 2.1.0 schema in testdata.
 - `socair sign --bom` signs a BOM under predicate type `https://cyclonedx.org/bom`, which `socair verify` refuses as an attestation and `socair verify --bom` checks.
 - Rows map to MITRE ATLAS and OWASP LLM entries with their editions (`report/frameworks.go`, pinned to ATLAS 2026.09 and OWASP 2025). Every ATLAS ID is checked against `report/testdata/atlas-ids.txt`, which `report/atlasgen` writes from the release's data, and `docs/control-mapping.md` says what each row is evidence for. The goldens' `maps_to` must match `report.MapsTo`.
 - `internal/demo` holds a fabricated sample report rendered with a SAMPLE mark, and it must never be presented as real.
@@ -176,6 +179,13 @@ Real-corpus gates, run before and after a detection change (see "False positives
 - The signed inventory snapshot (`socair airlock export`, `socair inventory verify`) is `internal/inventory`.
 - `socair airlock recheck` (`airlock/recheck.go`) re-examines `clean/` against what a scan would use now: every model's hashes against the feed's and the local denylist (no bytes read), and a rescan of the clean bytes when the attestation's check set is not this socair's, or with `--rescan`. A model that would now be withheld is flagged in `clean/<sha256>/recheck.json` and its stage becomes `flagged`; a flag clears only when a later recheck re-examines what it rests on.
 - `socair airlock serve-hub` (`airlock/hub.go`, `docs/hub-endpoint.md`) serves admitted entries read-only over the Hugging Face Hub API for `HF_ENDPOINT`: admission is re-derived per request (`Store.AdmittedEntry`), only attested paths are served, opened through `os.Root`, and a whole download's last byte is sent only if the file hashes to the attestation.
+
+### Conversion
+
+- `socair airlock convert` (`internal/convert`, `internal/derivation`, `internal/airlock/convert.go`, `docs/derivation.md`) rebuilds a torch.save zip whose Pickle row PASSed as safetensors from the grammar's model (`pickle.ReadStateDict`), never unpickling.
+- Gate: `Store.Assess`, no FAIL or LEAD on any row, a Pickle PASS, and a hashed copy equal to the attested subject; NOT_TESTED rows do not block. The rules are versioned as `convert.Rules`.
+- The output is read back and compared tensor by tensor, then staged in `incoming/<sha256>/` with `derivation.dsse.json` (predicate `https://socair.ai/derivation/v1`, signed by a trusted key). It is a new artifact, scanned and promoted on its own attestation; the conversion never authorizes it.
+- Test checkpoints come from `internal/checks/pickle/pickletest`.
 
 ### OCI artifacts
 
