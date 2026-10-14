@@ -1125,7 +1125,8 @@ analysis took a list literal as a constant and a tuple literal as not, so
 `content in ('a', 'b')` and `content.startswith(('a', 'b'))` were not content
 conditions at all and got no trigger probe. A tuple is now a sequence like a
 list. No template in the three corpora tests content against a tuple, so no
-verdict there changes.
+verdict there changes. The detection benchmark pins the shape as
+`gguf-template-tuple-trigger`, a miss before and a LEAD now.
 
 The two known misses are what no probe reaches while the probes carry no
 content parts. The else of a chain that names every standard type runs only
