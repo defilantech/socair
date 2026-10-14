@@ -115,6 +115,102 @@ A signature sidecar next to the artifact (`<artifact>.sigstore.json`,
 (section 3a) is named in the row as present and not verified. It does not move
 the row: without a bound manifest, the row stays NOT_TESTED.
 
+### Uploader checksum lists
+
+Some repositories ship their uploader's own list of SHA-256 hashes. This is
+not an input you supply: the scan reads the lists the artifact carries and
+compares each entry with the bytes it hashed. A list is the uploader's claim,
+so the comparison can show consistency, never safety:
+
+- **A listed file whose bytes differ** makes `Hash, provenance, lineage` a
+  LEAD (pattern `checksum-mismatch`, severity medium), unless the row is
+  already a FAIL. The evidence names the file, the list and line, the hash
+  listed, and the hash the scan computed. A list that no longer matches its
+  file is what a swapped file, or a partial re-upload, leaves behind; it is
+  not proof of either, and no acceptance clears it.
+- **A Markdown file that differs** (`.md`, in any case) is named in the notes
+  and not graded. No loader reads one, and a model card edited on the Hub
+  after the list was written is the commonest disagreement in real
+  repositories: 144 of the 338 measured on 1,652 repositories, and the only
+  one in 108 of them, which as LEADs would have withheld each for good
+  ([false-positive-baseline.md](false-positive-baseline.md#uploader-checksum-lists-2026-10-14-check-set-tier1010)).
+  Every other file is graded, documentation in other formats included.
+- **Agreement** is noted, with the files that agree, and never moves the row:
+  without a bound manifest or a verified signature the row stays NOT_TESTED.
+  Whoever can change a file can change the list beside it, so a list that
+  agrees says only that the files are the ones it lists.
+- **A listed file the scan does not hold** is noted as not compared, since a
+  selected pull (`airlock pull --include`) or a partial download leaves files
+  out; with a bound provenance manifest that records a selection, the note
+  says how many of them the selection left out. A listed file under a
+  directory the scan does not read (`.git/`, `.cache/`) is noted the same way.
+- **A rename** is noted: a listed name the scan does not hold, whose hash is
+  that of a file the scan holds under another name that no list gives.
+- **The list itself** is part of the attested bytes in a directory, but no
+  list can hold its own hash: an entry naming the list it is in is noted and
+  not compared (`sha256sum * > SHA256SUMS` writes one). The note names every
+  file no list covers, the lists included.
+- **A list or a line that does not parse is named, never guessed at**: the
+  line numbers, or why the list was not read.
+
+Which files are lists: `SHA256SUMS`, `SHA256SUMS.txt`, and
+`checksums.sha256`, in any case, and a `<file>.sha256` sidecar beside the
+file it is named for. These are the names the most-downloaded repositories
+that ship a list use (measured in
+[false-positive-baseline.md](false-positive-baseline.md#uploader-checksum-lists-2026-10-14-check-set-tier1010)).
+Other names are not read, because real repositories use them for lists of
+something else: an older
+release (`checksums-v4.5.0.sha256`, `SHA256SUMS.v3`), another repository's
+files (`SOURCE_SHA256SUMS`), a staging area, or a `.sha256` file for a file
+that is not beside it. MD5 lists (`checklist.chk`, `MD5SUMS`) and JSON files
+are not read either.
+
+Where they are read:
+
+- In a model directory scan, every list among the directory's files, at any
+  depth, from the scan's snapshot. Names resolve from the list's own
+  directory, as `sha256sum --check` resolves them when run there, and nowhere
+  else. A list none of whose names is a file beside it is named and not
+  compared: it describes another tree (a bundle, a staging area, the source
+  model) or was written from another directory, and which one is a guess. A
+  measured case: `bundles/e2b/checksums/SHA256SUMS` names `README.md`, which
+  is `bundles/e2b/README.md`; resolved from the top, it would disagree with
+  the repository's own model card.
+- In a single-file scan, the lists in the artifact's own directory, beside
+  it. They are not among the attested bytes, so each is named with the
+  SHA-256 of what was read, and only what they say of this file counts: an
+  entry for another file is counted, not compared. A header-only scan hashes
+  nothing, so it compares nothing and says so.
+
+A list is read as GNU coreutils' `sha256sum --check` reads one (coreutils
+9.12: `split_3`, `bsd_split_3`, `filename_unescape`, and `digest_check` in
+[`src/cksum.c`](https://github.com/coreutils/coreutils/blob/v9.12/src/cksum.c),
+and the [manual](https://www.gnu.org/software/coreutils/manual/html_node/cksum-output-modes.html)):
+
+- `<hash>  <name>` (text mode) and `<hash> *<name>` (binary mode); the BSD
+  reversed form `<hash> <name>`, which does not mix with the other in one
+  list; and the tagged form `SHA256 (<name>) = <hash>`, or OpenSSL's
+  `SHA256(<name>)= <hash>`, whose name runs to the last `)` on the line.
+- A hash of exactly 64 hex digits, in either case. Leading blanks are
+  skipped; every character of the name counts, blanks included.
+- A line beginning with `\` holds an escaped name, in which `\\`, `\n`, and
+  `\r` are the only escapes. A line beginning with `#` is a comment, an empty
+  line is skipped, and a trailing carriage return is dropped.
+- One difference: `sha256sum` cuts a name at a NUL byte and opens the rest;
+  Socair refuses that line and names it.
+- One addition: a `<file>.sha256` whose whole content is one 64-digit hash
+  is that file's hash, a form `sha256sum` does not read and 11 measured
+  sidecars use.
+
+A name that is absolute or holds `..` is named as outside the directory and
+not compared. Every read is bounded: 4 MiB and 50,000 lines a list, 16 MiB for
+all the lists one scan reads; a list past a bound is named, never read in
+part. `TestParserAgreesWithSHA256SUM`
+(`SOCAIR_TEST_SHA256SUM=<GNU sha256sum> go test ./internal/checks/provenance -run SHA256SUM -v`)
+holds the parser to GNU `sha256sum --check` on every parser case and 3,000
+generated lists. The false-positive measurement on real repositories is in
+[false-positive-baseline.md](false-positive-baseline.md#uploader-checksum-lists-2026-10-14-check-set-tier1010).
+
 ## 3a. Publisher signatures, `SOCAIR_PUBLISHER_KEYS` and `SOCAIR_PUBLISHER_ROOTS`
 
 When the artifact carries an OpenSSF Model Signing (OMS) signature, the scan
@@ -582,6 +678,10 @@ remove the input and the row returns to NOT_TESTED.
 - It does not verify a manifest's `signing_status`: that field is the
   operator's claim, and the row says so. Publisher signatures are verified
   only as OMS bundles (section 3a), against keys and roots you configure.
+- It does not take an uploader's checksum list as provenance. A file that
+  disagrees with one is a LEAD; agreement is noted and never moves the row,
+  since whoever can change a file can change the list beside it. Lists in
+  other hashes (MD5, SHA-1, SHA-512) are not read.
 - It does not fetch anything. The manifest, the mirror, and the list are all
   local, which is what makes the whole path air-gap safe. A `license_link` is
   listed, never followed.

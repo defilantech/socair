@@ -105,10 +105,10 @@
     },
     {
       "name": "Hash, provenance, lineage",
-      "looks_for": "Traceable origin: a manifest bound to this hash, from an immutable upstream commit",
+      "looks_for": "Traceable origin: a manifest bound to this hash, from an immutable upstream commit; files that disagree with the uploader's checksum list",
       "status": "PASS",
       "notes": "origin bound to this artifact's hash, at an immutable commit: publisher example; repo https://huggingface.co/example/orion-7b-instruct; revision main; commit 71034c5d8bde858ff824298bdedc65515b97d2b9; via airlock pull; manifest records the upstream as unsigned; publisher signature not established",
-      "pass_means": "A trusted publisher signature verified over this artifact, or an operator-supplied manifest binds this hash to a repository at an immutable commit. The notes say which; a manifest is the operator's claim, not a signature.",
+      "pass_means": "A trusted publisher signature verified over this artifact, or an operator-supplied manifest binds this hash to a repository at an immutable commit. The notes say which; a manifest is the operator's claim, not a signature. No file the scan compared with a SHA-256 list its uploader ships (SHA256SUMS or a .sha256 file) disagrees with it, save Markdown, which is named and not graded; agreement is noted, and the PASS does not rest on it.",
       "maps_to": [
         {
           "framework": "MITRE ATLAS",

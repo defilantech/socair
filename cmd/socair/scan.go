@@ -67,6 +67,9 @@ func scan(args []string) error {
 	if problems := report.Validate(d); len(problems) != 0 {
 		return fmt.Errorf("report did not validate: %v", problems)
 	}
+	// The report goes to standard output; what would close each gap goes to
+	// standard error, for the person reading, and is no part of the report.
+	defer fmt.Fprint(os.Stderr, engine.Summary(d))
 	if format == "cyclonedx" {
 		return cyclonedx.Render(os.Stdout, d)
 	}

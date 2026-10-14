@@ -16,7 +16,7 @@ go test ./...
 go test ./internal/checks/chattemplate -run TestName   # single test
 gofmt -l cmd internal                                  # CI fails if this prints anything
 go mod verify                                          # CI checks vendor/ is in sync
-go run ./cmd/socair scan <path>                        # report JSON to stdout
+go run ./cmd/socair scan <path>                        # report JSON to stdout; on stderr, what would close each gap (engine.NextSteps)
 go run ./cmd/socair render <path> > report.html
 go run ./cmd/socair render --attestation r.dsse.json --trusted op.pub --pdf r.pdf   # verifies, then renders; --report r.json renders a saved report unsigned
 go run ./cmd/socair serve --web web/build --scan-root <dir>   # API + wizard on 127.0.0.1:8080
@@ -60,6 +60,7 @@ Opt-in tests that need real resources, skipped by default:
 - `SOCAIR_TEST_PROBE_HELPER=<path to tools/socair-probe/socair-probe>` runs the engine against the real Tier 2 probe helper (`go test ./internal/engine -run RealProbeHelper -v`).
 - `SOCAIR_TEST_COSIGN=<path to cosign>` runs cosign `verify-attestation` against an attached artifact (`go test ./internal/ociattest -run Cosign -v`).
 - `SOCAIR_TEST_REGISTRY=<host:port of a scratch registry>` pushes, attaches, and verifies against a real registry (`go test ./internal/ociattest -run RealRegistry -v`).
+- `SOCAIR_TEST_SHA256SUM=<GNU coreutils sha256sum>` holds the checksum-list parser to `sha256sum --check` (`go test ./internal/checks/provenance -run SHA256SUM -v`).
 - `SOCAIR_CONVERT_CORPUS=<dir of torch.save checkpoints>`, with `SOCAIR_PYTHON` naming a Python with torch, compares converted tensors with `torch.load` (`go test ./internal/convert -run RealCheckpoints -v`).
 - `SOCAIR_TEST_PYTHON=<python3>` checks the tar reader against Python's `tarfile` (`go test ./internal/ociattest/tarwalk -run PythonAgrees -v`).
 - `SOCAIR_OCI_BASE_CORPUS=<OCI image layouts>` maps real base images' tar layers (`go test ./internal/ociattest -run RealBaseImages -v`).
@@ -72,6 +73,7 @@ Real-corpus gates, run before and after a detection change (see "False positives
 - Pickle sniffing: `SOCAIR_PICKLE_SNIFF_CORPUS=<dirs> go test ./internal/checks/pickle -run RealSniff -v`
 - ONNX: `SOCAIR_ONNX_CORPUS=<dirs> go test ./internal/checks/structure -run RealONNX -v`
 - Remote code: `SOCAIR_REMOTECODE_CORPUS="<dirs>" go test ./internal/checks/remotecode -run RealRepos -v` (fails if a repository with an auto_map is not a LEAD)
+- Checksum lists: `SOCAIR_CHECKSUM_CORPUS=<dir> go test ./internal/checks/provenance -run RealChecksumLists -v` (each repo dir holds `hub.json`, the Hub's per-file hashes, and the fetched lists under `files/`)
 - License matching: `SOCAIR_LICENSE_CORPUS=<dir of repos> go test ./internal/engine -run RealLicenses -v`
 
 ## Rules
@@ -180,6 +182,11 @@ Real-corpus gates, run before and after a detection change (see "False positives
   - Trusted and holding → provenance PASS ("origin and integrity, not safety").
   - Trusted and not holding (bad signature, changed/missing/unsigned file) → FAIL.
   - Untrusted or legacy → named, not judged.
+- The provenance row also compares an uploader's SHA-256 lists with the hashed bytes (`provenance/checksums.go`):
+  - It reads `SHA256SUMS`, `SHA256SUMS.txt`, or `checksums.sha256` in any case, or `<file>.sha256` beside its file.
+  - It parses them as coreutils `sha256sum --check` does, resolves names from the list's own directory only, and is bounded.
+  - A disagreeing file is a LEAD (`checksum-mismatch`); a disagreeing Markdown file is named, not graded.
+  - Agreement, files not held, renames, and unplaced lists are noted and never PASS.
 - A directory scan reads `model.sig` or NGC's `result.sigstore` at its root (with both there and `SOCAIR_OMS_SIGNATURE` naming neither, the signature is named, not judged), and a certificate chain is checked at the scan's time.
 - A signed file under download-tool metadata the walk skips (`.cache/`, `.huggingface/`, which `hf download --local-dir` writes) is left out of the comparison and named as signed but not compared (`modeldir.DownloadMetadata`, `oms.Manifest.Without`, `provenance.Signature.NotCompared`), never reported missing; the PASS then says "every signed file the scan read matches".
 - Keyless Sigstore bundles go to the optional helper `tools/socair-sigstore` (a separate module with its own vendor/ and CI job, invoked via `SOCAIR_SIGSTORE_VERIFIER` with a trusted root and a required identity policy); unconfigured, they are named, not judged.

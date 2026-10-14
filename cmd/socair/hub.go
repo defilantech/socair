@@ -14,6 +14,9 @@ import (
 //	socair airlock serve-hub [--addr 127.0.0.1:8081] [--allow-public] [--authorized-only] [--store <path>]
 func airlockServeHub(args []string) error {
 	fs := parseFlags(args)
+	if err := fs.allow("addr", "allow-public", "authorized-only", "store"); err != nil {
+		return err
+	}
 	if len(fs.pos) > 0 {
 		return fmt.Errorf("usage: socair airlock serve-hub [--addr %s] [--allow-public] [--authorized-only] [--store <path>]", airlock.DefaultHubAddr)
 	}

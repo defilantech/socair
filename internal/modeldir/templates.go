@@ -3,6 +3,7 @@ package modeldir
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/defilantech/socair/internal/checks/pyjson"
 	"os"
 	"path"
 	"path/filepath"
@@ -46,7 +47,7 @@ func ChatTemplates(root string, files []File) (templates map[string]string, nonS
 				continue
 			}
 			var cfg map[string]json.RawMessage
-			if err := json.Unmarshal(b, &cfg); err != nil {
+			if err := pyjson.Unmarshal(b, &cfg); err != nil {
 				unread = append(unread, f.Path+": not a JSON object")
 				continue
 			}

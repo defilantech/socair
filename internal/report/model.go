@@ -143,7 +143,9 @@ var passMeaning = map[string]string{
 		"(custom_generate/generate.py, or an inference toolkit's handler.py, pipeline.py, or code/inference.py). " +
 		"Other Python and script files are listed in the notes and not judged: a loader Socair does not model, or a person, can still run them.",
 	"Hash, provenance, lineage": "A trusted publisher signature verified over this artifact, or an operator-supplied manifest binds this hash " +
-		"to a repository at an immutable commit. The notes say which; a manifest is the operator's claim, not a signature.",
+		"to a repository at an immutable commit. The notes say which; a manifest is the operator's claim, not a signature. " +
+		"No file the scan compared with a SHA-256 list its uploader ships (SHA256SUMS or a .sha256 file) disagrees with it, save Markdown, " +
+		"which is named and not graded; agreement is noted, and the PASS does not rest on it.",
 	"Known-bad hash match": "This exact hash is not on the configured denylist. Any changed byte gives a new hash, so it catches only known files.",
 	"License policy": "The license the artifact states (model card, LICENSE file, or GGUF metadata) is on your allowed list. This is not legal advice: " +
 		"usage-policy obligations, such as an acceptable-use policy or a user cap, are listed in the notes and not marked met.",

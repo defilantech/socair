@@ -29,6 +29,15 @@ fi
 root="$(cd "$(dirname "$0")/.." && pwd)"
 targets=(linux/amd64 linux/arm64 darwin/amd64 darwin/arm64)
 
+# The toolchain is resolved first, as the caller's environment selects it
+# (GOTOOLCHAIN), and then used directly. The builds below run with an empty
+# module cache of their own: modules are vendored, so they need nothing from
+# one, and Go caches the version it stamps for a commit there. A commit built
+# before it was tagged keeps the pseudo-version it had then in a shared cache,
+# so its rebuild would not match the release.
+goroot="$(cd "$root" && go env GOROOT)"
+gobin="$goroot/bin/go"
+
 sha256() {
 	if command -v sha256sum >/dev/null 2>&1; then sha256sum "$@"; else shasum -a 256 "$@"; fi
 }
@@ -39,11 +48,11 @@ build() {
 	mkdir -p "$dir"
 	for t in "${targets[@]}"; do
 		local os="${t%/*}" arch="${t#*/}"
-		(cd "$root" && CGO_ENABLED=0 GOOS="$os" GOARCH="$arch" GOFLAGS=-mod=vendor GOCACHE="$cache" GOPROXY=off \
-			go build -trimpath -ldflags "-s -w -buildid= -X github.com/defilantech/socair/internal/engine.Version=$version" \
+		(cd "$root" && CGO_ENABLED=0 GOOS="$os" GOARCH="$arch" GOFLAGS=-mod=vendor GOCACHE="$cache" GOMODCACHE="$cache/mod" GOPROXY=off GOTOOLCHAIN=local \
+			"$gobin" build -trimpath -ldflags "-s -w -buildid= -X github.com/defilantech/socair/internal/engine.Version=$version" \
 			-o "$dir/socair_${version}_${os}_${arch}" ./cmd/socair)
-		(cd "$root/tools/socair-sigstore" && CGO_ENABLED=0 GOOS="$os" GOARCH="$arch" GOFLAGS=-mod=vendor GOCACHE="$cache" GOPROXY=off \
-			go build -trimpath -ldflags "-s -w -buildid= -X main.version=$version" \
+		(cd "$root/tools/socair-sigstore" && CGO_ENABLED=0 GOOS="$os" GOARCH="$arch" GOFLAGS=-mod=vendor GOCACHE="$cache" GOMODCACHE="$cache/mod" GOPROXY=off GOTOOLCHAIN=local \
+			"$gobin" build -trimpath -ldflags "-s -w -buildid= -X main.version=$version" \
 			-o "$dir/socair-sigstore_${version}_${os}_${arch}" .)
 	done
 	(cd "$dir" && sha256 socair* > SHA256SUMS)
@@ -67,7 +76,7 @@ fi
 
 mkdir -p "$out"
 cp "$tmp/first/"* "$out/"
-echo "built $(grep -c . "$out/SHA256SUMS") binaries with $(go version | cut -d' ' -f3) into $out"
+echo "built $(grep -c . "$out/SHA256SUMS") binaries with $("$gobin" version | cut -d' ' -f3) into $out"
 if (cd "$root" && [[ -n "$(git status --porcelain 2>/dev/null)" ]]); then
 	echo "note: the checkout has changes, so these binaries record vcs.modified=true and will not match a release build" >&2
 fi

@@ -124,10 +124,10 @@
     },
     {
       "name": "Hash, provenance, lineage",
-      "looks_for": "Traceable origin: a manifest bound to this hash, from an immutable upstream commit",
+      "looks_for": "Traceable origin: a manifest bound to this hash, from an immutable upstream commit; files that disagree with the uploader's checksum list",
       "status": "NOT_TESTED",
       "notes": "no provenance input: no supplied manifest and no signature sidecar next to the artifact",
-      "pass_means": "A trusted publisher signature verified over this artifact, or an operator-supplied manifest binds this hash to a repository at an immutable commit. The notes say which; a manifest is the operator's claim, not a signature.",
+      "pass_means": "A trusted publisher signature verified over this artifact, or an operator-supplied manifest binds this hash to a repository at an immutable commit. The notes say which; a manifest is the operator's claim, not a signature. No file the scan compared with a SHA-256 list its uploader ships (SHA256SUMS or a .sha256 file) disagrees with it, save Markdown, which is named and not graded; agreement is noted, and the PASS does not rest on it.",
       "maps_to": [
         {
           "framework": "MITRE ATLAS",
