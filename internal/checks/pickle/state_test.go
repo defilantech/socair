@@ -59,7 +59,7 @@ func TestReadStateDict(t *testing.T) {
 	if !reflect.DeepEqual(sd.Tensors, want) {
 		t.Errorf("tensors\n %+v\nwant\n %+v", sd.Tensors, want)
 	}
-	if st := sd.Storages["1"]; st.Class != "torch.UntypedStorage" || st.Numel != 4 || st.Itemsize != 1 || st.Record != "archive/data/1" {
+	if st := sd.Storages["1"]; st.Class != "torch.storage.UntypedStorage" || st.Numel != 4 || st.Itemsize != 1 || st.Record != "archive/data/1" {
 		t.Errorf("storage 1: %+v", st)
 	}
 	if st := sd.Storages["0"]; st.Class != "torch.BFloat16Storage" || st.Numel != 6 || st.Dtype != "bfloat16" {

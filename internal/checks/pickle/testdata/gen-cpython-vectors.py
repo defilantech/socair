@@ -43,6 +43,7 @@ def module(name):
 torch = module("torch")
 torch_utils = module("torch._utils")
 torch_tensor = module("torch._tensor")
+torch_storage = module("torch.storage")
 module("torch.nn")
 torch_nn_parameter = module("torch.nn.parameter")
 numpy = module("numpy")
@@ -76,6 +77,10 @@ LongStorage = klass(torch, "LongStorage")
 BFloat16Storage = klass(torch, "BFloat16Storage")
 ByteStorage = klass(torch, "ByteStorage")
 UntypedStorage = klass(torch, "UntypedStorage")
+# torch.save names the untyped storage class by its defining module,
+# torch/storage.py; torch.UntypedStorage above is the same class under the
+# name torch exports it by, which torch.save does not write.
+StorageUntypedStorage = klass(torch_storage, "UntypedStorage")
 ndarray = klass(numpy, "ndarray")
 np_dtype = klass(numpy, "dtype")
 
@@ -93,6 +98,7 @@ class Dtype:
 
 Dtype.__module__ = "torch"
 float8_e4m3fn = Dtype("float8_e4m3fn")
+uint16 = Dtype("uint16")
 
 
 class Storage:
@@ -310,6 +316,9 @@ canonical = [
     ]))),
     ("torch-plain-dict", "zip", torch_pickle({"weight": Tensor(Storage(BFloat16Storage, "0", 8), 0, [2, 4], [4, 1]), "step": 3})),
     ("torch-v3-float8", "zip", torch_pickle({"q": Tensor(Storage(UntypedStorage, "0", 16), 0, [4, 4], [4, 1], dtype=float8_e4m3fn)})),
+    # torch.save({"weight": torch.zeros(4, 8, dtype=torch.uint16)}) at torch
+    # 2.6 and later: _rebuild_tensor_v3 over torch.storage.UntypedStorage.
+    ("torch-v3-uint16", "zip", torch_pickle({"weight": Tensor(Storage(StorageUntypedStorage, "0", 64), 0, [4, 8], [8, 1], dtype=uint16)})),
     ("torch-parameter", "zip", torch_pickle({"p": Parameter(Tensor(Storage(FloatStorage, "0", 2), 0, [2], [1]))})),
     ("torch-optimizer-state", "zip", torch_pickle({
         "state": {0: {"step": Tensor(Storage(FloatStorage, "0", 1), 0, [], []), "exp_avg": Tensor(Storage(FloatStorage, "1", 4), 0, [4], [1])}},

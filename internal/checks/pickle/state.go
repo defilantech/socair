@@ -71,7 +71,7 @@ type StateTensor struct {
 // StateStorage is one storage a persistent id names.
 type StateStorage struct {
 	Key, Record string
-	// Class is the storage class (torch.FloatStorage, torch.UntypedStorage),
+	// Class is the storage class (torch.FloatStorage, torch.storage.UntypedStorage),
 	// Dtype the dtype its elements are, and Numel how many it holds.
 	Class, Dtype    string
 	Itemsize, Numel int64

@@ -853,6 +853,129 @@ did before, so a rule that is too narrow costs a gap, not a false PASS. The
 zip's own framing (local headers, the alignment padding torch writes in their
 extra fields, the central directory) is not accounted for.
 
+## Torch checkpoints with untyped storages (2026-10-14, check set tier1/0.9)
+
+A `torch.save` checkpoint holding a uint16, uint32, uint64, or float8 tensor
+was a LEAD on the Pickle opcode scan (#233). torch.save writes a tensor of a
+dtype in `torch.storage._new_dtypes()` with `_rebuild_tensor_v3` over an
+untyped storage, and its persistent id names that class
+`torch.storage.UntypedStorage`; the grammar knew only `torch.UntypedStorage`.
+It now accepts `torch.storage.UntypedStorage` with exactly the checks
+`torch.UntypedStorage` gets, and no other name.
+
+**Which names torch.save writes.** Read from PyTorch's source at every minor
+tag from v2.0.0 to v2.13.0 and at v2.14.1 (`torch/serialization.py`,
+`_tensor.py`, `storage.py`, `__init__.py`, `_utils.py`,
+`_weights_only_unpickler.py`), then from the output of torch 2.0.1, 2.2.2,
+and 2.14.1 (CPU wheels, macOS arm64):
+
+- The typed storage classes, `torch.FloatStorage` and the 16 others, are
+  defined in `torch/__init__.py`
+  ([v2.0.0](https://github.com/pytorch/pytorch/blob/v2.0.0/torch/__init__.py#L959),
+  [v2.14.1](https://github.com/pytorch/pytorch/blob/v2.14.1/torch/__init__.py#L2364)),
+  so pickle names them under `torch`. `persistent_id` in `_save` writes one
+  for every tensor rebuilt with `_rebuild_tensor_v2`: it takes
+  `getattr(torch, obj._pickle_storage_type())` for the `TypedStorage` that
+  `_reduce_ex_internal` wraps the tensor in
+  ([v2.0.0 `serialization.py`](https://github.com/pytorch/pytorch/blob/v2.0.0/torch/serialization.py#L608-L623),
+  [v2.14.1 `serialization.py`](https://github.com/pytorch/pytorch/blob/v2.14.1/torch/serialization.py#L1205-L1219)).
+  The set is `_dtype_to_storage_type_map`, unchanged from v2.0.0 to v2.14.1
+  ([v2.14.1 `storage.py`](https://github.com/pytorch/pytorch/blob/v2.14.1/torch/storage.py#L572-L596)).
+- `UntypedStorage` is defined in `torch/storage.py`
+  ([v2.0.0](https://github.com/pytorch/pytorch/blob/v2.0.0/torch/storage.py#L230),
+  [v2.14.1](https://github.com/pytorch/pytorch/blob/v2.14.1/torch/storage.py#L476)),
+  and nothing in `storage.py` or `__init__.py` sets its `__module__` at any
+  tag above (`__init__.py` renames only `torch._C`'s names). For an untyped
+  storage `persistent_id` records `normalize_storage_type(type(obj))`, which is
+  `getattr(torch, type(obj).__name__)`, the same class, so pickle writes
+  `torch.storage.UntypedStorage`.
+- v2.0.0 and v2.1.0 wrap every tensor in a `TypedStorage`
+  ([v2.0.0 `_tensor.py`](https://github.com/pytorch/pytorch/blob/v2.0.0/torch/_tensor.py#L380-L399)),
+  so they write `torch.storage.UntypedStorage` only for a saved
+  `UntypedStorage` object. v2.2.0 adds `_rebuild_tensor_v3` and passes
+  `self.untyped_storage()` for float8_e5m2, float8_e4m3fn, and the bits types
+  ([v2.2.0 `_tensor.py`](https://github.com/pytorch/pytorch/blob/v2.2.0/torch/_tensor.py#L397-L408));
+  v2.3.0 adds the fnuz float8s and complex32; v2.4.0 moves the list to
+  `torch.storage._new_dtypes()`; v2.6.0 adds uint16, uint32, and uint64
+  ([v2.6.0 `storage.py`](https://github.com/pytorch/pytorch/blob/v2.6.0/torch/storage.py#L537-L554));
+  v2.7.0 float8_e8m0fnu; v2.8.0 float4_e2m1fn_x2; and v2.14.1 bcomplex32
+  ([v2.14.1 `_tensor.py`](https://github.com/pytorch/pytorch/blob/v2.14.1/torch/_tensor.py#L497-L500),
+  [v2.14.1 `storage.py`](https://github.com/pytorch/pytorch/blob/v2.14.1/torch/storage.py#L548)).
+- No tag writes `torch.UntypedStorage`. torch's weights-only unpickler, the
+  default loader since 2.6
+  ([`_default_to_weights_only`](https://github.com/pytorch/pytorch/blob/v2.6.0/torch/serialization.py#L101-L103)),
+  keys each storage class by its `__module__`
+  ([v2.14.1 `_weights_only_unpickler.py`](https://github.com/pytorch/pytorch/blob/v2.14.1/torch/_weights_only_unpickler.py#L202-L210)),
+  so it refuses `torch.UntypedStorage` as an unsupported global: a checkpoint
+  respelled that way loads with `weights_only=False` and fails with
+  `weights_only=True`, in torch 2.2.2 and 2.14.1 alike. The grammar keeps
+  accepting it, unchanged; it names the same class.
+
+What torch's own output shows (each file's `data.pkl` read with pickletools,
+never unpickled):
+
+| torch | Storage classes in a state dict of every dtype it saves | Dtypes rebuilt with `_rebuild_tensor_v3` | A saved `UntypedStorage` |
+|---|---|---|---|
+| 2.0.1 | the 12 typed classes of the dtypes it saves | none | `torch.storage.UntypedStorage` |
+| 2.2.2 | the same, and `torch.storage.UntypedStorage` | bits8, bits16, bits1x8, bits2x4, bits4x2, float8_e4m3fn, float8_e5m2 | `torch.storage.UntypedStorage` |
+| 2.14.1 | the same, and `torch.storage.UntypedStorage` | the above, and bcomplex32, complex32, float4_e2m1fn_x2, float8_e4m3fnuz, float8_e5m2fnuz, float8_e8m0fnu, uint16, uint32, uint64 | `torch.storage.UntypedStorage` |
+
+**Verdicts.** Checkpoints written with `torch.save` by torch 2.14.1 and 2.2.2
+(generated, nothing downloaded), scanned with the binary before and after.
+Each holds the named tensor; `mixed.pt` holds two views of one storage per
+dtype at a non-zero offset beside a float32 tensor, and `linear_float8.pt` is
+an `nn.Linear` state dict cast to float8_e4m3fn.
+
+| Files | torch | Pickle opcode scan, before | After |
+|---|---|---|---|
+| `uint16.pt`, `uint32.pt`, `uint64.pt` | 2.14.1 | LEAD (unreviewed global `torch.storage.UntypedStorage`, and its record read as unreferenced) | PASS |
+| `float8_e4m3fn.pt`, `float8_e5m2.pt`, `linear_float8.pt`, `mixed.pt` | 2.14.1 and 2.2.2 | LEAD (the same) | PASS |
+| `control.pt` (float32, float16, bfloat16, int64, uint8, bool) | 2.14.1 and 2.2.2 | PASS | PASS |
+| a state dict of every dtype torch saves | 2.0.1 | PASS | PASS |
+| the same | 2.2.2 | LEAD | PASS |
+| the same, without bcomplex32 | 2.14.1 | LEAD | PASS |
+| the same, with bcomplex32 | 2.14.1 | LEAD | LEAD (`torch.bcomplex32` is not a dtype the grammar knows) |
+| `{"s": torch.zeros(4).untyped_storage()}` | 2.0.1, 2.2.2, 2.14.1 | LEAD | PASS |
+| `legacy_uint16.pt`, `legacy_float8_e4m3fn.pt` (`_use_new_zipfile_serialization=False`) | 2.14.1, 2.2.2 | FAIL (its record read as unreferenced) | LEAD (an untyped storage in a legacy stream) |
+
+Every promotion stayed withheld: a single pickle file's Format and
+structure, File inventory, provenance, and denylist rows are NOT_TESTED as
+before. No file FAILs after.
+
+The legacy rows are a rule of their own. torch.save writes the same untyped
+storage in the legacy (pre-zip) format, but torch's legacy loader takes the
+storage class's dtype (`dtype = storage_type.dtype` in `_legacy_load`, at
+[v2.0.0](https://github.com/pytorch/pytorch/blob/v2.0.0/torch/serialization.py#L968-L970)
+and [v2.14.1](https://github.com/pytorch/pytorch/blob/v2.14.1/torch/serialization.py#L1834-L1836)),
+which `UntypedStorage` does not have: both legacy files fail to load in the
+torch that wrote them, with `AttributeError`, under either `weights_only`. So
+an untyped storage in a legacy stream, under either name, is a LEAD that
+says so, and its record is still matched.
+
+**Conversion.** `SOCAIR_CONVERT_CORPUS=<these files>
+SOCAIR_PYTHON=<torch 2.14.1 venv> go test ./internal/convert -run
+RealCheckpoints -v`: 13 of 15 converted, and each output's every tensor
+compared equal with `torch.load(weights_only=True)` and with safetensors
+0.8.0's reader. The two refused are the legacy streams (a LEAD, and not a zip).
+Before this change every file here but the controls was a LEAD or a FAIL,
+which the converter refuses: it converts only a checkpoint whose Pickle row
+PASSed.
+
+**Fixtures.** `pickletest` now writes `torch.storage.UntypedStorage`, and its
+data.pkl for `{"weight": torch.zeros(4, 8, dtype=torch.uint16)}` is byte for
+byte torch 2.14.1's. The CPython vector `torch-v3-uint16` holds those bytes,
+and the tests hold `pickletest` and the package's builder to it.
+
+What the measurement does not cover: no checkpoint downloaded from a hub; the
+files are torch.save's output on generated tensors, which is what the scan
+reads. bcomplex32, new in torch 2.14, is a dtype the grammar does not know,
+so a checkpoint holding one stays a LEAD; that is a dtype table change, not a
+storage class, and is left for its own change. CUDA storages were not
+written (CPU wheels). From the source, `persistent_id` names a storage by
+its class whatever its device (`getattr(torch, ...)` for a typed one,
+`type(obj)` for an untyped one; neither torch 2.0.0 nor 2.14.1 defines a
+`torch.cuda.UntypedStorage`) and puts the device in the location field.
+
 ## Follow-ups from the first run, since done
 
 1. The GGML file-type mapping follows llama.cpp's `llama_ftype` enum, and the
