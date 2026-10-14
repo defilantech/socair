@@ -133,6 +133,27 @@ Every command also takes `--store <path>`.
   selection that keeps nothing, a bare or empty `--include`/`--exclude`, or a
   pattern with an unclosed `[` is refused before any download. A comma inside
   `[...]` belongs to the class.
+- **Pull only what you serve.** A repository often ships the same weights in
+  several formats: safetensors, a PyTorch pickle, ONNX and OpenVINO exports,
+  TensorFlow's `tf_model.h5`, Rust's `rust_model.ot`. A report covers every
+  file pulled, so a format Socair does not read, or one you will not serve,
+  is a gap that withholds the model. For a model served from safetensors
+  (transformers, vLLM, TGI, sentence-transformers), this keeps the weights,
+  every JSON config, the tokenizer files, chat templates, and the model card
+  and license, which the License row reads:
+
+  ```
+  socair airlock pull --repo <org/name> --revision <commit> \
+    --include '*.safetensors,*.safetensors.index.json,*.json,*.jinja,*.txt,*.model,README.md,LICENSE*'
+  ```
+
+  On `sentence-transformers/all-MiniLM-L6-v2` at `c9745ed`, the whole repo
+  (30 files) scans with five rows NOT_TESTED: an h5 file, a TorchScript
+  archive, OpenVINO weights, the known-bad hash, and the chat template. This
+  selection (12 files, 18 left out) leaves two: the known-bad hash, which a
+  feed closes, and the chat template, which an embedding model does not ship.
+  A repository whose loader imports its own code needs its `.py` files too:
+  add `--include '*.py'`, and the Remote code row judges them.
 - Every copy of a model checks for room first: a pull from the listing's sizes
   (or a single file's declared length), a scan's snapshot in `SOCAIR_SCAN_TMP`,
   and a promotion into the store. One that cannot fit is refused at the start,
