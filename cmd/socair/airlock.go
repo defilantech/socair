@@ -21,7 +21,7 @@ import (
 // store. A pull lands in staging; only a promotion moves bytes across.
 func airlockCmd(args []string) error {
 	if len(args) == 0 {
-		return errors.New("usage: socair airlock <init|pull|ingest|trust|promote|convert|recheck|log|export|serve-hub>")
+		return errors.New("usage: socair airlock <init|pull|ingest|trust|promote|convert|recheck|feed|log|export|serve-hub>")
 	}
 	switch args[0] {
 	case "init":
@@ -38,6 +38,8 @@ func airlockCmd(args []string) error {
 		return airlockConvert(args[1:])
 	case "recheck":
 		return airlockRecheck(args[1:])
+	case "feed":
+		return airlockFeed(args[1:])
 	case "log":
 		return airlockLog(args[1:])
 	case "export":
@@ -133,7 +135,7 @@ func airlockIngest(args []string) error {
 
 	// --scan proves the ingest fills Sections 2 and 3 of the report.
 	if fs.has("scan") {
-		d, err := engine.Scan(resolved)
+		d, err := engine.ScanWith(resolved, engine.ModeFull, engine.Inputs{Feed: feedHook(s.Root)})
 		if err != nil {
 			return err
 		}
@@ -205,6 +207,7 @@ func airlockRecheck(args []string) error {
 		"Each result is in clean/<id>/%s and the activity log. Nothing was moved, deleted, or re-signed.\n",
 		len(results), feed, engine.CheckSetVersion, counts[airlock.OutcomeFlagged], counts[airlock.OutcomeIncomplete],
 		counts[airlock.OutcomeUnchanged], airlock.RecheckFile)
+	warnRecheckFeed(results[0].Feed)
 	switch {
 	case counts[airlock.OutcomeFlagged] > 0:
 		return fmt.Errorf("%d model(s) in the clean store are flagged: they would now be withheld, and they stay in clean/ until a person acts", counts[airlock.OutcomeFlagged])

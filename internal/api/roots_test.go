@@ -14,6 +14,7 @@ import (
 	"testing"
 
 	"github.com/defilantech/socair/internal/airlock"
+	"github.com/defilantech/socair/internal/engine"
 	"github.com/defilantech/socair/internal/report"
 )
 
@@ -140,7 +141,7 @@ func (s *spy) take() []string {
 
 func (s *spy) readers() *pathReaders {
 	return &pathReaders{
-		scan: func(p string) (*report.Document, error) {
+		scan: func(p string, _ engine.Inputs) (*report.Document, error) {
 			s.record(p)
 			return nil, errors.New("spy: scan not run")
 		},

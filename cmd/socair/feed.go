@@ -17,11 +17,11 @@ import (
 // feedCmd builds and checks signed feeds.
 //
 //	socair feed sign <dir> --key <key> --issuer <name> --version <v> --expires <RFC 3339> [--description <text>]
-//	socair feed verify <dir> --keys <key.pub|dir>
+//	socair feed verify <dir> --keys <key.pub|dir> [--store <path>]
 //	socair feed tokenizer-table <tokenizer.json|model.gguf> --name <name>
 func feedCmd(args []string) error {
 	const usage = "usage: socair feed sign <dir> --key <key> --issuer <name> --version <v> --expires <RFC 3339> [--description <text>]\n" +
-		"       socair feed verify <dir> --keys <key.pub|dir>\n" +
+		"       socair feed verify <dir> --keys <key.pub|dir> [--store <path>]\n" +
 		"       socair feed tokenizer-table <tokenizer.json|model.gguf> --name <name>   write a canonical tokenizer table to stdout"
 	if len(args) == 0 {
 		return errors.New(usage)
@@ -63,7 +63,12 @@ func feedCmd(args []string) error {
 		}
 		fmt.Printf("verified: %s\n  %d known-bad hashes, %d reviewed templates, %d canonical tokenizers, %d tokenizer tables\n",
 			f.Describe(), len(f.Denylist), len(f.Templates), len(f.Tokenizers), len(f.TokenizerTables))
-		return nil
+		warnFeedExpiry(f.Info)
+		root, err := requestedStore(fs)
+		if err != nil || root == "" {
+			return err
+		}
+		return reviewFeed(root, f)
 	case "tokenizer-table":
 		return tokenizerTable(dir, fs.val("name"))
 	}

@@ -12,10 +12,14 @@ import (
 	"os"
 	"strings"
 	"time"
+
+	"github.com/defilantech/socair/internal/feed"
 )
 
 // Event is one airlock activity record. The log is append-only evidence, not
-// state: nothing reads it to decide a promotion.
+// state: nothing reads it to decide a promotion. Its feed entries are the one
+// exception to "not state": they witness the store's feed record, which a
+// scan with a feed checks against them (feedrecord.go).
 //
 // The log is hash-chained: each entry's Prev is the sha256 of the previous
 // line's exact bytes, and the first entry's is Genesis. Editing, deleting,
@@ -31,6 +35,10 @@ type Event struct {
 	SHA256  string `json:"sha256,omitempty"`
 	Detail  string `json:"detail,omitempty"`
 	Actor   string `json:"actor,omitempty"`
+	// Feed names the feed a feed entry recorded, accepted, or refused
+	// (action "feed"). The store's feed record is checked against the newest
+	// such entry (feedrecord.go).
+	Feed *feed.Record `json:"feed,omitempty"`
 	// Prev is the sha256 of the previous log line, or Genesis for the first.
 	// Empty only on entries written before the log was chained.
 	Prev string `json:"prev,omitempty"`
@@ -63,16 +71,13 @@ const (
 // Record appends one event to the activity log, stamping the time and the
 // default source when they are empty.
 func (s *Store) Record(e Event) error {
-	if e.Actor == "" {
-		e.Actor = s.Actor
-	}
-	if e.TS == "" {
-		e.TS = time.Now().UTC().Format(time.RFC3339Nano)
-	}
-	if e.Source == "" {
-		e.Source = "airlock"
-	}
+	return s.withLog(func(f *os.File) error { return s.appendLocked(f, e) })
+}
 
+// withLog runs fn with the activity log open and locked, so a caller can read
+// the log and append to it with no other writer in between. fn appends
+// through appendLocked, never Record, which would take the lock again.
+func (s *Store) withLog(fn func(*os.File) error) error {
 	f, err := os.OpenFile(s.LogPath(), os.O_APPEND|os.O_CREATE|os.O_RDWR, 0o644)
 	if err != nil {
 		return fmt.Errorf("open activity log: %w", err)
@@ -83,6 +88,20 @@ func (s *Store) Record(e Event) error {
 		return fmt.Errorf("lock activity log: %w", err)
 	}
 	defer unlock()
+	return fn(f)
+}
+
+// appendLocked appends e to f, the open and locked log.
+func (s *Store) appendLocked(f *os.File, e Event) error {
+	if e.Actor == "" {
+		e.Actor = s.Actor
+	}
+	if e.TS == "" {
+		e.TS = time.Now().UTC().Format(time.RFC3339Nano)
+	}
+	if e.Source == "" {
+		e.Source = "airlock"
+	}
 
 	last, err := lastLine(f)
 	if err != nil {

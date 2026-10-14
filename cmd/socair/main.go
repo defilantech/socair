@@ -29,7 +29,7 @@ func main() {
 		}
 	case "scan":
 		if len(os.Args) < 3 {
-			fmt.Fprintln(os.Stderr, "usage: socair scan <path> [--format report|cyclonedx]")
+			fmt.Fprintln(os.Stderr, "usage: socair scan <path> [--format report|cyclonedx] [--store <path>]")
 			os.Exit(2)
 		}
 		if err := scan(os.Args[2:]); err != nil {
@@ -138,7 +138,7 @@ Usage:
   socair sign --key <key> --report <report.json>   sign a report as a DSSE attestation
   socair feed sign <dir> --key <key> --issuer <name> --version <v> --expires <time>
                            sign a reference-data feed (denylist, templates, tokenizers)
-  socair feed verify <dir> --keys <key.pub|dir>   check a feed before importing it
+  socair feed verify <dir> --keys <key.pub|dir> [--store <path>]   check a feed before importing it
   socair feed tokenizer-table <tokenizer.json|model.gguf> --name <name>
                            write a canonical tokenizer table for a feed or SOCAIR_TOKENIZER_REFERENCE
   socair accept --attestation <r.dsse.json> --key <acceptor.key> --by <name> --expires <time>
@@ -163,6 +163,8 @@ Usage:
   socair airlock convert <checkpoint> --attestation <a.dsse.json> --key <key>
                            rebuild a pickle checkpoint as safetensors in staging, with a signed derivation record
   socair airlock recheck [--rescan]   re-check the clean store against the current feed and check set
+  socair airlock feed accept <feed dir> --keys <key.pub|dir> --reason <why>
+                           make a feed the store's newest on purpose, even an older one (logged)
   socair airlock log       print the airlock activity log (--verify checks its hash chain)
   socair airlock export --out <dir> [--key <k>]   write a shareable, signed snapshot of the store
   socair airlock serve-hub [--addr <host:port>]   serve admitted models read-only over the Hugging Face Hub API

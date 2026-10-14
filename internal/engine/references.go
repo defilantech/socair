@@ -52,24 +52,36 @@ type references struct {
 	localPath string
 }
 
+// LoadFeed reads and verifies the feed a scan started at now would use
+// (SOCAIR_FEED, checked against SOCAIR_FEED_KEYS), or returns nil when none is
+// configured. A configured feed that does not verify, or has expired, is an
+// error, as it is for a scan.
+func LoadFeed(now time.Time) (*feed.Feed, error) {
+	dir := strings.TrimSpace(os.Getenv("SOCAIR_FEED"))
+	if dir == "" {
+		return nil, nil
+	}
+	keysPath := strings.TrimSpace(os.Getenv("SOCAIR_FEED_KEYS"))
+	if keysPath == "" {
+		return nil, errors.New("SOCAIR_FEED needs SOCAIR_FEED_KEYS, the public key(s) the feed must be signed by")
+	}
+	keys, err := attest.LoadKeyring(keysPath)
+	if err != nil {
+		return nil, fmt.Errorf("SOCAIR_FEED_KEYS: %w", err)
+	}
+	return feed.Load(dir, keys, now)
+}
+
 // loadReferences reads and verifies the reference data. A feed that is
 // configured but does not verify, or is expired, is an error: the scan does
 // not run on unverified reference data, and does not quietly drop it either.
 func loadReferences(now time.Time) (*references, error) {
 	r := &references{deny: map[string]denylist.Entry{}}
-	if dir := strings.TrimSpace(os.Getenv("SOCAIR_FEED")); dir != "" {
-		keysPath := strings.TrimSpace(os.Getenv("SOCAIR_FEED_KEYS"))
-		if keysPath == "" {
-			return nil, errors.New("SOCAIR_FEED needs SOCAIR_FEED_KEYS, the public key(s) the feed must be signed by")
-		}
-		keys, err := attest.LoadKeyring(keysPath)
-		if err != nil {
-			return nil, fmt.Errorf("SOCAIR_FEED_KEYS: %w", err)
-		}
-		f, err := feed.Load(dir, keys, now)
-		if err != nil {
-			return nil, err
-		}
+	f, err := LoadFeed(now)
+	if err != nil {
+		return nil, err
+	}
+	if f != nil {
 		r.feed = f
 		r.describe = append(r.describe, f.Describe())
 		if n := len(f.TokenizerTables); n > 0 {
