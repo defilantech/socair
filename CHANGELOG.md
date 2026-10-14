@@ -4,6 +4,50 @@ Each release adds an entry here. The release's page on
 [GitHub Releases](https://github.com/defilantech/socair/releases) has the full
 notes, install and verification commands, and the assets.
 
+From 0.1.0-rc.5 on, release-please writes each entry from the conventional
+titles of the pull requests merged since the last release (docs/releasing.md).
+
+## 0.1.0-rc.4 (2026-10-14)
+
+The second public release candidate. The check set is `tier1/0.9`.
+
+- **Security:** a chat-template trigger written as a tuple
+  (`content in ('a', 'b')`) was missed, so such a template PASSed in rc.3
+  ([GHSA-c5hh-62j2-rfm7](https://github.com/defilantech/socair/security/advisories/GHSA-c5hh-62j2-rfm7),
+  High).
+- **Enforcement where models are served:**
+  - `socair attach` binds an attestation to an OCI artifact's manifest digest, for raw-file layers and for KServe ModelCar images.
+  - A Kyverno admission policy admits only models whose binding verifies.
+  - `socair airlock serve-hub` serves admitted models over the Hugging Face Hub API.
+- **New tools:**
+  - `socair airlock convert` (pickle to safetensors without unpickling, with a signed derivation record);
+  - an organization's intake policy;
+  - a signed CycloneDX ML-BOM;
+  - NGC model signatures;
+  - `socair airlock recheck`;
+  - feed rollback protection;
+  - stable SARIF fingerprints;
+  - `socair render --attestation`.
+- **False positives fixed on real models:**
+  - Remote code is a LEAD only for the Python a loader imports;
+  - standard content-part types in chat templates are not triggers;
+  - torch checkpoints with new dtypes now PASS.
+- **First-run fixes:**
+  - PDF punctuation;
+  - `--help` no longer acts;
+  - conditional reports say "authorized with conditions".
+- **Hardening:**
+  - Reports carry no host paths.
+  - The helpers get no inherited environment.
+  - The API reads only under scan roots.
+  - All CodeQL alerts are fixed.
+
+rc.3 cannot verify an rc.4 attestation, so upgrade verifiers with or before
+scanners. On the [detection benchmark](docs/detection-benchmark.md), Socair
+detects 52 of 55 defanged reproductions of published attacks (49 without the
+optional reference inputs), with the misses pinned, and flags none of the 8
+benign controls.
+
 ## 0.1.0-rc.3 (2026-10-10)
 
 The first public release candidate. It is a pre-release: the report format

@@ -39,6 +39,24 @@ git push --force-with-lease
 
 Commits made in GitHub's web editor are signed off there too.
 
+## Pull request titles
+
+Pull requests are squash-merged, and the title becomes the commit on `main`
+that the changelog and the next version are read from (release-please,
+[docs/releasing.md](docs/releasing.md)). Write it as a conventional commit,
+`type(scope): what changed`:
+
+```
+fix(chattemplate): a tuple trigger is no longer missed
+feat(airlock): serve admitted models over the Hugging Face Hub API
+```
+
+`feat`, `fix`, `perf`, `revert`, `docs`, and `deps` appear in the changelog;
+`chore`, `ci`, `test`, `refactor`, `style`, and `build` do not. A `!` after the
+type marks a breaking change. The `pr-title` check fails until the title fits,
+and editing the title re-runs it. The commits in the branch need no particular
+form beyond their sign-off.
+
 ## Build and test
 
 The Go build is air-gapped: dependencies are vendored and nothing is fetched.

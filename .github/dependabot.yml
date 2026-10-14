@@ -1,4 +1,8 @@
 version: 2
+# Pull request titles are conventional commits, since release-please reads them
+# (CONTRIBUTING.md): `deps` for what ships in a release (the binaries' Go
+# modules and the image's base images), listed in the changelog; `ci` and
+# `build` for the workflows and the wizard's toolchain, left out of it.
 updates:
   # Go modules are vendored. Dependabot detects the committed vendor/
   # directory and re-vendors on update by itself (there is no option for it),
@@ -7,18 +11,27 @@ updates:
     directory: /
     schedule:
       interval: weekly
+    commit-message:
+      prefix: deps
   - package-ecosystem: gomod
     directory: /tools/socair-sigstore
     schedule:
       interval: weekly
+    commit-message:
+      prefix: deps
   - package-ecosystem: github-actions
     directory: /
     schedule:
       interval: weekly
+    commit-message:
+      prefix: ci
   - package-ecosystem: npm
     directory: /web
     schedule:
       interval: weekly
+    commit-message:
+      prefix: build
+      include: scope
     ignore:
       # SvelteKit 2.x declares typescript ^5.3.3 || ^6.0.0 as its peer, so
       # TypeScript 7 does not install (#98). Lift this when SvelteKit does.
@@ -34,6 +47,8 @@ updates:
     directory: /
     schedule:
       interval: weekly
+    commit-message:
+      prefix: deps
     ignore:
       # The wizard builds on Node 22 LTS, as in CI; move both together.
       - dependency-name: node

@@ -27,8 +27,9 @@ Releases publish the chart to the Helm repository at
 push the chart and the image to GHCR. Each carries a build-provenance
 attestation. Fetch the chart and check both before installing:
 
+<!-- x-release-please-start-version -->
 ```
-V=0.1.0-rc.3
+V=0.1.0-rc.4
 helm repo add socair https://defilantech.github.io/socair
 helm pull socair/socair --version $V
 gh attestation verify socair-$V.tgz --repo defilantech/socair \
@@ -36,6 +37,7 @@ gh attestation verify socair-$V.tgz --repo defilantech/socair \
 gh attestation verify oci://ghcr.io/defilantech/socair:$V --repo defilantech/socair \
   --signer-workflow defilantech/socair/.github/workflows/release.yml
 ```
+<!-- x-release-please-end -->
 
 Then give the store its trust policy and install the chart you verified:
 

@@ -11,11 +11,13 @@ assets are named `socair_<version>_<os>_<arch>` and
 `socair-sigstore_<version>_<os>_<arch>`, for linux and darwin on amd64 and
 arm64; the version has no leading `v`, and the tag has one.
 
+<!-- x-release-please-start-version -->
 ```
-V=0.1.0-rc.3
+V=0.1.0-rc.4
 curl -LO https://github.com/defilantech/socair/releases/download/v$V/socair_${V}_linux_amd64
 curl -LO https://github.com/defilantech/socair/releases/download/v$V/SHA256SUMS
 ```
+<!-- x-release-please-end -->
 
 ## 1. Checksums
 

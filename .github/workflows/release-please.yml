@@ -1,0 +1,44 @@
+name: release-please
+
+# Every push to main updates a standing release pull request: the next version
+# (release-please-config.json: 0.1.0-rc.N, then 0.1.0 by a Release-As footer),
+# its CHANGELOG.md entry from the conventional PR titles merged since the last
+# release, and the version in the docs and the chart. Merging that pull request
+# creates the tag and a draft release. The tag starts release.yml, which builds,
+# proves the build reproduces, attests, and attaches the assets to the draft;
+# publishing the draft stays the maintainer's step (docs/releasing.md).
+#
+# It runs as the defilantech-release GitHub App, not GITHUB_TOKEN: a tag or a
+# pull request made with GITHUB_TOKEN starts no workflow, so release.yml would
+# never run and the release pull request would never get its required checks.
+# The App's key is a secret of the `release` environment, which only main can
+# use.
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-please
+  cancel-in-progress: false
+
+jobs:
+  release-please:
+    runs-on: ubuntu-latest
+    environment: release
+    steps:
+      - id: app-token
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        with:
+          client-id: ${{ vars.RELEASE_APP_CLIENT_ID }}
+          private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+          permission-contents: write
+          permission-pull-requests: write
+          permission-issues: write
+      - uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
+        with:
+          token: ${{ steps.app-token.outputs.token }}
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
