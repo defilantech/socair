@@ -165,6 +165,55 @@ jobs:
           SOCAIR_TEST_PROBE_HELPER="$GITHUB_WORKSPACE/tools/socair-probe/socair-probe" \
             go test ./internal/engine -run RealProbeHelper -v
 
+  # The OpenSSF Model Signing conformance suite (ossf/model-signing-spec,
+  # conformance/) at a pinned commit, verify-only, against Socair's verifier
+  # through tools/oms-conformance. Networked (it fetches the suite and its
+  # pre-signed fixtures, an OCI artifact on ghcr.io pulled by digest), so it
+  # is kept out of the air-gap job. Python dependencies are pinned by hash.
+  # Roundtrip (signing) tests are skipped: Socair does not sign. Sigstore
+  # tests are skipped: keyless bundles go to tools/socair-sigstore, not this
+  # adapter. Expected failures, each with its reason, are in
+  # tools/oms-conformance/xfail.txt. Move the pin deliberately and record the
+  # result in docs/provenance-bundle.md.
+  oms-conformance:
+    runs-on: ubuntu-latest
+    env:
+      GOFLAGS: -mod=vendor
+      PYTHONDONTWRITEBYTECODE: "1"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: ossf/model-signing-spec
+          ref: 91bf841e8ccf97a3ed97309387e9298d1ac18ba2
+          path: conformance-suite
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: build the adapter
+        run: go build -o "$RUNNER_TEMP/oms-conformance" ./tools/oms-conformance
+      - name: suite dependencies, pinned by hash
+        run: |
+          python3 -m venv "$RUNNER_TEMP/venv"
+          "$RUNNER_TEMP/venv/bin/pip" install --require-hashes --no-deps --only-binary :all: \
+            -r tools/oms-conformance/requirements.txt
+      - name: suite fixtures, pinned by digest
+        run: |
+          "$RUNNER_TEMP/venv/bin/python" tools/oms-conformance/fetch_fixtures.py conformance-suite
+      - name: verify-only conformance tests
+        run: |
+          # The suite imports its schemas as oms_schemas, the name its
+          # pyproject.toml installs them under.
+          mkdir -p "$RUNNER_TEMP/pylib"
+          ln -s "$GITHUB_WORKSPACE/conformance-suite/schemas" "$RUNNER_TEMP/pylib/oms_schemas"
+          xfail="$(grep -v -e '^#' -e '^$' tools/oms-conformance/xfail.txt)"
+          cd conformance-suite
+          PYTHONPATH="$RUNNER_TEMP/pylib" "$RUNNER_TEMP/venv/bin/python" -m pytest conformance/test \
+            --entrypoint="$RUNNER_TEMP/oms-conformance" --skip-signing --skip-sigstore \
+            --xfail="$xfail" -p no:cacheprovider -rfEsxX
+
   # Every parser that reads untrusted bytes, for a short budget each. A crasher
   # found here is committed under testdata/fuzz as a regression seed, and the
   # seeds already committed run in the test job on every push.

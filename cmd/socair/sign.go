@@ -14,6 +14,7 @@ import (
 	"github.com/defilantech/socair/internal/airlock"
 	"github.com/defilantech/socair/internal/attest"
 	"github.com/defilantech/socair/internal/modeldir"
+	"github.com/defilantech/socair/internal/render/cyclonedx"
 	"github.com/defilantech/socair/internal/report"
 )
 
@@ -49,6 +50,9 @@ func keyCmd(args []string) error {
 // signCmd signs a report document into a DSSE attestation.
 func signCmd(args []string) error {
 	fs := parseFlags(args)
+	if fs.val("bom") != "" {
+		return signBOMCmd(fs)
+	}
 	if fs.val("acceptance") != "" {
 		return reissueCmd(fs)
 	}
@@ -87,9 +91,13 @@ func signCmd(args []string) error {
 }
 
 // verifyCmd verifies an attestation against trusted keys, and optionally that
-// a file on disk is the artifact it attests.
+// a file on disk is the artifact it attests. With --bom it verifies a signed
+// CycloneDX BOM instead (verifyBOMCmd).
 func verifyCmd(args []string) error {
 	fs := parseFlags(args)
+	if fs.val("bom") != "" {
+		return verifyBOMCmd(fs)
+	}
 	if len(fs.pos) == 1 && isOCIRef(fs.pos[0]) {
 		return ociVerifyCmd(fs)
 	}
@@ -100,21 +108,15 @@ func verifyCmd(args []string) error {
 	if err != nil {
 		return err
 	}
-	var ring attest.Keyring
-	var names attest.Names
-	if t := fs.val("trusted"); t != "" {
-		ring, names, err = attest.LoadNamedKeyring(t)
-	} else {
-		var s *airlock.Store
-		if s, err = airlock.Open(fs.val("store")); err == nil {
-			ring, names, err = s.TrustedIssuers()
-		}
-	}
+	ring, names, err := issuerKeys(fs)
 	if err != nil {
 		return err
 	}
 	v, err := attest.Verify(env, ring)
 	if err != nil {
+		if cyclonedx.IsSignedBOM(env) {
+			return fmt.Errorf("%w (this is a signed CycloneDX BOM, not an attestation; check it with socair verify --bom)", err)
+		}
 		return err
 	}
 	issuer, confirmed, err := v.Issuer(names)
@@ -122,29 +124,8 @@ func verifyCmd(args []string) error {
 		return err
 	}
 	if a := fs.val("artifact"); a != "" {
-		if fi, err := os.Stat(a); err == nil && fi.IsDir() {
-			// A model directory: recompute the manifest digest, and on a
-			// mismatch name the files that differ from the attested list.
-			got, files, err := modeldir.Hash(a)
-			if err != nil {
-				return err
-			}
-			if got != v.SHA256 {
-				var attested []modeldir.File
-				for _, f := range v.Document.Artifact.Files {
-					attested = append(attested, modeldir.File{Path: f.Path, SHA256: f.SHA256, Size: f.SizeBytes})
-				}
-				return fmt.Errorf("%w: directory %s has manifest digest %s, but the attestation is for %s: %s",
-					attest.ErrVerify, a, got, v.SHA256, strings.Join(modeldir.Diff(attested, files), "; "))
-			}
-		} else {
-			got, err := sha256File(a)
-			if err != nil {
-				return err
-			}
-			if got != v.SHA256 {
-				return fmt.Errorf("%w: %s hashes to %s, but the attestation is for %s", attest.ErrVerify, a, got, v.SHA256)
-			}
+		if err := bindArtifact(a, v.SHA256, v.Document.Artifact.Files, attest.ErrVerify, "the attestation"); err != nil {
+			return err
 		}
 	}
 	d := v.Document
@@ -241,5 +222,153 @@ func reissueCmd(fs *flagSet) error {
 	pa := d.PromotionAuthorization
 	fmt.Printf("re-issued %s as authorized_with_conditions: %s accepted %s until %s\n  %s\n",
 		v.Document.Header.DocumentID, pa.AcceptedBy, strings.Join(pa.AcceptedSurfaces, ", "), pa.AcceptanceExpires, dst)
+	return nil
+}
+
+// issuerKeys loads the keys that sign reports, and the names the trust list
+// gives them: from --trusted, or from a store's trusted-keys.
+func issuerKeys(fs *flagSet) (attest.Keyring, attest.Names, error) {
+	if t := fs.val("trusted"); t != "" && t != "true" {
+		return attest.LoadNamedKeyring(t)
+	}
+	if fs.val("store") == "" {
+		return nil, nil, errors.New("pass --trusted <key.pub|dir> or --store <path>")
+	}
+	s, err := airlock.Open(fs.val("store"))
+	if err != nil {
+		return nil, nil, err
+	}
+	return s.TrustedIssuers()
+}
+
+// bindArtifact checks that the file or model directory at path is the
+// artifact whose digest is sha. For a directory whose files are listed, a
+// mismatch names the files that differ.
+func bindArtifact(path, sha string, listed []report.ArtifactFile, errVerify error, what string) error {
+	if fi, err := os.Stat(path); err == nil && fi.IsDir() {
+		got, files, err := modeldir.Hash(path)
+		if err != nil {
+			return err
+		}
+		if got == sha {
+			return nil
+		}
+		diff := ""
+		if len(listed) > 0 {
+			var attested []modeldir.File
+			for _, f := range listed {
+				attested = append(attested, modeldir.File{Path: f.Path, SHA256: f.SHA256, Size: f.SizeBytes})
+			}
+			diff = ": " + strings.Join(modeldir.Diff(attested, files), "; ")
+		}
+		return fmt.Errorf("%w: directory %s has manifest digest %s, but %s is for %s%s", errVerify, path, got, what, sha, diff)
+	}
+	got, err := sha256File(path)
+	if err != nil {
+		return err
+	}
+	if got != sha {
+		return fmt.Errorf("%w: %s hashes to %s, but %s is for %s", errVerify, path, got, what, sha)
+	}
+	return nil
+}
+
+// signBOMCmd signs the CycloneDX BOM of an attestation, with the key that
+// signed the attestation.
+//
+//	socair sign --key <key> --bom --attestation <r.dsse.json> [--out <bom.dsse.json>] [--cyclonedx <bom.json>]
+func signBOMCmd(fs *flagSet) error {
+	const usage = "usage: socair sign --key <key> --bom --attestation <r.dsse.json> [--out <bom.dsse.json>] [--cyclonedx <bom.json>]"
+	keyPath, in := fs.val("key"), fs.val("attestation")
+	if fs.val("bom") != "true" {
+		return errors.New("--bom takes no value; name the attestation with --attestation\n" + usage)
+	}
+	if keyPath == "" || in == "" || in == "true" || fs.val("acceptance") != "" || fs.val("report") != "" || fs.val("cyclonedx") == "true" {
+		return errors.New(usage)
+	}
+	k, err := attest.LoadPrivateKey(keyPath)
+	if err != nil {
+		return err
+	}
+	att, err := os.ReadFile(in)
+	if err != nil {
+		return err
+	}
+	bom, env, err := cyclonedx.Sign(att, k)
+	if err != nil {
+		return err
+	}
+	out := fs.val("out")
+	if out == "" {
+		out = strings.TrimSuffix(strings.TrimSuffix(in, ".json"), ".dsse") + ".cdx.dsse.json"
+	}
+	if err := os.WriteFile(out, env, 0o644); err != nil {
+		return err
+	}
+	fmt.Printf("signed the CycloneDX BOM of %s with key %s\n  %s\n", in, attest.ShortID(k.ID), out)
+	if p := fs.val("cyclonedx"); p != "" {
+		if err := os.WriteFile(p, bom, 0o644); err != nil {
+			return err
+		}
+		fmt.Printf("  %s (the BOM it signs)\n", p)
+	}
+	fmt.Println("  a signed BOM is an inventory, not a promotion ticket: the airlock admits only the attestation")
+	return nil
+}
+
+// verifyBOMCmd verifies a signed CycloneDX BOM against the keys that sign
+// reports, and optionally that a file on disk is the artifact it describes.
+//
+//	socair verify --bom <bom.dsse.json> (--trusted <key.pub|dir> | --store <path>) [--artifact <path>] [--cyclonedx <out.json>]
+func verifyBOMCmd(fs *flagSet) error {
+	const usage = "usage: socair verify --bom <bom.dsse.json> (--trusted <key.pub|dir> | --store <path>) [--artifact <path>] [--cyclonedx <out.json>]"
+	in := fs.val("bom")
+	switch {
+	case in == "true" && len(fs.pos) == 1:
+		in = fs.pos[0]
+	case in != "true" && len(fs.pos) == 0:
+	default:
+		return errors.New(usage)
+	}
+	if fs.val("cyclonedx") == "true" {
+		return errors.New(usage)
+	}
+	env, err := os.ReadFile(in)
+	if err != nil {
+		return err
+	}
+	ring, names, err := issuerKeys(fs)
+	if err != nil {
+		return err
+	}
+	v, err := cyclonedx.Verify(env, ring)
+	if err != nil {
+		return err
+	}
+	author, confirmed, err := v.Issuer(names)
+	if err != nil {
+		return err
+	}
+	if a := fs.val("artifact"); a != "" {
+		if err := bindArtifact(a, v.SHA256, nil, cyclonedx.ErrVerify, "the BOM"); err != nil {
+			return err
+		}
+	}
+	how := "confirmed: your trust list names this key"
+	if !confirmed {
+		how = "claimed: your trust list does not name this key"
+	}
+	fmt.Printf("verified CycloneDX BOM: authored by %s (%s)\n  signed by key %s\n  describes artifact %s (%s)\n",
+		author, how, v.KeyID, v.SHA256, v.Name)
+	fmt.Println("  a signed BOM is an inventory, not an attestation: it authorizes no promotion")
+	if p := fs.val("cyclonedx"); p != "" {
+		if err := os.WriteFile(p, v.BOM, 0o644); err != nil {
+			return err
+		}
+		fmt.Printf("  wrote the verified BOM to %s\n", p)
+	}
+	if fs.val("artifact") == "" {
+		fmt.Println("  the artifact itself was not checked; pass --artifact <path> to bind it")
+	}
 	return nil
 }

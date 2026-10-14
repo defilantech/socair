@@ -147,6 +147,10 @@ Usage:
                            re-issue it as authorized with conditions
   socair verify <attestation> --trusted <key.pub|dir> [--artifact <path>]
                            verify an attestation, and that a file is its artifact
+  socair sign --key <key> --bom --attestation <r.dsse.json> [--cyclonedx <bom.json>]
+                           sign the attestation's CycloneDX BOM (an inventory, not a promotion ticket)
+  socair verify --bom <bom.dsse.json> --trusted <key.pub|dir> [--artifact <path>] [--cyclonedx <out.json>]
+                           verify a signed BOM, and write the BOM it carries
   socair attach <registry/repo:tag> --attestation <r.dsse.json> --key <key> --trusted <key.pub|dir>
                            bind an attestation to an OCI model artifact and push it as a referrer (docs/oci.md)
   socair verify <registry/repo:tag> --trusted <key.pub|dir>
@@ -160,7 +164,8 @@ Usage:
   socair airlock log       print the airlock activity log (--verify checks its hash chain)
   socair airlock export --out <dir> [--key <k>]   write a shareable, signed snapshot of the store
   socair inventory verify <dir> --trusted <key.pub|dir>   verify an exported inventory snapshot
-  socair serve             run the engine HTTP/JSON API for the click-ops wizard
+  socair serve [--scan-root <dir>]...   run the engine HTTP/JSON API for the click-ops wizard;
+                           it reads a path a request names only under a scan root
   socair health [--addr <host:port>]   exit 0 only if a running API reports healthy (a container probe)
   socair demo              write a SAMPLE attestation that shows what a report looks like
 `)

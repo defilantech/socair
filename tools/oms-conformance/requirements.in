@@ -1,0 +1,11 @@
+# The OMS conformance suite's test dependencies (conformance/requirements.txt
+# at the pinned suite commit), less pytest-json-report, which only the
+# suite's own action uses. requirements.txt pins them by hash:
+#   uv pip compile requirements.in --generate-hashes --universal \
+#     --python-version 3.12 -o requirements.txt
+# and CI installs it with pip --require-hashes --no-deps --only-binary :all:.
+pytest>=9.1.1
+jsonschema>=4.20
+referencing>=0.31
+cryptography>=50.0.0
+pyyaml>=6.0

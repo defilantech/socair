@@ -1,0 +1,399 @@
+{
+  "bomFormat": "CycloneDX",
+  "specVersion": "1.6",
+  "serialNumber": "urn:uuid:17ac05fb-f523-572f-8cdc-0b8fcf34bdc8",
+  "version": 1,
+  "metadata": {
+    "timestamp": "2026-09-29T00:00:00Z",
+    "lifecycles": [
+      {
+        "phase": "post-build"
+      }
+    ],
+    "tools": {
+      "components": [
+        {
+          "type": "application",
+          "name": "socair",
+          "version": "0.1.0-dev"
+        }
+      ]
+    },
+    "authors": [
+      {
+        "name": "Unsigned: no issuer has signed this report"
+      }
+    ],
+    "component": {
+      "type": "machine-learning-model",
+      "bom-ref": "model:13d44e37860489806f575deb0b219c6058c9421fe1982a9311a0e367c4e8f444",
+      "supplier": {
+        "name": "google",
+        "url": [
+          "https://huggingface.co/google"
+        ]
+      },
+      "publisher": "google",
+      "name": "Gemma 3 12b It",
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "13d44e37860489806f575deb0b219c6058c9421fe1982a9311a0e367c4e8f444"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "name": "Gemma Terms of Use",
+            "acknowledgement": "declared",
+            "properties": [
+              {
+                "name": "socair:license_id",
+                "value": "socair-gemma-terms-of-use"
+              }
+            ]
+          }
+        }
+      ],
+      "pedigree": {
+        "ancestors": [
+          {
+            "type": "machine-learning-model",
+            "name": "Gemma 3 12b Pt",
+            "externalReferences": [
+              {
+                "type": "vcs",
+                "url": "https://huggingface.co/google/gemma-3-12b-pt"
+              }
+            ],
+            "properties": [
+              {
+                "name": "socair:declared_in",
+                "value": "GGUF general.base_model.0"
+              },
+              {
+                "name": "socair:declared_repo",
+                "value": "google/gemma-3-12b-pt"
+              },
+              {
+                "name": "socair:declared_organization",
+                "value": "Google"
+              }
+            ]
+          }
+        ],
+        "notes": "The base models the artifact declares, as it declares them; socair:declared_in names where. They are claims, not verified lineage."
+      },
+      "externalReferences": [
+        {
+          "type": "vcs",
+          "url": "https://huggingface.co/google/gemma-3-12b-it",
+          "comment": "revision not pinned to a commit"
+        },
+        {
+          "type": "static-analysis-report",
+          "url": "urn:socair:report:SOCAIR-2026-0001",
+          "comment": "socair.report/v1, Tier 1 static; state withheld"
+        }
+      ],
+      "modelCard": {
+        "properties": [
+          {
+            "name": "socair:quant_declared",
+            "value": "Q5_K_M"
+          },
+          {
+            "name": "socair:quant_observed",
+            "value": "file_type=17"
+          }
+        ]
+      },
+      "properties": [
+        {
+          "name": "socair:file_name",
+          "value": "google_gemma-3-12b-it-Q5_K_M.gguf"
+        },
+        {
+          "name": "socair:format",
+          "value": "GGUF"
+        },
+        {
+          "name": "socair:size_bytes",
+          "value": "8444833824"
+        },
+        {
+          "name": "socair:commit_or_tag",
+          "value": "main"
+        },
+        {
+          "name": "socair:publisher_signing_status",
+          "value": "unsigned"
+        },
+        {
+          "name": "socair:license_source",
+          "value": "GGUF general.license: gemma (socair-gemma-terms-of-use)"
+        },
+        {
+          "name": "socair:license_source",
+          "value": "declared base model google/gemma-3-12b-pt (GGUF general.base_model.0): google/gemma-3-12b-pt (socair-gemma-terms-of-use); the license its publisher releases that model under; not a statement by this artifact"
+        },
+        {
+          "name": "socair:promotion_state",
+          "value": "withheld"
+        },
+        {
+          "name": "socair:assurance_level",
+          "value": "Tier 1 (static)"
+        },
+        {
+          "name": "socair:check_set_version",
+          "value": "tier1/0.1"
+        },
+        {
+          "name": "socair:check:format-and-structure",
+          "value": "PASS"
+        },
+        {
+          "name": "socair:check:file-inventory-and-payloads",
+          "value": "NOT_TESTED"
+        },
+        {
+          "name": "socair:check:hash-provenance-lineage",
+          "value": "NOT_TESTED"
+        },
+        {
+          "name": "socair:check:known-bad-hash-match",
+          "value": "PASS"
+        },
+        {
+          "name": "socair:check:chat-template",
+          "value": "PASS"
+        },
+        {
+          "name": "socair:check:tokenizer-config",
+          "value": "PASS"
+        },
+        {
+          "name": "socair:check:quant-match",
+          "value": "PASS"
+        },
+        {
+          "name": "socair:does_not_certify",
+          "value": "This attestation does not certify the absence of unknown backdoors."
+        }
+      ]
+    }
+  },
+  "components": [
+    {
+      "type": "file",
+      "bom-ref": "file:13d44e37860489806f575deb0b219c6058c9421fe1982a9311a0e367c4e8f444",
+      "name": "google_gemma-3-12b-it-Q5_K_M.gguf",
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "13d44e37860489806f575deb0b219c6058c9421fe1982a9311a0e367c4e8f444"
+        }
+      ],
+      "properties": [
+        {
+          "name": "socair:format",
+          "value": "GGUF"
+        },
+        {
+          "name": "socair:size_bytes",
+          "value": "8444833824"
+        }
+      ]
+    }
+  ],
+  "dependencies": [
+    {
+      "ref": "model:13d44e37860489806f575deb0b219c6058c9421fe1982a9311a0e367c4e8f444",
+      "dependsOn": [
+        "file:13d44e37860489806f575deb0b219c6058c9421fe1982a9311a0e367c4e8f444"
+      ]
+    }
+  ],
+  "compositions": [
+    {
+      "aggregate": "unknown",
+      "assemblies": [
+        "model:13d44e37860489806f575deb0b219c6058c9421fe1982a9311a0e367c4e8f444"
+      ]
+    },
+    {
+      "aggregate": "unknown",
+      "dependencies": [
+        "model:13d44e37860489806f575deb0b219c6058c9421fe1982a9311a0e367c4e8f444"
+      ]
+    }
+  ],
+  "declarations": {
+    "attestations": [
+      {
+        "summary": "Which check rows address each framework entry, as the report maps them. A mapping names what a check inspects; it states no conformance and no confidence. Each claim carries its row's status.",
+        "map": [
+          {
+            "requirement": "requirement:mitre-atlas-2026-09:AML.T0010.003",
+            "claims": [
+              "claim:format-and-structure",
+              "claim:file-inventory-and-payloads",
+              "claim:hash-provenance-lineage",
+              "claim:known-bad-hash-match",
+              "claim:tokenizer-config",
+              "claim:quant-match"
+            ]
+          },
+          {
+            "requirement": "requirement:mitre-atlas-2026-09:AML.T0011.000",
+            "claims": [
+              "claim:file-inventory-and-payloads",
+              "claim:chat-template",
+              "claim:tokenizer-config"
+            ]
+          },
+          {
+            "requirement": "requirement:mitre-atlas-2026-09:AML.T0018.002",
+            "claims": [
+              "claim:file-inventory-and-payloads"
+            ]
+          },
+          {
+            "requirement": "requirement:mitre-atlas-2026-09:AML.T0018.003",
+            "claims": [
+              "claim:chat-template",
+              "claim:tokenizer-config"
+            ]
+          },
+          {
+            "requirement": "requirement:mitre-atlas-2026-09:AML.T0051",
+            "claims": [
+              "claim:chat-template"
+            ]
+          },
+          {
+            "requirement": "requirement:mitre-atlas-2026-09:AML.T0115.001",
+            "claims": [
+              "claim:hash-provenance-lineage",
+              "claim:known-bad-hash-match"
+            ]
+          },
+          {
+            "requirement": "requirement:owasp-llm-top-10-2025:LLM01",
+            "claims": [
+              "claim:chat-template"
+            ]
+          },
+          {
+            "requirement": "requirement:owasp-llm-top-10-2025:LLM03",
+            "claims": [
+              "claim:format-and-structure",
+              "claim:file-inventory-and-payloads",
+              "claim:hash-provenance-lineage",
+              "claim:known-bad-hash-match",
+              "claim:chat-template",
+              "claim:tokenizer-config",
+              "claim:quant-match"
+            ]
+          }
+        ]
+      }
+    ],
+    "claims": [
+      {
+        "bom-ref": "claim:format-and-structure",
+        "target": "model:13d44e37860489806f575deb0b219c6058c9421fe1982a9311a0e367c4e8f444",
+        "predicate": "Check \"Format and structure\" returned PASS. It looks for: Malformed container structure, unexpected tensors."
+      },
+      {
+        "bom-ref": "claim:file-inventory-and-payloads",
+        "target": "model:13d44e37860489806f575deb0b219c6058c9421fe1982a9311a0e367c4e8f444",
+        "predicate": "Check \"File inventory and payloads\" returned NOT_TESTED. It looks for: Hidden files, embedded payloads, unexpected executables."
+      },
+      {
+        "bom-ref": "claim:hash-provenance-lineage",
+        "target": "model:13d44e37860489806f575deb0b219c6058c9421fe1982a9311a0e367c4e8f444",
+        "predicate": "Check \"Hash, provenance, lineage\" returned NOT_TESTED. It looks for: Traceable origin: a manifest bound to this hash, from an immutable upstream commit."
+      },
+      {
+        "bom-ref": "claim:known-bad-hash-match",
+        "target": "model:13d44e37860489806f575deb0b219c6058c9421fe1982a9311a0e367c4e8f444",
+        "predicate": "Check \"Known-bad hash match\" returned PASS. It looks for: Match against the known-bad artifact denylist."
+      },
+      {
+        "bom-ref": "claim:chat-template",
+        "target": "model:13d44e37860489806f575deb0b219c6058c9421fe1982a9311a0e367c4e8f444",
+        "predicate": "Check \"Chat template\" returned PASS. It looks for: Code reach, hidden or obfuscated text, override or content-triggered instructions, and the text the rendered template adds to the prompt."
+      },
+      {
+        "bom-ref": "claim:tokenizer-config",
+        "target": "model:13d44e37860489806f575deb0b219c6058c9421fe1982a9311a0e367c4e8f444",
+        "predicate": "Check \"Tokenizer config\" returned PASS. It looks for: Tokenizer metadata anomalies."
+      },
+      {
+        "bom-ref": "claim:quant-match",
+        "target": "model:13d44e37860489806f575deb0b219c6058c9421fe1982a9311a0e367c4e8f444",
+        "predicate": "Check \"Quant match\" returned PASS. It looks for: Declared quantization (file name) against the tensor types in the file."
+      }
+    ]
+  },
+  "definitions": {
+    "standards": [
+      {
+        "bom-ref": "standard:mitre-atlas-2026-09",
+        "name": "MITRE ATLAS",
+        "version": "2026.09",
+        "requirements": [
+          {
+            "bom-ref": "requirement:mitre-atlas-2026-09:AML.T0010.003",
+            "identifier": "AML.T0010.003",
+            "text": "AI Supply Chain Compromise: Model"
+          },
+          {
+            "bom-ref": "requirement:mitre-atlas-2026-09:AML.T0011.000",
+            "identifier": "AML.T0011.000",
+            "text": "User Execution: Unsafe AI Artifacts"
+          },
+          {
+            "bom-ref": "requirement:mitre-atlas-2026-09:AML.T0018.002",
+            "identifier": "AML.T0018.002",
+            "text": "Manipulate AI Model: Embed Malware"
+          },
+          {
+            "bom-ref": "requirement:mitre-atlas-2026-09:AML.T0018.003",
+            "identifier": "AML.T0018.003",
+            "text": "Manipulate AI Model: Modify Prompt Construction Logic"
+          },
+          {
+            "bom-ref": "requirement:mitre-atlas-2026-09:AML.T0051",
+            "identifier": "AML.T0051",
+            "text": "LLM Prompt Injection"
+          },
+          {
+            "bom-ref": "requirement:mitre-atlas-2026-09:AML.T0115.001",
+            "identifier": "AML.T0115.001",
+            "text": "Publish Poisoned AI Artifacts: Models"
+          }
+        ]
+      },
+      {
+        "bom-ref": "standard:owasp-llm-top-10-2025",
+        "name": "OWASP LLM Top 10",
+        "version": "2025",
+        "requirements": [
+          {
+            "bom-ref": "requirement:owasp-llm-top-10-2025:LLM01",
+            "identifier": "LLM01",
+            "text": "Prompt Injection"
+          },
+          {
+            "bom-ref": "requirement:owasp-llm-top-10-2025:LLM03",
+            "identifier": "LLM03",
+            "text": "Supply Chain"
+          }
+        ]
+      }
+    ]
+  }
+}
