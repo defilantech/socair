@@ -30,7 +30,7 @@ var ErrNoModel = errors.New("no such model in the store")
 func IsEvidence(name string) bool {
 	switch name {
 	case ProvenanceFile, StagedReport, StagedAttestation, StagedAcceptance, StagedConditional,
-		attestationDoc, attestationEnvelope, RecheckFile:
+		attestationDoc, attestationEnvelope, RecheckFile, DerivationFile:
 		return true
 	}
 	return false
