@@ -18,6 +18,7 @@ gofmt -l cmd internal                                  # CI fails if this prints
 go mod verify                                          # CI checks vendor/ is in sync
 go run ./cmd/socair scan <path>                        # report JSON to stdout
 go run ./cmd/socair render <path> > report.html
+go run ./cmd/socair render --attestation r.dsse.json --trusted op.pub --pdf r.pdf   # verifies, then renders; --report r.json renders a saved report unsigned
 go run ./cmd/socair serve --web web/build --scan-root <dir>   # API + wizard on 127.0.0.1:8080
 go run ./cmd/socair key gen --out op                   # op.key (0600) + op.pub
 go run ./cmd/socair sign --key op.key --report r.json  # r.dsse.json
@@ -58,6 +59,8 @@ Opt-in tests that need real resources, skipped by default:
 - `SOCAIR_TEST_COSIGN=<path to cosign>` runs cosign `verify-attestation` against an attached artifact (`go test ./internal/ociattest -run Cosign -v`).
 - `SOCAIR_TEST_REGISTRY=<host:port of a scratch registry>` pushes, attaches, and verifies against a real registry (`go test ./internal/ociattest -run RealRegistry -v`).
 - `SOCAIR_CONVERT_CORPUS=<dir of torch.save checkpoints>`, with `SOCAIR_PYTHON` naming a Python with torch, compares converted tensors with `torch.load` (`go test ./internal/convert -run RealCheckpoints -v`).
+- `SOCAIR_TEST_PYTHON=<python3>` checks the tar reader against Python's `tarfile` (`go test ./internal/ociattest/tarwalk -run PythonAgrees -v`).
+- `SOCAIR_OCI_BASE_CORPUS=<OCI image layouts>` maps real base images' tar layers (`go test ./internal/ociattest -run RealBaseImages -v`).
 
 Real-corpus gates, run before and after a detection change (see "False positives" below):
 
@@ -65,6 +68,7 @@ Real-corpus gates, run before and after a detection change (see "False positives
 - Safetensors layout: `SOCAIR_SAFETENSORS_CORPUS=<dirs> go test ./internal/checks/structure -run RealSafetensors -v`
 - HF tokenizers: `SOCAIR_TOKENIZER_CORPUS="<dirs>" go test ./internal/checks/tokenizer -run RealHFTokenizers -v`
 - Pickle sniffing: `SOCAIR_PICKLE_SNIFF_CORPUS=<dirs> go test ./internal/checks/pickle -run RealSniff -v`
+- Remote code: `SOCAIR_REMOTECODE_CORPUS="<dirs>" go test ./internal/checks/remotecode -run RealRepos -v` (fails if a repository with an auto_map is not a LEAD)
 - License matching: `SOCAIR_LICENSE_CORPUS=<dir of repos> go test ./internal/engine -run RealLicenses -v`
 
 ## Rules
@@ -92,6 +96,7 @@ Real-corpus gates, run before and after a detection change (see "False positives
 - `internal/report` (Go) and `docs/report-schema/v1.json` define `socair.report/v1`. The engine produces it, the CLI prints it, the renderers consume it, and the TS `Document` type in `web/src/lib/api.ts` mirrors it. Do not invent a divergent shape.
 - A shape change touches the Go model, the JSON schema, the TS types, and the goldens `testdata/report.json` and `testdata/report-tier2.json`.
 - Fixed wording, never edited per artifact, in `report/model.go`: the four bounded-statement sentences (`BoundedStatementNoIndicators` and `BoundedStatementIndicators`, and for a report with a `tier2` section `BoundedStatementTier2NoIndicators` and `BoundedStatementTier2Indicators`; `BoundedStatementOf` picks one from the check rows, and `Validate` re-derives it) and `DoesNotCertify`.
+- A sentence that lists row names uses `report.RowNames` or `report.RowsAre` (semicolons, since row names hold commas).
 
 ### Host paths
 
@@ -115,8 +120,9 @@ Real-corpus gates, run before and after a detection change (see "False positives
   - It parses Jinja (`chattemplate/jinja`, a subset parser; unsupported constructs are parse errors) and analyses the tree (`chattemplate/analyze.go`): constant folding, Unicode normalization, dunder reach (FAIL), content-conditional injection (LEAD). An unreadable template is a LEAD, not NOT_TESTED.
   - A template with no code reach is then rendered (`chattemplate/render.go`) by Socair's own bounded evaluator (`jinja.Render`, modelling transformers' sandbox; never Python or another engine) on the versioned probe conversations (`ProbeSet`), plus a trigger probe per literal a content condition tests.
   - The text a render adds is listed in the notes and never judged. A condition that opens a system turn, or a near-miss of a reviewed template's text (identical on every standard probe, different under a condition it adds), is a LEAD. A construct the evaluator does not model, or a passed render bound, leaves it unrendered with the reason and the static verdict standing.
+  - A comparison of a content part's `type` field with a standard part type (`text`, `image`, `image_url`, `audio`, `input_audio`, `video`, `file`; `partTypes` in `analyze.go`) is structural, not a trigger. No probe carries content parts, so the text such a branch, or its chain's else, adds is listed in the notes, not judged; a system turn there is still a LEAD. Any other value, another field, or a type read through a filter or call stays a trigger. A tuple of constants is a sequence like a list.
   - It has an embedded reviewed-template allowlist (`known-good-templates.txt`, seeded empty on purpose) and an evasion corpus (`testdata/evasions`, `expect.txt` pins every result including known misses).
-  - Use `socair template <path>` / `socair corpus <dir>` to investigate a flag.
+  - Use `socair template <path>` / `socair corpus <dir>` to investigate a flag. CI's `real-template-corpus` job runs llama.cpp's `models/templates` at `bd4eeaa` (73 templates).
 - **False positives are a stated veto risk.** Any detection change must be measured with the real-corpus gates under Commands and recorded in `docs/false-positive-baseline.md`; pickle is measured on real checkpoints recorded in the same doc.
 
 ### Model directories
@@ -124,9 +130,9 @@ Real-corpus gates, run before and after a detection change (see "False positives
 - `socair scan <dir>` (`internal/modeldir`, `engine/scandir.go`) treats a Hugging Face repo or cache snapshot as one artifact. Every file is snapshotted and hashed; the subject is the digest of a canonical manifest (`socair.modeldir/v1`, OMS-style: one subject, per-file hashes in `artifact.files`), and `report.Validate` recomputes it from the listed files.
 - Per-file checks merge into one row each via `checks.Merge` (worst wins, non-PASS files named).
 - The Tokenizer row reads the HF tokenizer files (`tokenizer.InspectHF`, rules measured on 62 real tokenizers).
-- A directory adds the Remote code row (`checks/remotecode`: `auto_map` or `.py` is a LEAD) and shard-index validation (`structure.ValidateIndex`).
+- A directory adds shard-index validation (`structure.ValidateIndex`) and the Remote code row (`checks/remotecode`), a LEAD for the Python a loader would import: a module an `auto_map` (any JSON, any depth), `custom_pipelines`, a sentence-transformers class outside `sentence_transformers.*`, or diffusers' `model_index.json` names; `custom_generate/generate.py`, or `handler.py`, `pipeline.py`, or `code/inference.py` at the root; and the repository files those import, transitively. A reference to another repository, to a path outside the directory, or (auto_map, `custom_pipelines`, diffusers) to a module the directory lacks is a LEAD. Any other script is listed in the notes, not judged. Configs are decoded as Python's json module decodes them (`NaN`, `Infinity`).
 - A file reaches the Pickle row by its extension or by its bytes (`pickle.Sniff`: a protocol 2 to 5 stream that walks, or a torch.save zip; not protocol 0/1 text, safetensors, GGUF, or TorchScript archives, which stay named as unscanned archives). A directory with no pickle says so in File inventory's notes.
-- The pickle grammar's untyped storage class is `torch.storage.UntypedStorage`, as torch.save writes it for `_rebuild_tensor_v3` dtypes (float8, uint16/32/64, …); `torch.UntypedStorage`, the same class, is accepted with identical checks. An untyped storage in a legacy (pre-zip) stream is a LEAD, since torch's legacy loader cannot read one. `pickle/pickletest` writes torch.save's bytes (vector `torch-v3-uint16` is torch 2.14.1's `data.pkl`).
+- The pickle grammar's untyped storage class is `torch.storage.UntypedStorage`, as torch.save writes it for `_rebuild_tensor_v3` dtypes (float8, uint16/32/64, …); `torch.UntypedStorage`, the same class, is accepted with identical checks. An untyped storage in a legacy (pre-zip) stream is a LEAD, since torch's legacy loader cannot read one. `pickle/pickletest` writes torch.save's bytes (vector `torch-v3-uint16` is torch 2.14.1's `data.pkl`). The dtype table holds `bcomplex32` (4 bytes), and a `torch.cuda` storage class is accepted only where torch.cuda defines one (`cudaStorageTypes`, its twelve legacy typed classes).
 - A torch.save zip the Pickle row PASSed counts as read in File inventory when every entry in it is accounted for (`pickle.InspectArchive` hands the inventory what it read, `checks.ArchiveRead`); any other entry keeps it unscanned and named.
 - The airlock carries directories too: `PullRepo` stages a whole repo at a pinned commit, each file verified against the hub's hash, and `Promote` places a directory only when its recomputed digest is the attested subject.
 
@@ -168,6 +174,7 @@ Real-corpus gates, run before and after a detection change (see "False positives
 ### Renderers and framework mappings
 
 - `internal/render`: HTML via `html/template` (`template.html` is embedded), PDF in pure Go via vendored `go-pdf/fpdf` so it works air-gapped, SARIF, and a CycloneDX 1.6 ML-BOM (`render/cyclonedx`, `docs/cyclonedx.md`: derived from the report alone, a field the report does not know left out; mapped to the G7 SBOM-for-AI minimum elements).
+- PDF text goes through `pdf.page`, which encodes it for the core fonts (Windows-1252); a character outside it prints as `<U+XXXX>`.
 - All are deterministic and byte-stable for a fixed input, with timestamps taken from the document and not the clock. Golden tests compare against `testdata/`.
 - SARIF (`render/sarif`, `docs/sarif.md`): each result carries a partial fingerprint, `socairFindingHash/v1`, mirrored to `primaryLocationLineHash` (the only one GitHub reads): a SHA-256 over netstrings of the key, the artifact hash, the row name, the status, and the evidence, never clock or host fields. A change to its inputs needs a new key version (`TestFingerprintKnownAnswer` pins it). A PASS is `kind: pass`. The golden is `render/sarif/testdata/report.sarif.json` (`go test ./internal/render/sarif -run TestGoldenSARIF -update`), validated against the OASIS SARIF 2.1.0 schema in testdata.
 - `socair sign --bom` signs a BOM under predicate type `https://cyclonedx.org/bom`, which `socair verify` refuses as an attestation and `socair verify --bom` checks.
@@ -177,7 +184,7 @@ Real-corpus gates, run before and after a detection change (see "False positives
 ### Signing
 
 - An attestation (`internal/attest`) is an in-toto Statement v1 (predicate type `https://socair.ai/attestation/v1`, predicate the report) in a DSSE envelope signed with Ed25519, verifiable offline.
-- `attest.Verify` delegates the envelope, signature, statement, subject-digest, and promotion-state checks to the public module `github.com/defilantech/socair-verify` (vendored; the same code LLMKube's admission gate runs, so a format change must land there first), then adds a strict decode into `report.Document`, the recorded document hash, and `report.Validate`.
+- `attest.Verify` delegates the envelope, signature, statement, subject-digest, and promotion-state checks to the public module `github.com/defilantech/socair-verify` (vendored; the same code LLMKube's admission gate runs, so a format change must land there first), then adds a strict decode into `report.Document`, the recorded document hash, and `report.Validate`. A predicate field this socair does not know is refused, with an error that names a newer socair as the likely signer.
 - Renderers mark an unsigned document UNSIGNED; a rendered report is a claim, the envelope is the proof.
 - The issuer is whoever signs: `socair key gen --issuer <name>` records a name outside the PEM block, `attest.Sign` writes it into `issuer` under the signature, and `Verified.Issuer` confirms it against the verifier's own name for the key (trusted key files; `airlock trust add --name`), refusing a contradicting claim. An unsigned report's issuer is `report.Unissued`, never Defilan.
 
@@ -203,7 +210,9 @@ Real-corpus gates, run before and after a detection change (see "False positives
 
 ### OCI artifacts
 
-- `socair attach <oci-ref>` (`internal/registry`, `internal/ociattest`, `docs/oci.md`) verifies an attestation, matches the artifact's layers to the attested bytes (`MatchLayers`: raw single-file layers only, by digest, and for a directory by path; tar and compressed layers are refused), and signs a binding: an in-toto statement about the OCI manifest digest (`https://socair.ai/oci-binding/v1`) that names the attestation by hash and repeats its promotion state.
+- `socair attach <oci-ref>` (`internal/registry`, `internal/ociattest`, `docs/oci.md`) verifies an attestation, matches the artifact's layers to the attested bytes, and signs a binding: an in-toto statement about the OCI manifest digest (`https://socair.ai/oci-binding/v1`) that names the attestation by hash and repeats its promotion state.
+- Raw layers (`MatchLayers`) match by digest, and for a directory by path.
+- An image's tar layers (a KServe ModelCar; `MapTarLayers`, match `model-root`) are streamed and hashed (`registry.Repo.OpenBlob`), gzip read as one member, read by `ociattest/tarwalk` (only what Go's and Python's tar readers read alike), and placed as containerd's `applyNaive` places them. The model root (`--model-root`, default `models`) must hold exactly the attested files; links, whiteouts, duplicates, special files, unclean names, and a layer mixing model and base files are refused. The binding adds `model_root`, `layer_rules` (`socair.tar-map/v1`), and each layer's `role`, `entries`, and `files`. Base layers and the image config are not examined. A rule change that can map an image differently changes `LayerRules` and the refusal table in `docs/oci.md`. Fuzzed by `FuzzWalk`, `FuzzWalkHeaders`, and `FuzzMapLayers`.
 - It pushes the binding and the attestation as one referrer, and the binding again as a Sigstore bundle referrer (no DSSE key id: sigstore-go skips Socair's) that cosign and Kyverno read.
 - `socair verify <oci-ref>` re-checks every link, the layer match included.
 - `internal/registry` is a narrow net/http client: the referrers API with the tag-schema fallback, Docker config static auths, credentials never across a redirect, and `SOCAIR_EGRESS=deny`. `registrytest` is the in-process registry the tests use.
@@ -212,7 +221,8 @@ Real-corpus gates, run before and after a detection change (see "False positives
 
 - `policies/kyverno` (`docs/admission.md`) holds Kyverno `ImageValidatingPolicy` resources. They refuse a pod that names a model (a reference under the configured repositories, in a container, init or ephemeral container, image volume, or `oci://` container argument) unless it has the Sigstore-bundle binding `socair attach` pushes, verified with the operator's key for that manifest digest, in state `authorized`, or `authorized_with_conditions` before its expiry in the conditions variant.
 - The e2e applies the shipped files with only their two EDIT values filled in.
-- KServe's OCI layouts need tar layers, which `attach` refuses (#236), so a KServe model is refused. Sigstore policy-controller is not served: it accepts only keyless bundles.
+- A `model-root` binding is admitted when the image is mounted (`oci+native://`) or fetched (`oci+fetch://`). A pod that runs it as a container (KServe ModelCar) runs its unexamined base layers, so it is refused unless the policy's `runUnexaminedBase` is `true`.
+- Sigstore policy-controller is not served: it accepts only keyless bundles.
 
 ### API
 
