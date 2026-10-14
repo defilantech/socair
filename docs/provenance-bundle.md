@@ -159,7 +159,7 @@ configure proves nothing about who made the model.
 
 | Signature | Provenance row | `publisher_signing_status` |
 |---|---|---|
-| From a trusted key or root; every signed file matches | PASS | verified (OMS, signer) |
+| From a trusted key or root; every signed file the scan reads matches | PASS | verified (OMS, signer) |
 | From a trusted signer; the signature, or a file, does not match | FAIL | invalid (OMS): what differs |
 | From an untrusted signer, or pre-1.0 | the manifest rules decide; the signature is named | present, not verified |
 | From a trusted root, with a certificate outside its validity at the scan time | the manifest rules decide; the signature is named | present, not verified |
@@ -191,14 +191,65 @@ A verified signature proves the files are the ones the key holder signed. It
 is a statement of origin and integrity, never of safety: the other rows still
 decide whether it is promoted.
 
-A file the signed manifest lists is always compared. A file it does not list
-is left out of the comparison, and named as not covered with the reason, only
-when the signer excluded it (`ignore_paths`), when it is one of OMS's default
+A file the signed manifest lists is compared, unless it is download-tool
+metadata the scan does not read (below). A file it does not list is left out
+of the comparison, and named as not covered with the reason, only when the
+signer excluded it (`ignore_paths`), when it is one of OMS's default
 exclusions at the directory's top (`.git`, `.gitattributes`, `.github`,
 `.gitignore`; OMS v1.0 section 6.2), or when it is the other root signature
 file. Any other file the manifest does not list is a difference. A single file
 checked against a signature over several files that lists it is not verified:
 the other files are not in hand, so scan the directory.
+
+### Download-tool metadata in a signed directory
+
+A directory scan does not read `.cache/` or `.huggingface/` directories, at
+any depth: download tools keep their own bookkeeping there, a loader does not
+read it, and it is not among the attested files (the report's out-of-scope
+list names each one as excluded). `hf download <repo> --local-dir <dir>`
+writes such metadata into `<dir>`: `.cache/huggingface/` from huggingface_hub
+0.24.0 on, `.huggingface/` in 0.23.x, and nothing before 0.23.0. It holds a
+`.gitignore`, and for each downloaded file a `.metadata` record of the commit,
+the ETag, and the time it was written, with a `.lock` beside it; 2.2.0 adds a
+`CACHEDIR.TAG` and the repo tree it listed.
+
+`model_signing` 1.1.1 signs every file under the model directory except
+`.git/`, `.gitattributes`, `.github/`, and `.gitignore` at its top, so a
+directory signed after an `hf download --local-dir` lists that metadata. A
+signed file under `.cache/` or `.huggingface/` is left out of the comparison:
+the scan holds no bytes for it, so it is neither compared nor counted missing.
+A PASS then says "every signed file the scan read matches" and names each such
+directory, with the number of signed files under it, as signed but not
+compared. It is the same whether the metadata is on disk, rewritten, or gone,
+because the attested files are the same.
+
+- Only those two directories, as the first directory on the path that the scan
+  skips, get this treatment. A changed, missing, or unsigned file anywhere
+  else is a difference, and so is a signed file under another directory the
+  scan skips (`.git/` below the top, `__pycache__/`, `.ipynb_checkpoints/`).
+- The metadata is left out, not read and compared: every check reads the
+  scan's snapshot, which does not hold it, and re-running the same download
+  rewrites each `.metadata` record with a new time while no model byte
+  changes. `model_signing verify` fails such a directory on that rewrite;
+  comparing it would FAIL an unchanged model.
+- The reverse, a signature made before the download wrote its metadata, lists
+  none of it. The scan does not read the metadata, so it is no difference
+  either, and the PASS claims nothing more than "every signed file matches".
+  (`model_signing verify` fails that directory on the extra files unless they
+  are ignored.)
+
+Sources, read on 2026-10-14: huggingface_hub's `_huggingface_dir` at
+[v0.23.0](https://github.com/huggingface/huggingface_hub/blob/v0.23.0/src/huggingface_hub/_local_folder.py#L212-L229),
+[v0.24.0](https://github.com/huggingface/huggingface_hub/blob/v0.24.0/src/huggingface_hub/_local_folder.py#L221-L238),
+and [v2.2.0](https://github.com/huggingface/huggingface_hub/blob/v2.2.0/src/huggingface_hub/_local_folder.py#L445-L474)
+(no `_local_folder.py` before v0.23.0);
+[the metadata record](https://github.com/huggingface/huggingface_hub/blob/v2.2.0/src/huggingface_hub/_local_folder.py#L432-L442)
+and [its rewrite when the ETag matches](https://github.com/huggingface/huggingface_hub/blob/v2.2.0/src/huggingface_hub/file_download.py#L1430-L1432);
+`model_signing` 1.1.1's [default ignore paths](https://github.com/sigstore/model-transparency/blob/v1.1.1/src/model_signing/hashing.py#L166-L177)
+and [the walk it signs](https://github.com/sigstore/model-transparency/blob/v1.1.1/src/model_signing/_serialization/file.py#L109-L119).
+Reproduced with the real tools: two small files fetched with `hf download
+--local-dir` (huggingface_hub 2.2.0 and 0.23.4) and signed with `model_signing
+sign key` 1.1.1, which lists the metadata and verifies the directory.
 
 ## 3b. NVIDIA NGC models
 
