@@ -7,7 +7,10 @@
 // file, a repeated key, and in an ONNX model a tensor whose data does not
 // match its type and shape, or external data that leaves the model's
 // directory (onnx.go). An ONNX location that different systems resolve
-// differently is a LEAD.
+// differently is a LEAD. A Keras model (keras.go) FAILs on Python bytecode,
+// a pickled module, or a dangerous reference in its config, and on HDF5
+// storage outside its file or of the wrong size; an archive member Keras
+// does not read is a LEAD.
 package structure
 
 import (
@@ -17,6 +20,7 @@ import (
 
 	"github.com/defilantech/socair/internal/checks"
 	"github.com/defilantech/socair/internal/gguf"
+	"github.com/defilantech/socair/internal/keras"
 	"github.com/defilantech/socair/internal/onnx"
 	"github.com/defilantech/socair/internal/safetensors"
 )
@@ -37,11 +41,15 @@ func Validate(path string) checks.Result {
 		// A single file: external data beside it is not in the scan.
 		return validateONNX(r, path, nil)
 	}
+	if k, _ := keras.Sniff(path); errors.Is(err, gguf.ErrNotGGUF) && k != keras.None {
+		res, _ := validateKeras(r, path)
+		return res
+	}
 	if err != nil {
 		r.Status = checks.NotTested
 		switch {
 		case errors.Is(err, gguf.ErrNotGGUF):
-			r.Notes = "not a GGUF, safetensors, or ONNX artifact (unrecognized container)"
+			r.Notes = "not a GGUF, safetensors, ONNX, HDF5, or .keras artifact (unrecognized container)"
 		default:
 			r.Notes = "could not parse structure: " + err.Error()
 		}

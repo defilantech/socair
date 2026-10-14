@@ -72,3 +72,43 @@ func TestRealONNXModels(t *testing.T) {
 	}
 	t.Logf("%d PASS, %d FAIL, %d LEAD, %d NOT_TESTED", tally[checks.Pass], tally[checks.Fail], tally[checks.Lead], tally[checks.NotTested])
 }
+
+// TestRealKerasModels is the false-positive gate for the Keras rules: no
+// real model's container (its HDF5 layout, its archive members) may FAIL or
+// LEAD. A config detection (Lambda bytecode, a pickled module, a dangerous
+// reference) is the rule doing its job, and is logged for the baseline, not
+// failed. It runs only when SOCAIR_KERAS_CORPUS names directories
+// (colon-separated); every .h5, .hdf5, and .keras file under them is read.
+// Nothing is loaded or run.
+//
+//	SOCAIR_KERAS_CORPUS=<dir>:<dir> go test ./internal/checks/structure -run RealKeras -v
+func TestRealKerasModels(t *testing.T) {
+	dirs := os.Getenv("SOCAIR_KERAS_CORPUS")
+	if dirs == "" {
+		t.Skip("set SOCAIR_KERAS_CORPUS to directories holding .h5, .hdf5, or .keras files")
+	}
+	config := map[string]bool{"keras-lambda": true, "keras-pickle": true, "keras-dangerous-reference": true}
+	tally := map[checks.Status]int{}
+	for _, dir := range strings.Split(dirs, ":") {
+		_ = filepath.WalkDir(dir, func(p string, d fs.DirEntry, err error) error {
+			ext := strings.ToLower(filepath.Ext(p))
+			if err != nil || ext != ".h5" && ext != ".hdf5" && ext != ".keras" {
+				return nil
+			}
+			rel, _ := filepath.Rel(dir, p)
+			r, _ := ValidateKeras(dir, filepath.ToSlash(rel))
+			tally[r.Status]++
+			container := false
+			for _, f := range r.Findings {
+				container = container || !config[f.Pattern]
+			}
+			if container {
+				t.Errorf("%s: %s: %v: %s", p, r.Status, r.Findings, r.Notes)
+			} else {
+				t.Logf("%s: %s: %v: %s", rel, r.Status, r.Findings, r.Notes)
+			}
+			return nil
+		})
+	}
+	t.Logf("%d PASS, %d FAIL, %d LEAD, %d NOT_TESTED", tally[checks.Pass], tally[checks.Fail], tally[checks.Lead], tally[checks.NotTested])
+}

@@ -115,7 +115,7 @@ var weightExt = map[string]bool{
 	".safetensors": true, ".gguf": true, ".bin": true, ".pt": true, ".pth": true,
 	".ckpt": true, ".pkl": true, ".pickle": true, ".joblib": true, ".h5": true,
 	".onnx": true, ".msgpack": true, ".npz": true, ".npy": true, ".mlmodel": true,
-	".tflite": true, ".pb": true, ".keras": true,
+	".tflite": true, ".pb": true, ".keras": true, ".hdf5": true,
 }
 
 // HasWeightExt reports whether a path carries a model-weights extension, the

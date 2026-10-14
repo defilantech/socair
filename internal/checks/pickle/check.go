@@ -84,6 +84,16 @@ var nestedLoaders = map[string]bool{
 	"pandas.read_pickle": true, "pandas.io.pickle.read_pickle": true,
 }
 
+// Dangerous reports whether module.name is a global this check FAILs
+// wherever it appears: one that reaches code execution, the filesystem,
+// processes, or the network, or a loader that deserializes bytes the scan
+// cannot see. The Keras structure rules hold a class or function a Keras
+// config names to the same list.
+func Dangerous(module, name string) bool {
+	v := verdict(Global{Module: module, Name: name}, nil)
+	return v == "dangerous" || v == "nested"
+}
+
 // verdict classifies one global, as spelled and as CPython renames it.
 func verdict(g Global, reviewed map[string]bool) string {
 	rmod, rname := pyResolve(g.Module, g.Name)

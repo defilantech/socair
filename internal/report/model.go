@@ -116,7 +116,10 @@ var passMeaning = map[string]string{
 		"For an ONNX model: every tensor holds exactly the data its type and shape need, " +
 		"no two initializers of a graph share a name, external data stays inside the model's directory and fits its file, " +
 		"and every operator is ONNX's own, one of onnxruntime's contrib operators, or a function the model defines. " +
-		"Tensor values are not judged, and an operator library a deployment registers is outside the model.",
+		"Tensor values are not judged, and an operator library a deployment registers is outside the model. " +
+		"For a Keras model (HDF5 or a .keras archive): every dataset's storage lies inside the HDF5 data, sized by its type and shape, with none overlapping, " +
+		"the archive holds only what Keras reads, and the config names no Lambda bytecode, pickled module, or class or function from outside Keras and TensorFlow " +
+		"(KerasHub, KerasCV, and KerasNLP classes are named). Weight values are not judged.",
 	"File inventory and payloads": "No script, shell command, long encoded blob, or executable signature was found in string metadata values, " +
 		"including every string-array element of 64 bytes or more, and no native executable among the files. " +
 		"Shorter array elements, such as vocabulary tokens, are too short to carry one and are not scanned. " +

@@ -25,6 +25,7 @@ import (
 	"github.com/defilantech/socair/internal/checks/tokenizer"
 	"github.com/defilantech/socair/internal/feed"
 	"github.com/defilantech/socair/internal/gguf"
+	"github.com/defilantech/socair/internal/keras"
 	"github.com/defilantech/socair/internal/onnx"
 	"github.com/defilantech/socair/internal/report"
 	"github.com/defilantech/socair/internal/safetensors"
@@ -138,6 +139,7 @@ func ScanWith(path string, mode Mode, in Inputs) (*report.Document, error) {
 	var observedTypes []gguf.TypeShare
 	var licClaims []license.Claim
 	var licBases []license.BaseModel
+	userBlock := false
 
 	if safetensors.IsSafetensors(path) {
 		m, err := safetensors.ReadHeader(path)
@@ -163,6 +165,16 @@ func ScanWith(path string, mode Mode, in Inputs) (*report.Document, error) {
 		}
 		o.Format = "ONNX"
 		id = o
+	} else if kind, off := keras.Sniff(path); !isGGUF && kind != keras.None {
+		// A Keras model or other HDF5 file, recognised by its bytes; the
+		// structure and inventory rows read it.
+		o, err := readOpaque(path)
+		if err != nil {
+			return nil, err
+		}
+		o.Format = kerasFormat(path, kind)
+		id = o
+		userBlock = off > 0
 	} else if !isGGUF {
 		// Not a container this engine parses: pickle checkpoints and anything
 		// unrecognized. The scan still reports, so the pickle check runs on the
@@ -263,7 +275,10 @@ func ScanWith(path string, mode Mode, in Inputs) (*report.Document, error) {
 		}
 		results = append(results, meta...)
 	}
-	if id.Format != "GGUF" && id.Format != "safetensors" && id.Format != "ONNX" {
+	// A pickle check runs on what is not a format the engine reads, and on
+	// an HDF5 file with a user block: its first bytes are not HDF5, and a
+	// pickle loader reads them first.
+	if !parsedFormats[id.Format] || userBlock {
 		results = append(results, pickle.Inspect(path))
 	}
 	if row, ok := refs.licenseRow(ident, singleFileLicenseNote(id.Format, ggufErr)); ok {
@@ -288,6 +303,24 @@ func ScanWith(path string, mode Mode, in Inputs) (*report.Document, error) {
 	d = finish(d, results, unparsedFormats(id), expires)
 	nameSnapshot(d, path, mode == ModeFull)
 	return d, nil
+}
+
+// parsedFormats are the formats the structure and inventory rows read; the
+// Pickle opcode scan does not run on them.
+var parsedFormats = map[string]bool{"GGUF": true, "safetensors": true, "ONNX": true,
+	"Keras (HDF5)": true, "HDF5": true, "Keras": true}
+
+// kerasFormat names a file keras.Sniff recognised: a .keras archive, an HDF5
+// file with Keras attributes, or other HDF5. A file that does not read is
+// named by its container.
+func kerasFormat(path string, kind keras.Kind) string {
+	if kind == keras.Archive {
+		return "Keras"
+	}
+	if m, err := keras.Read(path); err == nil && !strings.HasPrefix(m.Layout, "HDF5 with no Keras") {
+		return "Keras (HDF5)"
+	}
+	return "HDF5"
 }
 
 // singleFileLicenseNote says where a single file would state its license, for
@@ -581,7 +614,7 @@ func publisherSigning(status string) string {
 func unparsedFormats(id report.Identity) []string {
 	var out []string
 	if id.Format == "unknown" {
-		out = append(out, "artifact "+id.FileName+": not GGUF, safetensors, ONNX, or pickle, so no format check ran")
+		out = append(out, "artifact "+id.FileName+": not GGUF, safetensors, ONNX, HDF5, Keras, or pickle, so no format check ran")
 	}
 	if id.Split != "" {
 		out = append(out, "the other shards of this split model (this file is "+id.Split+"); each shard needs its own attestation")

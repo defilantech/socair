@@ -54,6 +54,16 @@ var patternSeverity = map[string]string{
 	// or at the runtime's own memory: a read of what is not the model.
 	"external-data-escape": SeverityHigh,
 	"external-data-memory": SeverityHigh,
+	// A Keras config that makes the loader run code: marshalled Python
+	// bytecode (a Lambda), a pickled torch module, or a reference to a
+	// module or Keras API that reaches code execution, files, or the network.
+	"keras-lambda":              SeverityCritical,
+	"keras-pickle":              SeverityCritical,
+	"keras-dangerous-reference": SeverityCritical,
+	// A .keras member that leaves the extraction directory, or one Keras
+	// does not read: a write outside the model, or a place for a payload.
+	"archive-path-escape": SeverityHigh,
+	"keras-archive-entry": SeverityHigh,
 	// Suspicious or inconsistent; needs review.
 	"instruction-override":         SeverityMedium,
 	"secrecy-instruction":          SeverityMedium,

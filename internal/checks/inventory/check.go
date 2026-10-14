@@ -25,6 +25,7 @@ import (
 
 	"github.com/defilantech/socair/internal/checks"
 	"github.com/defilantech/socair/internal/gguf"
+	"github.com/defilantech/socair/internal/keras"
 	"github.com/defilantech/socair/internal/onnx"
 	"github.com/defilantech/socair/internal/safetensors"
 )
@@ -163,12 +164,27 @@ func Inspect(path string, opts Options) checks.Result {
 				unscanned = append(unscanned, fmt.Sprintf("%s embeds an execution-provider context of %d bytes (compiled code), which was not scanned", ep.Where, ep.ContextBytes))
 			}
 		}
+	case kerasFile(path) && !isGGUF(path):
+		m, err := keras.Read(path)
+		if err != nil {
+			r.Status = checks.NotTested
+			r.Notes = "could not read the Keras model's text: " + reason(err)
+			return r
+		}
+		values = m.Text
+		invNote = kerasNote(m)
+		if m.TextTruncated {
+			unscanned = append(unscanned, "Some text was past the reader's caps, so it was not scanned")
+		}
+		if m.H5Unread != "" {
+			unscanned = append(unscanned, "The weights file's attributes were not read ("+m.H5Unread+")")
+		}
 	default:
 		inv, err := gguf.Inventory(path)
 		if err != nil {
 			r.Status = checks.NotTested
 			if errors.Is(err, gguf.ErrNotGGUF) {
-				r.Notes = "not a GGUF, safetensors, or ONNX artifact; cannot inventory"
+				r.Notes = "not a GGUF, safetensors, ONNX, HDF5, or .keras artifact; cannot inventory"
 			} else {
 				r.Notes = "could not read artifact metadata: " + err.Error()
 			}
@@ -233,6 +249,33 @@ func Inspect(path string, opts Options) checks.Result {
 		return r
 	}
 	return listing.grade(r, artifactNote+". ")
+}
+
+// isGGUF keeps a GGUF file, which could also hold the HDF5 signature at an
+// offset a user block would end at, with the GGUF reader.
+func isGGUF(path string) bool {
+	ok, err := gguf.IsGGUF(path)
+	return ok && err == nil
+}
+
+func kerasFile(path string) bool {
+	k, _ := keras.Sniff(path)
+	return k != keras.None
+}
+
+// kerasNote says what the inventory read of a Keras model.
+func kerasNote(m *keras.Model) string {
+	from := "string attributes, the model config, and object comments"
+	what := "Keras HDF5"
+	if m.Kind == keras.Archive {
+		what = ".keras archive"
+		from = "config.json, metadata.json, assets, members Keras does not read, comments, and the weights file's string attributes"
+	}
+	if m.UserBlock > 0 && m.Kind == keras.HDF5 {
+		from += ", and the user block before the HDF5 data"
+	}
+	return fmt.Sprintf("artifact: %s, %d text values (%d bytes) from %s; %d string-array elements under %d bytes counted, not scanned",
+		what, len(m.Text), m.TextBytes, from, m.ShortElements, keras.ArrayScanMin)
 }
 
 // repoListing is what scanRepo found in a repo mirror.
@@ -411,7 +454,7 @@ func excerpt(s string) string {
 // does not parse to a format name. These are the files that can carry
 // weights or code and that no check examined.
 var unparsedExt = map[string]string{
-	".onnx": "ONNX (not this artifact)", ".h5": "Keras/HDF5", ".hdf5": "Keras/HDF5", ".keras": "Keras",
+	".onnx": "ONNX (not this artifact)", ".h5": "Keras/HDF5 (not this artifact)", ".hdf5": "Keras/HDF5 (not this artifact)", ".keras": "Keras (not this artifact)",
 	".pb": "TensorFlow graph or SavedModel", ".tflite": "TensorFlow Lite", ".nemo": "NeMo archive",
 	".npy": "NumPy", ".npz": "NumPy", ".joblib": "joblib", ".msgpack": "Flax msgpack",
 	".pkl": "pickle (not this artifact)", ".pickle": "pickle (not this artifact)",
