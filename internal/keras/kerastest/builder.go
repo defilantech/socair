@@ -12,8 +12,6 @@ import (
 	"archive/zip"
 	"bytes"
 	"encoding/json"
-	"fmt"
-	"strings"
 
 	"github.com/defilantech/socair/internal/hdf5/hdf5test"
 )
@@ -137,67 +135,92 @@ func Zip(members ...Member) []byte {
 	return b.Bytes()
 }
 
-// Keras 3 layers, as config.json writes them.
+// Keras 3 layers, as config.json writes them. Each is built as a Go value
+// and encoded whole, so no value is spliced into JSON text.
+
+type obj = map[string]any
+
+// encode is v as JSON; a fixture that cannot encode is a bug in the test.
+func encode(v any) string {
+	b, err := json.Marshal(v)
+	if err != nil {
+		panic("kerastest: " + err.Error())
+	}
+	return string(b)
+}
+
+// raw wraps layer JSON so it is embedded as JSON, not as a string.
+func raw(layers []string) []json.RawMessage {
+	out := make([]json.RawMessage, len(layers))
+	for i, l := range layers {
+		out[i] = json.RawMessage(l)
+	}
+	return out
+}
 
 // Dense3 is a Keras 3 Dense layer.
 func Dense3(name string) string {
-	return fmt.Sprintf(`{"module": "keras.layers", "class_name": "Dense", "config": {"name": %q, "trainable": true, `+
-		`"dtype": {"module": "keras", "class_name": "DTypePolicy", "config": {"name": "float32"}, "registered_name": null}, "units": 3, "activation": "linear", `+
-		`"kernel_initializer": {"module": "keras.initializers", "class_name": "GlorotUniform", "config": {"seed": null}, "registered_name": null}}, `+
-		`"registered_name": null, "build_config": {"input_shape": [null, 4]}, "name": %q, "inbound_nodes": []}`, name, name)
+	return encode(obj{"module": "keras.layers", "class_name": "Dense", "config": obj{"name": name, "trainable": true,
+		"dtype": obj{"module": "keras", "class_name": "DTypePolicy", "config": obj{"name": "float32"}, "registered_name": nil},
+		"units": 3, "activation": "linear",
+		"kernel_initializer": obj{"module": "keras.initializers", "class_name": "GlorotUniform", "config": obj{"seed": nil}, "registered_name": nil}},
+		"registered_name": nil, "build_config": obj{"input_shape": []any{nil, 4}}, "name": name, "inbound_nodes": []any{}})
 }
 
 // Lambda3 is a Keras 3 Lambda layer whose function is code, as
 // _serialize_function_to_config writes it.
 func Lambda3(name, code string) string {
-	return fmt.Sprintf(`{"module": "keras.layers", "class_name": "Lambda", "config": {"name": %q, "trainable": true, `+
-		`"function": {"class_name": "__lambda__", "config": {"code": %s, "defaults": null, "closure": null}}, "arguments": {}}, `+
-		`"registered_name": null, "name": %q, "inbound_nodes": []}`, name, jsonString(code), name)
+	return encode(obj{"module": "keras.layers", "class_name": "Lambda", "config": obj{"name": name, "trainable": true,
+		"function": obj{"class_name": "__lambda__", "config": obj{"code": code, "defaults": nil, "closure": nil}}, "arguments": obj{}},
+		"registered_name": nil, "name": name, "inbound_nodes": []any{}})
 }
 
 // Layer3 is a Keras 3 layer of any class and module.
 func Layer3(module, class, name string) string {
-	return fmt.Sprintf(`{"module": %q, "class_name": %q, "config": {"name": %q}, "registered_name": null, "name": %q, "inbound_nodes": []}`,
-		module, class, name, name)
+	return encode(obj{"module": module, "class_name": class, "config": obj{"name": name}, "registered_name": nil, "name": name, "inbound_nodes": []any{}})
 }
 
 // Functional3 is a Keras 3 functional model of these layers.
 func Functional3(layers ...string) string {
-	return `{"module": "keras.src.models.functional", "class_name": "Functional", "config": {"name": "m", "trainable": true, "layers": [` +
-		`{"module": "keras.layers", "class_name": "InputLayer", "config": {"batch_shape": [null, 4], "dtype": "float32", "name": "input_layer"}, "registered_name": null, "name": "input_layer", "inbound_nodes": []}, ` +
-		strings.Join(layers, ", ") + `], "input_layers": ["input_layer", 0, 0], "output_layers": ["dense", 0, 0]}, "registered_name": "Functional", "build_config": {"input_shape": null}, "compile_config": {}}`
+	input := obj{"module": "keras.layers", "class_name": "InputLayer",
+		"config":          obj{"batch_shape": []any{nil, 4}, "dtype": "float32", "name": "input_layer"},
+		"registered_name": nil, "name": "input_layer", "inbound_nodes": []any{}}
+	all := append([]json.RawMessage{json.RawMessage(encode(input))}, raw(layers)...)
+	return encode(obj{"module": "keras.src.models.functional", "class_name": "Functional",
+		"config": obj{"name": "m", "trainable": true, "layers": all,
+			"input_layers": []any{"input_layer", 0, 0}, "output_layers": []any{"dense", 0, 0}},
+		"registered_name": "Functional", "build_config": obj{"input_shape": nil}, "compile_config": obj{}})
 }
 
 // Keras 2 layers, as model_config writes them.
 
 // Dense2 is a Keras 2 Dense layer.
 func Dense2(name string) string {
-	return fmt.Sprintf(`{"class_name": "Dense", "config": {"name": %q, "trainable": true, "dtype": "float32", "units": 3, "activation": "linear", `+
-		`"kernel_initializer": {"class_name": "GlorotUniform", "config": {"seed": null}}}, "name": %q, "inbound_nodes": [[["input_1", 0, 0, {}]]]}`, name, name)
+	return encode(obj{"class_name": "Dense", "config": obj{"name": name, "trainable": true, "dtype": "float32", "units": 3, "activation": "linear",
+		"kernel_initializer": obj{"class_name": "GlorotUniform", "config": obj{"seed": nil}}},
+		"name": name, "inbound_nodes": []any{[]any{[]any{"input_1", 0, 0, obj{}}}}})
 }
 
 // Lambda2 is a Keras 2 Lambda layer holding code, as its get_config writes
 // it: function is func_dump's (code, defaults, closure) and function_type
 // "lambda".
 func Lambda2(name, code string) string {
-	return fmt.Sprintf(`{"class_name": "Lambda", "config": {"name": %q, "trainable": true, "dtype": "float32", `+
-		`"function": [%s, null, null], "function_type": "lambda", "module": "__main__", "output_shape": null, "output_shape_type": "raw", `+
-		`"output_shape_module": null, "arguments": {}}, "name": %q, "inbound_nodes": [[["dense", 0, 0, {}]]]}`, name, jsonString(code), name)
+	return encode(obj{"class_name": "Lambda", "config": obj{"name": name, "trainable": true, "dtype": "float32",
+		"function": []any{code, nil, nil}, "function_type": "lambda", "module": "__main__", "output_shape": nil, "output_shape_type": "raw",
+		"output_shape_module": nil, "arguments": obj{}}, "name": name, "inbound_nodes": []any{[]any{[]any{"dense", 0, 0, obj{}}}}})
 }
 
 // Layer2 is a Keras 2 layer of any class.
 func Layer2(class, name string) string {
-	return fmt.Sprintf(`{"class_name": %q, "config": {"name": %q}, "name": %q, "inbound_nodes": []}`, class, name, name)
+	return encode(obj{"class_name": class, "config": obj{"name": name}, "name": name, "inbound_nodes": []any{}})
 }
 
 // Functional2 is a Keras 2 functional model of these layers.
 func Functional2(layers ...string) string {
-	return `{"class_name": "Functional", "config": {"name": "model", "layers": [` +
-		`{"class_name": "InputLayer", "config": {"batch_input_shape": [null, 4], "dtype": "float32", "sparse": false, "ragged": false, "name": "input_1"}, "name": "input_1", "inbound_nodes": []}, ` +
-		strings.Join(layers, ", ") + `], "input_layers": [["input_1", 0, 0]], "output_layers": [["dense", 0, 0]]}, "keras_version": "2.4.0", "backend": "tensorflow"}`
-}
-
-func jsonString(s string) string {
-	b, _ := json.Marshal(s)
-	return string(b)
+	input := obj{"class_name": "InputLayer", "config": obj{"batch_input_shape": []any{nil, 4}, "dtype": "float32", "sparse": false, "ragged": false, "name": "input_1"},
+		"name": "input_1", "inbound_nodes": []any{}}
+	all := append([]json.RawMessage{json.RawMessage(encode(input))}, raw(layers)...)
+	return encode(obj{"class_name": "Functional", "config": obj{"name": "model", "layers": all,
+		"input_layers": []any{[]any{"input_1", 0, 0}}, "output_layers": []any{[]any{"dense", 0, 0}}},
+		"keras_version": "2.4.0", "backend": "tensorflow"})
 }
