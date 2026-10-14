@@ -8,9 +8,10 @@
 // match its type and shape, or external data that leaves the model's
 // directory (onnx.go). An ONNX location that different systems resolve
 // differently is a LEAD. A Keras model (keras.go) FAILs on Python bytecode,
-// a pickled module, or a dangerous reference in its config, and on HDF5
-// storage outside its file or of the wrong size; an archive member Keras
-// does not read is a LEAD.
+// a pickled module, or a dangerous reference in its config, on HDF5 storage
+// outside the HDF5 data or of the wrong size, and on data or a link in
+// another file; a soft link, a virtual dataset, a layer name with a ".."
+// component, and an archive member Keras does not read are LEADs.
 package structure
 
 import (

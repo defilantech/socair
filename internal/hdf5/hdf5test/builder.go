@@ -46,6 +46,12 @@ type File struct {
 	Trailing []byte
 	// EOFDelta is added to the end-of-file address the superblock records.
 	EOFDelta int64
+	// StoredBase, when set, is the base address the superblock records in
+	// place of the superblock's own offset (with EOFDelta, as a tool that
+	// moves the HDF5 data leaves it). The HDF5 library takes the
+	// superblock's offset as the base and moves the end-of-file address by
+	// the difference.
+	StoredBase *uint64
 	// Version2 writes what h5py writes with libver="latest": a version 2
 	// superblock, version 2 (OHDR) object headers with checksums, and
 	// every group as a compact new-style group of link messages.
@@ -117,9 +123,16 @@ type Dataset struct {
 	Attrs []Attr
 	// Chunk, when set, stores the dataset chunked with these chunk
 	// dimensions, indexed by a version 1 B-tree; Deflate compresses each
-	// chunk with zlib and adds the deflate filter.
+	// chunk with zlib and adds the deflate filter. Missing leaves the last
+	// chunks unwritten, as a chunk never written is left (it reads as the
+	// fill value).
 	Chunk   []uint64
 	Deflate bool
+	Missing int
+	// Virtual writes a version 4 layout message of the virtual class. Its
+	// mapping (a global heap object) is not written, so the HDF5 library
+	// cannot read the dataset's data; the reader does not read it either.
+	Virtual bool
 	// Compact stores the data in the layout message.
 	Compact bool
 	// Unallocated writes no storage, as h5py leaves a dataset never
@@ -154,10 +167,14 @@ func (f *File) Bytes() []byte {
 	}
 	hdr, st := w.group(root)
 	eof := int64(len(w.b)) + f.EOFDelta
+	base := uint64(f.UserBlock)
+	if f.StoredBase != nil {
+		base = *f.StoredBase
+	}
 	b := w.b[w.abs(sb):]
 	if f.Version2 {
 		copy(b, []byte{0x89, 'H', 'D', 'F', '\r', '\n', 0x1a, '\n', 2, off, off, 0})
-		binary.LittleEndian.PutUint64(b[12:], uint64(f.UserBlock))
+		binary.LittleEndian.PutUint64(b[12:], base)
 		binary.LittleEndian.PutUint64(b[20:], undefined)
 		binary.LittleEndian.PutUint64(b[28:], uint64(eof))
 		binary.LittleEndian.PutUint64(b[36:], uint64(hdr))
@@ -168,7 +185,7 @@ func (f *File) Bytes() []byte {
 	b[13], b[14] = off, off
 	binary.LittleEndian.PutUint16(b[16:], leafK)
 	binary.LittleEndian.PutUint16(b[18:], internalK)
-	binary.LittleEndian.PutUint64(b[24:], uint64(f.UserBlock)) // base address: the superblock's offset
+	binary.LittleEndian.PutUint64(b[24:], base) // base address: the superblock's offset
 	binary.LittleEndian.PutUint64(b[32:], undefined)
 	binary.LittleEndian.PutUint64(b[40:], uint64(eof))
 	binary.LittleEndian.PutUint64(b[48:], undefined)
@@ -327,6 +344,8 @@ func (w *writer) dataset(d *Dataset) int64 {
 		msgs = append(msgs, Message{Type: 0x08, Data: cat([]byte{3, 1}, u64(undefined), u64(need))})
 	case d.Chunk != nil:
 		msgs = append(msgs, w.chunked(d, data)...)
+	case d.Virtual:
+		msgs = append(msgs, Message{Type: 0x08, Data: cat([]byte{4, 3}, u64(undefined), u32(0))})
 	case d.Unallocated:
 		msgs = append(msgs, Message{Type: 0x08, Data: cat([]byte{3, 1}, u64(undefined), u64(need))})
 	default:
@@ -384,6 +403,7 @@ func (w *writer) chunked(d *Dataset, data []byte) []Message {
 		}
 	}
 	walk(0, nil)
+	offsets = offsets[:len(offsets)-min(d.Missing, len(offsets)-1)]
 	if len(offsets) > 2*chunkK {
 		panic("hdf5test: more chunks than one B-tree node holds")
 	}

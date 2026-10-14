@@ -67,6 +67,12 @@ func TestKerasConfigRules(t *testing.T) {
 		{"a SavedModel path", archive(t, kerastest.Functional3(`{"module": "keras.layers", "class_name": "TFSMLayer", "config": {"name": "t", "filepath": "yamnet_model"}}`)), checks.NotTested, "", "yamnet_model"},
 		{"a KerasHub class", archive(t, kerastest.Functional3(kerastest.Layer3("keras_hub.src.models.bert.bert_backbone", "BertBackbone", "b"))), checks.Pass, "", "KerasHub"},
 		{"a config that is not JSON", h5(t, kerastest.FullModel(`{"class_name": `)), checks.NotTested, "", "could not be read"},
+		{"a config with Python's constants", h5(t, kerastest.FullModel(kerastest.Functional2(`{"class_name": "Dense", "config": {"name": "d", "bias": NaN, "max": Infinity}}`))), checks.Pass, "", "a full Keras model"},
+		{"an RNN cell wrapper's bytecode", h5(t, kerastest.FullModel(kerastest.Functional2(`{"class_name": "RNN", "config": {"name": "r", "cell": {"class_name": "ResidualWrapper", "config": {"name": "w", "residual_fn": ["4w==", null, null], "residual_fn_type": "lambda"}}}}`))), checks.Fail, "keras-lambda", "ResidualWrapper.residual_fn"},
+		{"a Lambda function named, not imported", h5(t, kerastest.FullModel(kerastest.Functional2(`{"class_name": "Lambda", "config": {"name": "l", "function": "system", "function_type": "function", "module": "os"}}`))), checks.NotTested, "", "system"},
+		{"a layer name that leaves its directory", archive(t, kerastest.Functional3(kerastest.Layer3("keras.layers", "Dense", ".."))), checks.Lead, "keras-name-path", "CVE-2026-12479"},
+		{"a config past the walk's depth", archive(t, strings.Repeat(`{"module": "keras.layers", "class_name": "Dense", "config": {"name": "d", "x": `, 300)+"0"+strings.Repeat("}}", 300)),
+			checks.NotTested, "", "did not walk"},
 	}
 	for _, c := range cases {
 		if c.r.Status != c.status || c.pattern != "" && !hasPattern(c.r, c.pattern) || !strings.Contains(c.r.Notes+fmtFindings(c.r), c.note) {
@@ -99,6 +105,8 @@ func TestKerasStorageRules(t *testing.T) {
 	userBlock.UserBlock = 512
 	external := kerastest.WeightsOnly()
 	external.Root.External = map[string][2]string{"bert2": {"/data/other.h5", "/bert"}}
+	soft := kerastest.WeightsOnly()
+	soft.Root.Soft = map[string]string{"bert2": "/bert"}
 	cases := []struct {
 		name    string
 		f       *hdf5test.File
@@ -106,14 +114,18 @@ func TestKerasStorageRules(t *testing.T) {
 		pattern string
 		note    string
 	}{
-		{"storage past the end", weights(&hdf5test.Dataset{Type: hdf5test.Float32, Dims: []uint64{1 << 20}, Data: make([]byte, 16), StoredSize: u(4 << 20)}), checks.Fail, "tensor-layout", "runs past the end of the HDF5 data"},
+		{"storage past the end", weights(&hdf5test.Dataset{Type: hdf5test.Float32, Dims: []uint64{1 << 20}, Data: make([]byte, 16), StoredSize: u(4 << 20)}), checks.Fail, "tensor-layout", "the HDF5 library refuses to read it"},
+		{"recorded storage past the end", weights(&hdf5test.Dataset{Type: hdf5test.Float32, Dims: []uint64{4}, StoredSize: u(1 << 20)}), checks.Fail, "tensor-layout", "storage recorded as"},
 		{"a stored size the shape does not need", weights(&hdf5test.Dataset{Type: hdf5test.Float32, Dims: []uint64{4}, Data: make([]byte, 4096), StoredSize: u(4096)}), checks.Fail, "tensor-size", "need 16"},
 		{"bytes after the HDF5 data", trailing, checks.Fail, "tensor-layout", "after the end of the HDF5 data"},
 		{"a truncated file", truncated, checks.NotTested, "", "truncated"},
 		{"a user block", userBlock, checks.NotTested, "", "user block of 512 bytes"},
-		{"an external link", external, checks.NotTested, "", "external links"},
+		{"an external link", external, checks.Fail, "external-data-escape", `"/data/other.h5:/bert"`},
+		{"external storage", weights(&hdf5test.Dataset{Type: hdf5test.Float32, Dims: []uint64{4}, External: "/etc/passwd"}), checks.Fail, "external-data-escape", `"/etc/passwd"`},
+		{"a soft link", soft, checks.Lead, "hdf5-soft-link", `"/bert"`},
+		{"a virtual dataset", weights(&hdf5test.Dataset{Type: hdf5test.Float32, Dims: []uint64{4}, Virtual: true}), checks.Lead, "hdf5-virtual-dataset", "CVE-2026-12480"},
 		{"a filtered dataset", weights(&hdf5test.Dataset{Type: hdf5test.Float32, Dims: []uint64{10}, Chunk: []uint64{5}, Deflate: true}), checks.NotTested, "", "deflate"},
-		{"external storage", weights(&hdf5test.Dataset{Type: hdf5test.Float32, Dims: []uint64{4}, External: "/etc/passwd"}), checks.NotTested, "", "/etc/passwd"},
+		{"chunks never written", weights(&hdf5test.Dataset{Type: hdf5test.Float32, Dims: []uint64{10}, Chunk: []uint64{5}, Missing: 1}), checks.NotTested, "", "1 of its 2 chunks"},
 	}
 	for _, c := range cases {
 		r := h5(t, c.f)
@@ -123,8 +135,8 @@ func TestKerasStorageRules(t *testing.T) {
 	}
 }
 
-// The archive rules: a member Keras does not read is a LEAD, a repeated
-// name is a LEAD, a name that leaves the extraction directory is a FAIL.
+// The archive rules: a member Keras does not read, a repeated name, and a
+// name that would leave the extraction directory are each a LEAD.
 func TestKerasArchiveRules(t *testing.T) {
 	config := kerastest.Functional3(kerastest.Dense3("dense"))
 	cases := []struct {
@@ -135,7 +147,8 @@ func TestKerasArchiveRules(t *testing.T) {
 	}{
 		{"a member Keras does not read", []kerastest.Member{{Name: "payload.bin", Data: []byte("x")}}, checks.Lead, "keras-archive-entry"},
 		{"a repeated member", []kerastest.Member{{Name: "config.json", Data: []byte("{}")}}, checks.Lead, "keras-archive-entry"},
-		{"a member that escapes", []kerastest.Member{{Name: "assets/../../../.bashrc", Data: []byte("x")}}, checks.Fail, "archive-path-escape"},
+		{"a member that escapes", []kerastest.Member{{Name: "assets/../../../.bashrc", Data: []byte("x")}}, checks.Lead, "archive-path-escape"},
+		{"a rooted member", []kerastest.Member{{Name: "/etc/cron.d/x", Data: []byte("x")}}, checks.Lead, "archive-path-escape"},
 		{"an asset", []kerastest.Member{{Name: "assets/vocabulary.txt", Data: []byte("a\nb\n")}}, checks.Pass, ""},
 	}
 	for _, c := range cases {

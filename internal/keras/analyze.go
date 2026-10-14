@@ -12,7 +12,10 @@ type RefKind int
 
 const (
 	// Bytecode is a Python function serialized as marshalled bytecode: a
-	// Keras 2 Lambda's "lambda" function, or Keras 3's "__lambda__". The
+	// field whose "<field>_type" is "lambda" (a Keras 2 or tf-keras Lambda's
+	// function, output_shape, or mask, an RNN cell wrapper's dropout_fn or
+	// residual_fn), a legacy Lambda whose function is a list (Keras 3 reads
+	// it as code whatever its type says), or Keras 3's "__lambda__". The
 	// loader turns it back into a function and calls it.
 	Bytecode RefKind = iota
 	// Pickle is a TorchModuleWrapper's module: a torch.save archive Keras
@@ -31,6 +34,14 @@ const (
 	// Addon is a class from KerasHub, KerasCV, or KerasNLP, the packages
 	// Keras' deserializer imports besides its own.
 	Addon
+	// PathName is an object's name with a ".." component: Keras 3.14 and
+	// earlier join a layer's name into the path of its assets when saving
+	// or loading, so the name can leave the asset directory
+	// (CVE-2026-12479).
+	PathName
+	// Unwalked is part of a config the analysis did not walk: nesting past
+	// its depth, or references past its cap.
+	Unwalked
 )
 
 // Ref is one reference in a config.
@@ -78,10 +89,12 @@ var markers = map[string]bool{
 }
 
 // refusedAPIs are the functions of NON_MODELING_APIS (serialization_lib.py,
-// Keras v3.15.1, L34-L63), which Keras 3.11 and later refuse to
-// deserialize because a config that names one is a gadget: get_file writes
-// a file (CVE-2025-8747), enable_unsafe_deserialization turns safe_mode off
-// (CVE-2025-9906). They are matched by name under any keras module.
+// Keras v3.15.1, L34-L63), which Keras refuses to deserialize because a
+// config that names one uses it as a gadget: get_file writes a file
+// (CVE-2025-8747), enable_unsafe_deserialization turns safe_mode off
+// (CVE-2025-9906). Keras 3.11.0 began refusing the loading APIs among them
+// (LOADING_APIS); 3.15.1 refuses all of them. They are matched by name
+// under any keras module.
 var refusedAPIs = map[string]bool{
 	"clear_session": true, "enable_unsafe_deserialization": true, "load_model": true,
 	"model_from_json": true, "save_model": true, "image_dataset_from_directory": true,
@@ -92,7 +105,8 @@ var refusedAPIs = map[string]bool{
 }
 
 // addons are the packages Keras' deserializer imports besides keras
-// (serialization_lib.py, v3.15.1, L879-L890).
+// (serialization_lib.py, v3.15.1, L880-L896: it imports a module of these
+// packages and takes a KerasSaveable subclass from it).
 var addons = map[string]bool{"keras_hub": true, "keras_cv": true, "keras_nlp": true}
 
 // lookupLayers read a vocabulary from a file when it is given as a path.
@@ -113,17 +127,23 @@ func own(module string) bool {
 func Analyze(v any, source string) []Ref {
 	a := &analysis{source: source}
 	a.walk(v, "", 0)
+	if a.dropped > 0 {
+		a.refs = append(a.refs, Ref{Kind: Unwalked, Source: source,
+			Detail: fmt.Sprintf("%d more reference(s) past this reader's cap of %d", a.dropped, maxRefs)})
+	}
 	sort.SliceStable(a.refs, func(i, j int) bool { return a.refs[i].Kind < a.refs[j].Kind })
 	return a.refs
 }
 
 type analysis struct {
-	source string
-	refs   []Ref
+	source  string
+	refs    []Ref
+	dropped int
 }
 
 func (a *analysis) add(k RefKind, where, module, name, detail string) {
 	if len(a.refs) >= maxRefs {
+		a.dropped++
 		return
 	}
 	a.refs = append(a.refs, Ref{Kind: k, Source: a.source, Where: where, Module: module, Name: name, Detail: detail})
@@ -133,7 +153,7 @@ const maxRefs = 1 << 16
 
 func (a *analysis) walk(v any, where string, depth int) {
 	if depth > maxJSONDepth {
-		a.add(Named, where, "", "", "the config nests deeper than this reader walks")
+		a.add(Unwalked, where, "", "", fmt.Sprintf("the config nests deeper than the %d levels this reader walks", maxJSONDepth))
 		return
 	}
 	switch x := v.(type) {
@@ -162,15 +182,19 @@ func (a *analysis) object(x map[string]any, cn, where string) string {
 		where = cn
 	}
 	module, hasModule := x["module"].(string)
+	a.names(x, cfg, where)
+	a.typedFunctions(cfg, cn, where)
 	switch {
 	case cn == "__lambda__":
-		a.add(Bytecode, where, "", cn, "a Python function serialized as marshalled bytecode, which Keras turns back into a function and calls")
+		a.add(Bytecode, where, "", cn, "a Python function serialized as marshalled bytecode, which Keras turns back into a function and calls: "+
+			"Keras 3 refuses it in safe mode, and ran it despite safe mode through a config that turned safe mode off before 3.11.0 (CVE-2025-9906)")
 		return where
 	case cn == "Lambda" && (!hasModule || own(module)):
 		a.lambda(cfg, where)
 	case cn == "TorchModuleWrapper" && (!hasModule || own(module)):
 		if s, ok := cfg["module"].(string); ok && s != "" {
-			a.add(Pickle, where, "", cn, fmt.Sprintf("a torch.save archive of %d base64 characters, which Keras loads with torch.load(weights_only=False): an unpickling", len(s)))
+			a.add(Pickle, where, "", cn, fmt.Sprintf("a torch.save archive of %d base64 characters, which Keras unpickles with torch.load(weights_only=False) "+
+				"when safe mode is off, and despite it in Keras 3.11.0 to 3.11.2 (CVE-2025-49655)", len(s)))
 		}
 	case cn == "TFSMLayer" && (!hasModule || own(module)):
 		if p, ok := cfg["filepath"].(string); ok {
@@ -186,6 +210,12 @@ func (a *analysis) object(x map[string]any, cn, where string) string {
 		// class under, for a class defined in the caller's script.
 		if reg, ok := x["registered_name"].(string); ok && strings.Contains(reg, ">") {
 			cn = reg
+		}
+		if fn, ok := x["config"].(string); ok && cn == "function" {
+			// A function with no module: Keras looks it up only among the
+			// objects the caller registers or passes.
+			a.add(Named, where, "", fn, "a function named without a module, which only the caller's code supplies")
+			return where
 		}
 		a.legacy(cn, where)
 		return where
@@ -228,7 +258,7 @@ func (a *analysis) named(module, name, where string) {
 	top, _, _ := strings.Cut(module, ".")
 	switch {
 	case own(module) && refusedAPIs[name]:
-		a.add(Refused, where, module, name, "a Keras API Keras refuses to deserialize, since 3.11, because a config that names it is a gadget")
+		a.add(Refused, where, module, name, "a Keras API Keras refuses to deserialize (NON_MODELING_APIS; the loading APIs since 3.11.0), because a config that names one uses it as a gadget")
 	case own(module):
 	case addons[top]:
 		a.add(Addon, where, module, name, "")
@@ -237,23 +267,61 @@ func (a *analysis) named(module, name, where string) {
 	}
 }
 
-// lambda grades a Lambda layer's function, output_shape, and mask. Keras 2
-// writes each with a type: "lambda" is marshalled bytecode, "function" a
-// name looked up in the module the config names when that module is
-// already imported. Keras 3 writes "__lambda__" objects, which walk finds.
-func (a *analysis) lambda(cfg map[string]any, where string) {
-	for _, f := range [][3]string{{"function", "function_type", "module"}, {"output_shape", "output_shape_type", "output_shape_module"}, {"mask", "mask_type", "mask_module"}} {
-		val, typ := cfg[f[0]], cfg[f[1]]
-		if val == nil {
+// typedFunctions finds the functions a Keras 2 or tf-keras config writes
+// with a type beside them: a field f with "f_type" of "lambda" is
+// marshalled bytecode, which the loader turns back into a function
+// (func_load) and calls. tf_keras 2.21.0 writes them for a Lambda's
+// function, output_shape, and mask (layers/core/lambda_layer.py) and for
+// the RNN cell wrappers' dropout_fn and residual_fn
+// (layers/rnn/cell_wrappers.py), and reads them as code from an .h5 file
+// whatever safe_mode says (saving/saving_api.py: safe_mode applies to the
+// .keras format only). The rule reads any field so typed, under any class.
+func (a *analysis) typedFunctions(cfg map[string]any, cn, where string) {
+	for _, k := range sortedKeys(cfg) {
+		field, ok := strings.CutSuffix(k, "_type")
+		if !ok || cfg[k] != "lambda" || cfg[field] == nil {
 			continue
 		}
+		a.add(Bytecode, where, "", cn+"."+field, "a Python function serialized as marshalled bytecode, which tf-keras runs from an .h5 file whatever safe_mode says, "+
+			"as Keras 2 before 2.13 did from any file (CVE-2024-3660) and Keras 3 before 3.11.3 did from an .h5 file (CVE-2025-9905)")
+	}
+}
+
+// lambda grades what typedFunctions does not: a legacy Lambda whose
+// function is a list, which Keras 3's legacy loader turns into code
+// whatever function_type says (legacy/saving/saving_utils.py, 3.15.1), and
+// a function given by name ("function_type": "function"), which Keras looks
+// up among the objects the caller registers or passes; the module the
+// config names is not imported, only searched when already imported. Keras
+// 3 writes "__lambda__" objects, which walk finds.
+func (a *analysis) lambda(cfg map[string]any, where string) {
+	if _, list := cfg["function"].([]any); list && cfg["function_type"] != "lambda" {
+		a.add(Bytecode, where, "", "Lambda.function", "a Python function serialized as marshalled bytecode (a list, which Keras 3's legacy loader reads as code whatever function_type says)")
+	}
+	for _, f := range [][3]string{{"function", "function_type", "module"}, {"output_shape", "output_shape_type", "output_shape_module"}, {"mask", "mask_type", "mask_module"}} {
+		name, ok := cfg[f[0]].(string)
 		mod, _ := cfg[f[2]].(string)
-		switch typ {
-		case "lambda":
-			a.add(Bytecode, where, "", "Lambda."+f[0], "a Python function serialized as marshalled bytecode, which every Keras 2 and tf-keras loader runs from an .h5 file whatever safe_mode says (CVE-2024-3660)")
-		case "function":
-			if name, ok := val.(string); ok && !own(mod) {
-				a.named(mod, name, where+"."+f[0])
+		if ok && cfg[f[1]] == "function" && !own(mod) {
+			a.add(Named, where+"."+f[0], "", name, "a function the Lambda names, which only the caller's custom_objects supply")
+		}
+	}
+}
+
+// names finds an object's name with a ".." component, read with both
+// separators. Keras 3 refuses a "/" in a layer's name (ops/operation.py),
+// not "..", and Keras 3.14 and earlier join the name into the path of the
+// layer's assets in DiskIOStore when saving or loading (CVE-2026-12479).
+func (a *analysis) names(x, cfg map[string]any, where string) {
+	for _, n := range []any{cfg["name"], x["name"]} {
+		s, ok := n.(string)
+		if !ok {
+			continue
+		}
+		for _, part := range strings.FieldsFunc(s, func(r rune) bool { return r == '/' || r == '\\' }) {
+			if part == ".." {
+				a.add(PathName, where, "", s, "a name with a \"..\" component, which Keras 3.14 and earlier join into the path of the layer's assets when saving or loading a .keras archive, "+
+					"so it can leave the asset directory (CVE-2026-12479)")
+				return
 			}
 		}
 	}

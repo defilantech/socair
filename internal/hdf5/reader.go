@@ -16,14 +16,18 @@
 // compact, contiguous, and chunked storage indexed by a version 1 B-tree or
 // a single chunk. It never reads dataset data.
 //
-// What it does not model is recorded in File.Unread, never guessed: dense
-// link or attribute storage (a fractal heap), shared object header messages,
-// a superblock extension, a driver information block, external and
-// user-defined links, an object header message type it does not know, and
-// the chunk indexes of layout versions 4 and 5 other than a single chunk and
-// the implicit index. Malformed bytes (a bad signature, a structure past the
-// end of the file, a length past its message, a checksum that does not
-// match) are an error: the file is unparseable.
+// Soft and external links are listed with their targets (File.Links), and
+// so are datasets whose data is in other files (LayoutCheck.Outside); the
+// checks judge them. What it does not model is recorded in File.Unread,
+// never guessed: dense link or attribute storage (a fractal heap), shared
+// object header messages, a superblock extension, a driver information
+// block, user-defined links, an object header message type it does not
+// know, and the chunk indexes of layout versions 4 and 5 other than a single
+// chunk and the implicit index. Malformed bytes (a bad signature, a
+// structure past the end of the file, a length past its message, a checksum
+// that does not match) are an error: the file is unparseable. Where the
+// specification and the HDF5 library differ, it reads as the library does,
+// and says so where it does.
 //
 // Bounds: objects, nesting, messages, B-tree nodes, chunks, and the bytes
 // read for any one structure are capped (see the constants), and past a cap
@@ -494,7 +498,7 @@ func (d *reader) superblock01(at int64, v int) error {
 	if v == 1 {
 		n += 4
 	}
-	entry := 2*d.off + 24
+	entry := symbolEntrySize(d)
 	total := n + 4*d.off + entry
 	b, err := d.readRaw(at, int64(total), "the superblock")
 	if err != nil {
@@ -526,7 +530,7 @@ func (d *reader) superblock01(at int64, v int) error {
 		d.note("a driver information block (the family or multi file driver: data in other files)")
 	}
 	// The root group's symbol table entry: its object header address.
-	c.skip(d.off) // link name offset
+	c.length() // link name offset
 	root := c.addr()
 	if c.err != nil {
 		return c.err
@@ -584,26 +588,36 @@ func (d *reader) superblock23(at int64, v int) error {
 	return d.root(root)
 }
 
-// setBase records the base address and the end-of-file address. A base
-// address other than the superblock's own offset means the HDF5 data was
-// moved within the file; the library then takes the superblock's offset as
-// the base, and so does this reader.
+// setBase records the base address and the end-of-file address as the HDF5
+// library does (H5F__super_read in src/H5Fsuper.c, HDF5 2.2.0): the stored
+// end-of-file address is absolute, and when the stored base address is not
+// the superblock's own offset (the HDF5 data was moved within the file, as
+// a user block added afterwards moves it), the library takes the
+// superblock's offset as the base and moves the end-of-file address by the
+// same distance. A base address at or past the end-of-file address is
+// refused, as the library refuses it.
 func (d *reader) setBase(at int64, base, eof uint64) error {
-	if int64(base) != at && base != 0 {
-		d.note(fmt.Sprintf("a base address (%d) other than the superblock's offset (%d)", base, at))
+	if isUndefined(eof, d.off) || eof > 1<<62 || eof == 0 {
+		return d.errf(at, "the end-of-file address is undefined or 0")
+	}
+	if isUndefined(base, d.off) || base >= eof {
+		return d.errf(at, "a base address (%d) at or past the end-of-file address (%d); the HDF5 library refuses the file", base, eof)
 	}
 	d.base = at
-	if isUndefined(eof, d.off) || eof > 1<<62 {
-		return d.errf(at, "the end-of-file address is undefined")
-	}
-	// The stored end-of-file address is absolute (the library compares it
-	// with the file's size plus the base address).
-	d.f.EOF = int64(eof)
-	if d.f.EOF < at {
-		return d.errf(at, "the end-of-file address %d is before the superblock", d.f.EOF)
+	d.f.EOF = int64(eof) - int64(base) + at
+	if d.f.EOF <= at {
+		return d.errf(at, "the end-of-file address %d is not after the superblock", d.f.EOF)
 	}
 	return nil
 }
+
+// symbolEntrySize is a symbol table entry's size: a link name offset, which
+// the HDF5 library reads as a length (H5G_ent_decode in src/H5Gent.c,
+// H5G_SIZEOF_ENTRY in src/H5Gprivate.h; the specification's table marks it
+// as an offset, and the two sizes are the same in every file h5py writes),
+// an object header address, a cache type, 4 reserved bytes, and a 16-byte
+// scratch pad.
+func symbolEntrySize(d *reader) int { return d.len + d.off + 24 }
 
 // root keeps the root group's address for walk.
 func (d *reader) root(addr int64) error {
@@ -668,8 +682,8 @@ func (d *reader) object(p string, addr int64, depth int) error {
 				return d.errf(addr, "more than %d soft, external, or user-defined links", maxLinks)
 			}
 			d.f.Links = append(d.f.Links, Link{Path: cp, Type: ch.kind, Target: ch.target})
-			if ch.kind != "soft" {
-				d.note(ch.kind + " links, which name an object outside this file or a link type this reader does not follow")
+			if ch.kind != "soft" && ch.kind != "external" {
+				d.note(ch.kind + " links, a link type the specification leaves to the application that registers it")
 			}
 		default:
 			if err := d.object(cp, ch.addr, depth+1); err != nil {

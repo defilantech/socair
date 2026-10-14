@@ -91,7 +91,11 @@ func (d *reader) header1(addr int64) ([]message, error) {
 	queue := []block{{addr + 16, size}}
 	d.meta(addr, addr+16+size, "object header")
 	total := size
+	first := 0 // messages in the first block
 	for i := 0; i < len(queue); i++ {
+		if i == 1 {
+			first = len(msgs)
+		}
 		if i >= maxHeaderChunks {
 			return nil, d.errf(addr, "an object header with more than %d continuation blocks", maxHeaderChunks)
 		}
@@ -132,8 +136,16 @@ func (d *reader) header1(addr int64) ([]message, error) {
 			}
 		}
 	}
-	if len(msgs) != count {
-		return nil, d.errf(addr, "an object header that counts %d messages and holds %d; the HDF5 library refuses it", count, len(msgs))
+	// The library refuses a prefix that counts fewer messages than its first
+	// block holds (H5O__cache_deserialize in src/H5Ocache.c, HDF5 2.2.0). A
+	// count that differs otherwise is refused only in a library built with
+	// strict format checks (H5O_protect in src/H5Oint.c), since older
+	// libraries wrote wrong counts; every message is read either way.
+	if len(queue) == 1 {
+		first = len(msgs)
+	}
+	if count < first {
+		return nil, d.errf(addr, "an object header that counts %d messages and holds %d in its first block; the HDF5 library refuses it", count, first)
 	}
 	return msgs, nil
 }

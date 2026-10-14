@@ -274,7 +274,10 @@ func kerasFile(path string) bool {
 
 // kerasNote says what the inventory read of a Keras model.
 func kerasNote(m *keras.Model) string {
-	from := "string attributes, the model config, and object comments"
+	from := "string attributes and object comments"
+	if len(m.Configs) > 0 {
+		from = "string attributes, the model config, and object comments"
+	}
 	what := "Keras HDF5"
 	if m.Kind == keras.Archive {
 		what = ".keras archive"

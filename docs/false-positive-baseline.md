@@ -1626,6 +1626,79 @@ architecture. One result changed: `nvidia/Nemotron-H-8B-Base-8K` at
 `Infinity`, now names its architecture, `NemotronHForCausalLM`, where it was
 empty. No row's status changed.
 
+## Keras models (2026-10-14, check set tier1/0.10)
+
+The Format and structure and File inventory rows read Keras models (#269,
+[keras.md](keras.md)): HDF5 files and `.keras` archives. Measured on 30 files
+(20 HDF5, 10 archives, 61 KB to 91 MB) and one KerasHub preset `config.json`,
+from 22 Hugging Face repositories, fetched by commit into a scratch directory
+outside the repository. Only these files were fetched. Nothing was loaded or
+run: configs were read as JSON, and the HDF5 files with h5py.
+
+| Kind | Files | Written by | Repositories (commit) |
+|---|---|---|---|
+| weights only, as `save_weights` and transformers write them | 13 | Keras 2.1.5 to 2.10.0 | sentence-transformers/all-MiniLM-L6-v2 (`1110a243fdf4`), google/electra-small-discriminator (`fa8239aadc09`), hf-internal-testing/tiny-random-BertModel (`fc08ad9cc33b`), -bert (`f171d7baecaf`), -distilbert (`2ef615d57327`), -gpt2 (`71034c5d8bde`), -t5 (`2f582cd79ed5`), keras-io/image-captioning (`d161bf22efbf`, 2 files), keras-io/real_nvp (`56374cf95e5b`), keras-io/ProbabalisticBayesianModel-Wine (`7cf45a195722`), shethjenil/Audio2Midi_Models (`4300d378d749`, 2 files) |
+| a full model (`model_config`) | 5 | Keras 2.4.0 to 3.10.0 | gaurangdave/mnist_cnn (`df16e7b4ffd0`, 2 files), keras-io/EDSR (`df530f574488`), kundajelab/encode-bpnet-CTCF-ChIP-seq-22Rv1-ENCSR847XGE-ENCSR050LLD (`a163a0dcd903`), sergiopaniego/OptimizedPilotNet (`a6500b30208c`) |
+| Keras 3 weights (`layers/<name>/vars`) | 2 | Keras 3 | gaurangdave/mnist_cnn, keras/bert_tiny_en_uncased (`c96cd7d7d88b`, with its `config.json` and `metadata.json`) |
+| `.keras` archives | 10 | Keras 2.15.0 to 3.15.0 | Ambiq/compressionkit-ecg-8x-v1.0 (`548a82529fc1`, 2 files), pollen-robotics/wake-word-detector (`1892f028805a`, 2 files), gaurangdave/mnist_cnn (2 files), tornet-ml/tornado_detector_baseline_v1 (`b4d103aa9b27`), hzhongresearch/yamnetp_ahead_ds (`76b314f865ea`), Ritvik19/SudokuNet (`6382cef6be34`), hugocornellier/dog-face-landmarks (`ffe69649279e`) |
+
+**The reader against the reference.** For every file (every archive's
+`model.weights.h5` read from the archive), the reader's groups and datasets,
+each dataset's type, shape, layout, storage address, and recorded size, and
+each attribute's name and, for a string attribute, its values (hashed) equal
+what h5py 3.16.0 (HDF5 2.0.0) reads: 25,932 lines, compared line by line, with
+no difference. Every dataset in the corpus is contiguous, every superblock is
+version 0, and no file holds a link, external storage, a user block, or a
+structure the reader names as unread.
+
+**Gate:** `SOCAIR_KERAS_CORPUS=<the directory> go test ./internal/checks/structure -run RealKeras -v`
+(25 PASS, 1 FAIL, 0 LEAD, 4 NOT_TESTED; it fails on any finding about the
+container, and logs a config detection), and `socair scan` of each file and
+each repository's directory with the `main` build at `e0df1d17fee7` (before)
+and this one (after):
+
+| Scan | Row | Before | After |
+|---|---|---|---|
+| each of the 30 files on its own | Format and structure | 30 NOT_TESTED ("not a GGUF, safetensors, or ONNX artifact") | 25 PASS; 4 NOT_TESTED, naming code outside the file (below); 1 FAIL, a Lambda's bytecode |
+| | File inventory and payloads | 30 NOT_TESTED ("cannot inventory") | 30 NOT_TESTED, each with its text scanned (0 to 13,224 values, at most 141 KB) and no payload indicator: a single file has no repo listing |
+| | Pickle opcode scan | 30 NOT_TESTED | no row: it does not run on a Keras model |
+| each of the 22 directories | Format and structure | 22 NOT_TESTED (".h5 is not a container this scanner parses", or ".keras ...") | 17 PASS, 4 NOT_TESTED, 1 FAIL, as their files |
+| | File inventory and payloads | 15 PASS, 7 NOT_TESTED (each `.keras` an archive whose contents were not scanned) | 22 PASS |
+
+No container rule FAILs or LEADs on any real file: no storage outside its
+file or of the wrong size, no bytes after the HDF5 data, no overlap, no link,
+no unexpected archive member. Each transformers `tf_model.h5` PASSes, saying
+that it holds weights only and no config, which is #269's outcome: a
+whole-repository pull of `sentence-transformers/all-MiniLM-L6-v2` is no longer
+withheld by its `tf_model.h5`.
+
+**Configs, measured before deciding.** Of the 16 model configs (5
+`model_config` attributes, 10 archives' `config.json`, and the KerasHub
+preset; 4 of the HDF5 files also hold a `training_config`, also read):
+
+- One holds a Lambda's bytecode: `kundajelab/...fold_0/model.h5` (Keras 2.4.0,
+  `main_logsumexp_counts_bias_0`, a log-sum-exp). It FAILs, as the rule says:
+  tf-keras runs that bytecode on load (see [keras.md](keras.md#code-in-the-config)).
+- Three name code from outside Keras: `keras-io/EDSR` (an `EDSRModel` subclass,
+  by class name alone), `tornet-ml/...` (`tornet.models.keras.layers.CoordConv2D`,
+  ten layers), and `hugocornellier/...` (two loss functions, `builtins.bbox_ciou_loss`
+  and `builtins.bbox_iou_metric`, defined in the training script). All three
+  are legitimate and need the caller's code. They are NOT_TESTED, naming it; a
+  LEAD would have withheld them with no recourse.
+- One has a `TFSMLayer` loading a SavedModel from `yamnet_model`, a directory
+  the repository does not hold: NOT_TESTED, naming the path.
+- The KerasHub preset names `keras_hub.src.models.bert.bert_backbone.BertBackbone`,
+  which Keras imports from the installed package: named, not judged; it PASSes.
+- No config names a refused Keras API, a dangerous module, a `TorchModuleWrapper`,
+  or a name with a `..` component.
+
+The 20 config documents use 54 class names. Every one is Keras' or
+TensorFlow's own (in the class registry `internal/keras/classgen` writes from
+keras 3.15.1 and tf_keras 2.21.0, or named by a `keras` module, as
+`keras.src.ops.numpy`'s `Where` and `Isnan` are) or one of Keras 3's markers
+(`__keras_tensor__`, `function`), except `EDSRModel`, `CoordConv2D`, and
+KerasHub's `BertBackbone`.
+
 ## Follow-ups from the first run, since done
 
 1. The GGML file-type mapping follows llama.cpp's `llama_ftype` enum, and the

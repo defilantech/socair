@@ -51,7 +51,8 @@ var patternSeverity = map[string]string{
 	"tensor-size": SeverityHigh,
 	"tensor-data": SeverityHigh,
 	// An ONNX model that points a loader at a file outside its directory,
-	// or at the runtime's own memory: a read of what is not the model.
+	// or at the runtime's own memory, or an HDF5 file whose data or link is
+	// in another file: a read of what is not the model.
 	"external-data-escape": SeverityHigh,
 	"external-data-memory": SeverityHigh,
 	// A Keras config that makes the loader run code: marshalled Python
@@ -60,10 +61,16 @@ var patternSeverity = map[string]string{
 	"keras-lambda":              SeverityCritical,
 	"keras-pickle":              SeverityCritical,
 	"keras-dangerous-reference": SeverityCritical,
-	// A .keras member that leaves the extraction directory, or one Keras
-	// does not read: a write outside the model, or a place for a payload.
+	// A .keras member whose name would leave the extraction directory, or
+	// one Keras does not read, or a layer name that would leave the asset
+	// directory: a write outside the model, or a place for a payload.
 	"archive-path-escape": SeverityHigh,
 	"keras-archive-entry": SeverityHigh,
+	"keras-name-path":     SeverityHigh,
+	// An HDF5 soft link or virtual dataset, which Keras refuses: one name
+	// reading another's data, or data mapped from what the scan did not read.
+	"hdf5-soft-link":       SeverityMedium,
+	"hdf5-virtual-dataset": SeverityMedium,
 	// Suspicious or inconsistent; needs review.
 	"instruction-override":         SeverityMedium,
 	"secrecy-instruction":          SeverityMedium,

@@ -241,6 +241,8 @@ jobs:
           ./internal/gguf FuzzGGUFHeader
           ./internal/safetensors FuzzSafetensorsHeader
           ./internal/onnx FuzzRead
+          ./internal/hdf5 FuzzRead
+          ./internal/keras FuzzRead
           ./internal/checks/pickle FuzzPickleInspect
           ./internal/checks/chattemplate/jinja FuzzParse
           ./internal/checks/chattemplate FuzzInspect

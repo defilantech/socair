@@ -119,7 +119,7 @@ func (d *reader) groupTree(addr int64, h *localHeap, out *[]child, depth int) er
 
 // symbolNode reads a symbol table node (specification III.B): up to 2K
 // symbol table entries, each a name in the heap and an object header
-// address.
+// address (symbolEntrySize).
 func (d *reader) symbolNode(addr int64, h *localHeap, out *[]child) error {
 	if d.btrees[addr] {
 		return d.errf(addr, "a symbol table node reached twice")
@@ -139,7 +139,7 @@ func (d *reader) symbolNode(addr int64, h *localHeap, out *[]child) error {
 	if count > 2*d.leafK {
 		return d.errf(addr, "a symbol table node with %d entries, more than its 2K of %d", count, 2*d.leafK)
 	}
-	entry := 2*d.off + 24
+	entry := symbolEntrySize(d)
 	n := int64(8 + count*entry)
 	b, err := d.read(addr, n, "a symbol table node")
 	if err != nil {

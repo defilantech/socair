@@ -2,6 +2,7 @@ package hdf5_test
 
 import (
 	"bytes"
+	"encoding/binary"
 	"errors"
 	"os"
 	"path/filepath"
@@ -253,13 +254,67 @@ func TestChunkedStorage(t *testing.T) {
 	}
 }
 
+// A chunked dataset with chunks never written reads them as the fill
+// value: its storage is not its shape's size, so it is not passed as
+// checked. Falsification: drop the coverage rule and it passes.
+func TestMissingChunksAreUnchecked(t *testing.T) {
+	lc := check(t, one(&hdf5test.Dataset{Type: hdf5test.Float32, Dims: []uint64{10}, Chunk: []uint64{5}, Missing: 1}))
+	if len(lc.Violations) != 0 || len(lc.Unchecked) != 1 || !strings.Contains(lc.Unchecked[0], "1 of its 2 chunks are stored") {
+		t.Errorf("missing chunk: %+v", lc)
+	}
+	if lc := check(t, one(&hdf5test.Dataset{Type: hdf5test.Float32, Dims: []uint64{10}, Chunk: []uint64{5}})); len(lc.Unchecked) != 0 {
+		t.Errorf("every chunk stored: %+v", lc)
+	}
+}
+
+// A stored base address other than the superblock's offset is handled as
+// the HDF5 library handles it: the superblock's offset is the base, and the
+// end-of-file address moves by the difference. Falsification: keep the
+// stored end-of-file address and the file's last 512 bytes read as bytes
+// after the HDF5 data.
+func TestMovedBaseAddress(t *testing.T) {
+	zero := uint64(0)
+	f := one(hdf5test.Weights(3))
+	f.UserBlock, f.StoredBase, f.EOFDelta = 512, &zero, -512
+	h := read(t, f)
+	if lc := h.Check(); h.EOF != h.Size || len(lc.Violations) != 0 || len(lc.Unchecked) != 0 || len(h.Unread) != 0 {
+		t.Errorf("EOF %d of %d: %+v, unread %v", h.EOF, h.Size, lc, h.Unread)
+	}
+	past := uint64(1 << 20)
+	f.StoredBase = &past
+	b := f.Bytes()
+	if _, err := hdf5.ReadFrom(bytes.NewReader(b), int64(len(b))); err == nil || !strings.Contains(err.Error(), "base address") {
+		t.Errorf("a base address past the end of the file: %v", err)
+	}
+}
+
+// A version 1 object header's message count is held as the HDF5 library
+// holds it: fewer than its first block holds is refused, and any other
+// count is read past, since older libraries wrote wrong counts.
+func TestObjectHeaderMessageCount(t *testing.T) {
+	b := one(hdf5test.Weights(3)).Bytes()
+	root := int(binary.LittleEndian.Uint64(b[64:])) // the root group's object header
+	for _, c := range []struct {
+		count uint16
+		ok    bool
+	}{{0, false}, {1, true}, {200, true}} {
+		bad := append([]byte(nil), b...)
+		binary.LittleEndian.PutUint16(bad[root+2:], c.count)
+		_, err := hdf5.ReadFrom(bytes.NewReader(bad), int64(len(bad)))
+		if (err == nil) != c.ok {
+			t.Errorf("count %d: %v", c.count, err)
+		}
+	}
+}
+
 // What the reader does not model is named, never read past silently.
 func TestUnmodelledIsNamed(t *testing.T) {
 	cases := []struct {
 		name, want string
 		f          *hdf5test.File
 	}{
-		{"external link", "external links", &hdf5test.File{Root: &hdf5test.Group{External: map[string][2]string{"e": {"/etc/model.h5", "/w"}}}}},
+		{"user-defined link", "user-defined (type 65) links", &hdf5test.File{Root: &hdf5test.Group{Soft: map[string]string{"s": "/"},
+			Extra: []hdf5test.Message{{Type: 0x06, Data: []byte{1, 0x08, 65, 1, 'u', 0, 0}}}}}},
 		{"unknown message", "type 48, which this reader does not model, flagged so a reader that does not understand it must refuse", &hdf5test.File{Root: &hdf5test.Group{
 			Extra: []hdf5test.Message{{Type: 48, Flags: 0x80, Data: []byte{1, 2, 3}}}}}},
 	}
@@ -270,12 +325,20 @@ func TestUnmodelledIsNamed(t *testing.T) {
 		}
 	}
 	h := read(t, one(&hdf5test.Dataset{Type: hdf5test.Float32, Dims: []uint64{4}, External: "/etc/passwd"}))
-	if lc := h.Check(); len(lc.Unchecked) != 1 || !strings.Contains(lc.Unchecked[0], `"/etc/passwd"`) {
+	if lc := h.Check(); len(lc.Outside) != 1 || lc.Outside[0].Virtual || strings.Join(lc.Outside[0].Files, ",") != "/etc/passwd" || len(lc.Unchecked) != 0 {
 		t.Errorf("external storage: %+v", lc)
+	}
+	h = read(t, one(&hdf5test.Dataset{Type: hdf5test.Float32, Dims: []uint64{4}, Virtual: true}))
+	if lc := h.Check(); len(lc.Outside) != 1 || !lc.Outside[0].Virtual || lc.Outside[0].Where != "/d" {
+		t.Errorf("virtual dataset: %+v", lc)
 	}
 	h = read(t, &hdf5test.File{Root: &hdf5test.Group{Soft: map[string]string{"alias": "/w"}}})
 	if len(h.Links) != 1 || h.Links[0].Type != "soft" || h.Links[0].Target != "/w" || len(h.Unread) != 0 {
 		t.Errorf("soft link %+v, unread %v", h.Links, h.Unread)
+	}
+	h = read(t, &hdf5test.File{Root: &hdf5test.Group{External: map[string][2]string{"e": {"/etc/model.h5", "/w"}}}})
+	if len(h.Links) != 1 || h.Links[0].Type != "external" || h.Links[0].Target != "/etc/model.h5:/w" || len(h.Unread) != 0 {
+		t.Errorf("external link %+v, unread %v", h.Links, h.Unread)
 	}
 }
 

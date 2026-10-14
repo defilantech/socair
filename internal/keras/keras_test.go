@@ -39,12 +39,23 @@ func TestAnalyze(t *testing.T) {
 		{"Keras 3 Lambda bytecode", kerastest.Functional3(kerastest.Lambda3("lam", kerastest.Bytecode)), "0:__lambda__"},
 		{"Keras 2 Lambda bytecode", kerastest.Functional2(kerastest.Lambda2("lam", kerastest.Bytecode)), "0:Lambda.function"},
 		{"Keras 3 generic __lambda__", `{"module": "keras.layers", "class_name": "Dense", "config": {"name": "d", "activation": {"class_name": "__lambda__", "config": {"value": ["4w==", null, null]}}}}`, "0:__lambda__"},
-		{"Keras 2 Lambda by name from a module", kerastest.Functional2(`{"class_name": "Lambda", "config": {"name": "l", "function": "system", "function_type": "function", "module": "os"}}`), "3:os.system"},
+		// A Lambda's function by name is looked up among the caller's objects;
+		// the module is not imported, so the name is all it is.
+		{"Keras 2 Lambda by name", kerastest.Functional2(`{"class_name": "Lambda", "config": {"name": "l", "function": "system", "function_type": "function", "module": "os"}}`), "3:system"},
+		{"Keras 2 Lambda by name from TensorFlow", kerastest.Functional2(`{"class_name": "Lambda", "config": {"name": "l", "function": "relu", "function_type": "function", "module": "tensorflow.python.ops.gen_nn_ops"}}`), ""},
+		{"Keras 2 Lambda output_shape bytecode", kerastest.Functional2(`{"class_name": "Lambda", "config": {"name": "l", "function": "f", "function_type": "raw", "output_shape": ["4w==", null, null], "output_shape_type": "lambda"}}`), "0:Lambda.output_shape"},
+		{"a Lambda function list whatever its type", kerastest.Functional2(`{"class_name": "Lambda", "config": {"name": "l", "function": ["4w==", null, null], "function_type": "raw"}}`), "0:Lambda.function"},
+		{"an RNN cell wrapper's bytecode", kerastest.Functional2(`{"class_name": "RNN", "config": {"name": "r", "cell": {"class_name": "DropoutWrapper", "config": {"name": "w", "dropout_fn": ["4w==", null, null], "dropout_fn_type": "lambda", "dropout_fn_module": "__main__"}}}}`), "0:DropoutWrapper.dropout_fn"},
+		{"a typed field that is not code", kerastest.Functional2(`{"class_name": "Lambda", "config": {"name": "l", "function": "f", "function_type": "raw", "output_shape_type": "lambda"}}`), ""},
+		{"a layer name that leaves its directory", kerastest.Functional3(kerastest.Layer3("keras.layers", "Dense", "..")), "6:.."},
+		{"a layer name with a dot-dot component", kerastest.Functional3(kerastest.Layer3("keras.layers", "Dense", "..\\..\\x")), `6:..\..\x`},
+		{"a layer name with dots inside", kerastest.Functional3(kerastest.Layer3("keras.layers", "Dense", "a..b")), ""},
 		{"TorchModuleWrapper", kerastest.Functional3(`{"module": "keras.layers", "class_name": "TorchModuleWrapper", "config": {"name": "t", "module": "UEsDBA=="}}`), "1:TorchModuleWrapper"},
 		{"a refused Keras API", kerastest.Functional3(`{"module": "keras.layers", "class_name": "Lambda", "config": {"name": "l", "function": {"module": "keras.utils", "class_name": "function", "config": "get_file", "registered_name": "get_file"}}}`), "2:keras.utils.get_file"},
 		{"a module by name", kerastest.Functional3(kerastest.Layer3("subprocess", "run", "x")), "3:subprocess.run"},
 		{"a custom module", kerastest.Functional3(kerastest.Layer3("tornet.models.keras.layers", "CoordConv2D", "c")), "3:tornet.models.keras.layers.CoordConv2D"},
 		{"a script's registered class", `{"module": null, "class_name": "Scale", "config": {"name": "s"}, "registered_name": "bench>Scale"}`, "3:bench>Scale"},
+		{"a function with no module", `{"module": "keras.layers", "class_name": "Dense", "config": {"name": "d", "activation": {"module": null, "class_name": "function", "config": "bench_fn", "registered_name": null}}}`, "3:bench_fn"},
 		{"a Keras 2 custom class", kerastest.Functional2(kerastest.Layer2("EDSRModel", "e")), "3:EDSRModel"},
 		{"KerasHub", `{"module": "keras_hub.src.models.bert.bert_backbone", "class_name": "BertBackbone", "config": {"name": "b"}, "registered_name": "keras_hub>BertBackbone"}`, "5:keras_hub.src.models.bert.bert_backbone.BertBackbone"},
 		{"TFSMLayer", kerastest.Functional3(`{"module": "keras.layers", "class_name": "TFSMLayer", "config": {"name": "t", "filepath": "yamnet_model"}}`), "4:TFSMLayer"},
@@ -57,6 +68,21 @@ func TestAnalyze(t *testing.T) {
 		if got := kinds(refs(t, c.config)); got != c.want {
 			t.Errorf("%s: got %q, want %q", c.name, got, c.want)
 		}
+	}
+}
+
+// What Analyze does not walk is listed, never dropped: nesting past its
+// depth, and references past its cap. Falsification: return without
+// listing, and a config past either bound reads as clean.
+func TestAnalyzeBounds(t *testing.T) {
+	deep := strings.Repeat(`{"class_name": "Dense", "config": {"name": "d", "x": `, 300) + `{"class_name": "Lambda", "config": {"function": ["4w=="], "function_type": "lambda"}}` + strings.Repeat("}}", 300)
+	if got := kinds(refs(t, deep)); !strings.HasPrefix(got, "7:") {
+		t.Errorf("deep config: %q", got)
+	}
+	many := "[" + strings.Repeat(`{"class_name": "Bench"}, `, 70000) + `{"class_name": "Bench"}]`
+	rs := refs(t, many)
+	if last := rs[len(rs)-1]; last.Kind != keras.Unwalked || !strings.Contains(last.Detail, "4465 more reference(s)") {
+		t.Errorf("many references: %d, last %+v", len(rs), last)
 	}
 }
 

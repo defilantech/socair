@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"math/bits"
 	"sort"
-	"strings"
 )
 
 // Violation is positive evidence that a dataset's storage does not hold:
@@ -16,14 +15,28 @@ type Violation struct {
 	Pattern, Where, Detail string
 }
 
-// Layout is what Check found of the datasets' storage.
+// LayoutCheck is what Check found of the datasets' storage.
 type LayoutCheck struct {
 	Violations []Violation
+	// Outside are the datasets whose data a reader takes from outside this
+	// file: external storage, or a virtual dataset's mapping.
+	Outside []Outside
 	// Unchecked names what could not be checked, with the reason.
 	Unchecked []string
 	// Counts of datasets by storage, and the bytes of storage checked.
 	Datasets, Contiguous, Chunked, Compact, Unallocated, Chunks int
 	Bytes                                                       uint64
+}
+
+// Outside is a dataset whose data is not in the file.
+type Outside struct {
+	Where string
+	// Virtual is a virtual dataset, whose data is mapped from other
+	// datasets, in this file or others (the mapping, in the global heap, is
+	// not read). Otherwise the dataset has external storage: the raw data
+	// files in Files, which the HDF5 library opens by name.
+	Virtual bool
+	Files   []string
 }
 
 // maxViolations bounds the violations listed per pattern.
@@ -33,7 +46,8 @@ const maxViolations = 20
 // the superblock records, that its size is what its datatype and dataspace
 // need, and that no two datasets' storage, and no storage and the
 // structures the reader read, overlap. It also reports bytes after the end
-// of the HDF5 data. It reads no dataset data.
+// of the HDF5 data, and lists the datasets whose data is outside the file.
+// It reads no dataset data.
 func (f *File) Check() LayoutCheck {
 	var lc LayoutCheck
 	per := map[string]int{}
@@ -58,6 +72,18 @@ func (f *File) Check() LayoutCheck {
 		}
 		lc.Datasets++
 		where := o.Path
+		switch {
+		case len(ds.External) > 0:
+			out := Outside{Where: where}
+			for _, e := range ds.External {
+				out.Files = append(out.Files, e.Name)
+			}
+			lc.Outside = append(lc.Outside, out)
+			continue
+		case ds.Layout.Class == LayoutVirtual:
+			lc.Outside = append(lc.Outside, Outside{Where: where, Virtual: true})
+			continue
+		}
 		if why := datasetUnread(ds); why != "" {
 			lc.Unchecked = append(lc.Unchecked, where+": "+why)
 			continue
@@ -86,13 +112,21 @@ func (f *File) Check() LayoutCheck {
 			if l.Version < 3 {
 				size = need // versions 1 and 2 record none; the library computes it
 			}
+			// The library reads the bytes the shape needs from the address,
+			// and refuses a dataset whose needed bytes run past the
+			// end-of-file address (H5D__contig_check, src/H5Dcontig.c); it
+			// does not compare the size the layout records.
 			if size != need {
-				add("tensor-size", where, fmt.Sprintf("contiguous storage of %d bytes; its type (%s) and shape %s need %d: bytes no reader reads, or a read past its storage", size, ds.Type.Name(), ds.Space, need))
+				add("tensor-size", where, fmt.Sprintf("contiguous storage recorded as %d bytes; its type (%s) and shape %s need %d, and the HDF5 library reads %d: recorded bytes no reader reads, or a read past the recorded storage",
+					size, ds.Type.Name(), ds.Space, need, need))
 			}
 			end := l.Addr + int64(max(size, need))
 			switch {
+			case l.Addr+int64(need) > f.EOF || l.Addr+int64(need) < l.Addr:
+				add("tensor-layout", where, fmt.Sprintf("the %d bytes its type and shape need, from %d, run past the end of the HDF5 data the superblock records (%d); the HDF5 library refuses to read it", need, l.Addr, f.EOF))
+				continue
 			case end > f.EOF || end < l.Addr:
-				add("tensor-layout", where, fmt.Sprintf("storage [%d, %d) runs past the end of the HDF5 data the superblock records (%d); the HDF5 library refuses to read it", l.Addr, end, f.EOF))
+				add("tensor-layout", where, fmt.Sprintf("storage recorded as [%d, %d) runs past the end of the HDF5 data the superblock records (%d)", l.Addr, end, f.EOF))
 				continue
 			case truncated && end > f.Size:
 				lc.Unchecked = append(lc.Unchecked, where+": storage past the end of the truncated file")
@@ -149,6 +183,13 @@ func (f *File) Check() LayoutCheck {
 					data = append(data, Extent{ch.Addr, end, fmt.Sprintf("%s chunk %d", where, i)})
 				}
 			}
+			// A version 1 B-tree lists the chunks written; a chunk never
+			// written reads as the fill value, so the stored data is less
+			// than the shape. A declared size far past the stored bytes is
+			// how a shape bomb exhausts a loader's memory (CVE-2026-12570).
+			if total, ok := chunkCount(ds); ok && l.Index == IndexBTree1 && uint64(len(seen)) < total {
+				lc.Unchecked = append(lc.Unchecked, fmt.Sprintf("%s: %d of its %d chunks are stored, and the rest read as the fill value, so its storage is not its shape's size", where, len(seen), total))
+			}
 		}
 	}
 	for _, v := range overlaps(data, f.meta) {
@@ -172,14 +213,6 @@ func datasetUnread(ds *Dataset) string {
 		return "its dataspace is shared, which this reader does not resolve"
 	case ds.Type.Size == 0:
 		return "a datatype of size 0, which the HDF5 library refuses"
-	case len(ds.External) > 0:
-		names := make([]string, 0, len(ds.External))
-		for _, e := range ds.External {
-			names = append(names, fmt.Sprintf("%q", clip(e.Name, 120)))
-		}
-		return "its data is in external file(s) " + capJoin(names, 3) + ", which a reader opens outside this file"
-	case ds.Layout.Class == LayoutVirtual:
-		return "a virtual dataset, whose data is mapped from other datasets, possibly in other files"
 	}
 	if _, ok := ds.Space.Elements(); !ok {
 		return "a shape whose element count overflows"
@@ -248,19 +281,4 @@ func overlaps(data, meta []Extent) []Violation {
 		}
 	}
 	return out
-}
-
-// clip cuts s to at most n bytes.
-func clip(s string, n int) string {
-	if len(s) <= n {
-		return s
-	}
-	return s[:n] + "..."
-}
-
-func capJoin(items []string, n int) string {
-	if len(items) <= n {
-		return strings.Join(items, ", ")
-	}
-	return strings.Join(items[:n], ", ") + fmt.Sprintf(" and %d more", len(items)-n)
 }

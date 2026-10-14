@@ -19,7 +19,7 @@
 ---
 
 Socair inspects a model artifact (a GGUF file, safetensors, a pickle checkpoint,
-an ONNX model, or a whole Hugging Face model directory) and produces an **attestation**: a
+an ONNX model, a Keras model, or a whole Hugging Face model directory) and produces an **attestation**: a
 graded report a CISO or Head of AI Ops can file, signed so anyone can verify it
 offline. The report answers one question: *what was checked in this exact
 artifact, what was found, and what was not tested?* It checks the file, not the
@@ -43,7 +43,7 @@ that gap. Nothing passes silently.
 
 | Check | Looks for |
 |---|---|
-| Format and structure | Malformed containers; tensor data that does not tile the file exactly (where payloads hide); shard indexes that disagree with their shards; ONNX tensors whose data does not match their shape, external data that leaves the model's directory, and operators from outside ONNX and onnxruntime |
+| Format and structure | Malformed containers; tensor data that does not tile the file exactly (where payloads hide); shard indexes that disagree with their shards; ONNX tensors whose data does not match their shape, external data that leaves the model's directory, and operators from outside ONNX and onnxruntime; Keras configs that carry Python bytecode or name code from outside Keras, and HDF5 data outside its file |
 | File inventory and payloads | Embedded scripts, binaries, or archives in metadata; native executables in a model directory |
 | Chat template | Template code that reaches Python internals; instructions that trigger on message content; hidden or obfuscated text; override and concealment language. Renders the template with Socair's own evaluator and lists the text it adds to the prompt; compares it with reviewed templates when their text is supplied |
 | Tokenizer config | Special-token ids that name no token; tables that disagree; control tokens carrying instructions; normalizers that rewrite input into control tokens |
@@ -241,6 +241,7 @@ checks that run the model on your own GPUs, is built here in the open.
 | [tier2.md](docs/tier2.md) | Tier 2, opt-in: measurements made by running the model, the node-class record, the probe-helper protocol, isolation, and the roadmap |
 | [airlock.md](docs/airlock.md) | The airlock: pull, ingest, promote, the trust policy, the log, the signed inventory export |
 | [onnx.md](docs/onnx.md) | ONNX models: what the structure and inventory rows read, external data, operator domains, and what is not covered |
+| [keras.md](docs/keras.md) | Keras models (`.h5`, `tf_model.h5`, `.keras`): the HDF5 reader, the layout and archive rules, code in the config, and what is not covered |
 | [oci.md](docs/oci.md) | Attestations on OCI model artifacts: attach and verify, the binding to the manifest digest, which layouts are matched, cosign and Kyverno |
 | [admission.md](docs/admission.md) | Kyverno policies that refuse a model pod without an authorized binding: what they check and what they do not, KServe, image volumes, the policy-controller gap |
 | [intake-host.md](docs/intake-host.md) | Running Socair as the model intake host for an on-prem GPU cluster |

@@ -1,7 +1,7 @@
 // Package keras reads a Keras model for the structure and inventory checks:
 // a legacy HDF5 file (.h5, .hdf5), which Keras 2, tf.keras, and Keras 3's
 // legacy format write and Hugging Face transformers writes as tf_model.h5,
-// or a .keras archive (Keras 3, and Keras 2.13 to 2.15): a zip of
+// or a .keras archive (Keras 3, and Keras 2.12 and later and tf-keras): a zip of
 // config.json, metadata.json, and model.weights.h5.
 //
 // It reads the HDF5 container with internal/hdf5, the model's config (the
@@ -15,7 +15,6 @@ package keras
 import (
 	"archive/zip"
 	"bytes"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -23,6 +22,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/defilantech/socair/internal/checks/pyjson"
 	"github.com/defilantech/socair/internal/hdf5"
 )
 
@@ -516,58 +516,19 @@ func readEntry(zf *zip.File, max int64) ([]byte, error) {
 // nesting past 10000.
 const maxJSONDepth = 512
 
-// DecodeJSON decodes a config as Keras' json.loads does: a repeated key
-// keeps its last value, trailing data is refused, and NaN, Infinity, and
-// -Infinity, which Python's json module writes and reads, are read (as
-// null: no rule reads a number).
+// DecodeJSON decodes a config as Keras reads it: every Keras config (an
+// archive's config.json and metadata.json, an HDF5 file's model_config and
+// training_config, a KerasHub preset's JSON files) is written by Python's
+// json.dumps and read by json.loads, so it is decoded as checks/pyjson
+// decodes what a Python loader reads. A repeated key keeps its last value,
+// data after the value is refused, and NaN, Infinity, and -Infinity decode
+// as null (no rule reads a number).
 func DecodeJSON(raw []byte) (any, error) {
-	d := json.NewDecoder(bytes.NewReader(pythonConstants(raw)))
 	var v any
-	if err := d.Decode(&v); err != nil {
+	if err := pyjson.Unmarshal(raw, &v); err != nil {
 		return nil, err
 	}
-	if _, err := d.Token(); err != io.EOF {
-		return nil, errors.New("data after the JSON value")
-	}
 	return v, nil
-}
-
-// pythonConstants replaces NaN, Infinity, and -Infinity outside strings with
-// null (as checks/remotecode reads Hugging Face configs).
-func pythonConstants(raw []byte) []byte {
-	if !bytes.Contains(raw, []byte("NaN")) && !bytes.Contains(raw, []byte("Infinity")) {
-		return raw
-	}
-	out := make([]byte, 0, len(raw))
-	inString, escaped := false, false
-next:
-	for i := 0; i < len(raw); i++ {
-		c := raw[i]
-		if inString {
-			switch {
-			case escaped:
-				escaped = false
-			case c == '\\':
-				escaped = true
-			case c == '"':
-				inString = false
-			}
-			out = append(out, c)
-			continue
-		}
-		if c == '"' {
-			inString = true
-		}
-		for _, k := range [][]byte{[]byte("-Infinity"), []byte("Infinity"), []byte("NaN")} {
-			if bytes.HasPrefix(raw[i:], k) {
-				out = append(out, "null"...)
-				i += len(k) - 1
-				continue next
-			}
-		}
-		out = append(out, c)
-	}
-	return out
 }
 
 func sortedKeys(m map[string]any) []string {

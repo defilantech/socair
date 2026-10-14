@@ -143,7 +143,7 @@ func scanDir(dir string, start time.Time, refs *references, in Inputs, t2 *tier2
 			// Its external data is resolved in the snapshot, beside it.
 			structParts = append(structParts, checks.Part{File: f.Path, Result: structure.ValidateONNX(root, f.Path)})
 			invFiles = append(invFiles, f)
-		case kerasExt[ext]:
+		case kerasExt[ext] && isKeras(at(f)):
 			res, a := structure.ValidateKeras(root, f.Path)
 			if a != nil {
 				read[f.Path] = *a
@@ -248,8 +248,15 @@ func scanDir(dir string, start time.Time, refs *references, in Inputs, t2 *tier2
 }
 
 // kerasExt are the extensions of Keras models: HDF5 files and .keras
-// archives, each read whatever its bytes.
+// archives. A file of one is read as Keras when its bytes are HDF5 or a
+// .keras archive (isKeras), whichever its extension names; otherwise it is
+// a weight file in a format this scanner does not parse.
 var kerasExt = map[string]bool{".h5": true, ".hdf5": true, ".keras": true}
+
+func isKeras(path string) bool {
+	k, _ := keras.Sniff(path)
+	return k != keras.None
+}
 
 // kerasObject decodes a JSON file at the directory's root that is a Keras
 // serialized object (a top-level class_name and module), as a KerasHub

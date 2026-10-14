@@ -78,4 +78,4 @@ artifact:
 - A test that needs a real model is gated by an environment variable and skipped by default. See `internal/gguf/integration_test.go` and the egress test in `internal/airlock/integration_test.go`.
 - The report data model in `internal/report` and `docs/report-schema/v1.json` is the contract. No component may invent a divergent report shape.
 - Every check carries a falsification: a test that fails if the detector is neutered. See each package's `_test.go`.
-- A change to the rules (the check packages, or the GGUF, safetensors, and ONNX parsers) needs a row in `docs/check-set.md`, and a version bump if it can alter a verdict. `TestCheckSetVersionTracksRules` enforces it.
+- A change to the rules (the check packages, or the GGUF, safetensors, ONNX, HDF5, and Keras parsers) needs a row in `docs/check-set.md`, and a version bump if it can alter a verdict. `TestCheckSetVersionTracksRules` enforces it.

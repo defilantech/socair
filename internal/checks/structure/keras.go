@@ -36,7 +36,7 @@ func KerasConfig(name string, v any) checks.Result {
 	if addons != "" {
 		summary += "; " + addons
 	}
-	return g.result(r, summary, "No Lambda bytecode, pickled module, or class or function from outside Keras and TensorFlow is named. "+kerasLimits)
+	return g.result(r, summary, "No Python bytecode, pickled module, or class or function from outside Keras and TensorFlow is named. "+kerasLimits)
 }
 
 // IsKerasObject reports a decoded JSON document that is a Keras serialized
@@ -93,10 +93,13 @@ func validateKeras(r checks.Result, p string) (checks.Result, *checks.ArchiveRea
 	case len(m.Configs) == 0 && m.Kind == keras.HDF5:
 		held = "No model config is present, so the file holds no code a Keras loader runs, and no code was found; a loader reads its weights by name. "
 	case len(m.Configs) > 0:
-		held = "No Lambda bytecode, pickled module, or class or function from outside Keras and TensorFlow is named in the config. "
+		held = "No Python bytecode, pickled module, or class or function from outside Keras and TensorFlow is named in the config. "
 	}
 	if m.H5 != nil {
-		held = "Every dataset's storage is inside the HDF5 data, sized by its type and shape, with no two overlapping. " + held
+		held = "Every dataset's storage is inside the HDF5 data, sized by its type and shape, with no two overlapping, and no data or link reaches another file. " + held
+	}
+	if m.Kind == keras.Archive {
+		held = "The archive holds only the members Keras reads. " + held
 	}
 	res := g.result(r, strings.Join(parts, "; "), held+kerasLimits)
 	if m.Kind != keras.Archive {
@@ -142,14 +145,15 @@ func (g *onnxGrade) result(r checks.Result, summary, held string) checks.Result 
 // archive grades a .keras archive's members.
 func (g *onnxGrade) archive(m *keras.Model) string {
 	for _, n := range m.Escapes {
-		g.fail("archive-path-escape", fmt.Sprintf("%q", clip(n, 120)),
-			"a member name that leaves the directory the archive is extracted to; Keras extracts the whole archive when it has assets, and versions before 3.14 checked names against the working directory (CVE-2026-11816)")
+		g.lead("archive-path-escape", fmt.Sprintf("%q", clip(n, 120)),
+			"a member name with an absolute path, a drive, or a \"..\" component, which no Keras writer produces: Keras extracts every member of an archive of more than three, "+
+				"Python's zipfile drops those parts as it extracts, and Keras before 3.14.0 checked names against the working directory (CVE-2026-11816); another extractor can write outside its directory")
 	}
 	for _, n := range m.Duplicates {
 		g.lead("keras-archive-entry", fmt.Sprintf("%q", clip(n, 120)), "a member name repeated in the archive: zip readers disagree on which copy they read")
 	}
 	for _, n := range m.Unexpected {
-		g.lead("keras-archive-entry", clip(n, 160), "a member Keras' loader does not read: no loader reads it, so it is a place to carry a payload")
+		g.lead("keras-archive-entry", clip(n, 160), "a member Keras neither writes nor reads, though it extracts every member of an archive of more than three: a place to carry a payload (File inventory scans its text)")
 	}
 	assets := 0
 	for _, e := range m.Entries {
@@ -181,6 +185,29 @@ func (g *onnxGrade) hdf5(m *keras.Model) string {
 	for _, v := range lc.Violations {
 		g.fail(v.Pattern, clip(v.Where, 160), v.Detail)
 	}
+	for _, o := range lc.Outside {
+		if o.Virtual {
+			g.lead("hdf5-virtual-dataset", clip(o.Where, 160), "a virtual dataset, whose data is mapped from other datasets, which can be in other files (the mapping was not read); "+
+				"Keras refuses one since 3.12.3 and 3.15.0, and read it before (CVE-2026-12480)")
+			continue
+		}
+		files := make([]string, 0, len(o.Files))
+		for _, f := range o.Files {
+			files = append(files, fmt.Sprintf("%q", clip(f, 120)))
+		}
+		g.fail("external-data-escape", clip(o.Where, 160), "data in external file(s) "+capList(files, 3)+", which the HDF5 library opens by name, outside this file, "+
+			"and reads as the weights: h5py and Hugging Face transformers' loader read it, as Keras did before 3.12.1 and 3.13.2 (CVE-2026-1669), which refuse it")
+	}
+	for _, l := range h.Links {
+		switch l.Type {
+		case "external":
+			g.fail("external-data-escape", clip(l.Path, 160), fmt.Sprintf("an external link to %q: h5py follows it to an object in another file when a loader reads this path, "+
+				"as Keras did before 3.12.3 and 3.15.0 (CVE-2026-9335), which refuse it", clip(l.Target, 160)))
+		case "soft":
+			g.lead("hdf5-soft-link", clip(l.Path, 160), fmt.Sprintf("a soft link to %q: one name reads the object another name holds, which no Keras writer produces; "+
+				"Keras refuses soft links since 3.12.3 and 3.15.0", clip(l.Target, 160)))
+		}
+	}
 	for _, u := range lc.Unchecked {
 		g.gap("storage that could not be checked", clip(u, 200))
 	}
@@ -204,13 +231,6 @@ func (g *onnxGrade) hdf5(m *keras.Model) string {
 		if m.Backend != "" {
 			n += ", backend " + clip(m.Backend, 40)
 		}
-	}
-	if len(h.Links) > 0 {
-		var ls []string
-		for _, l := range h.Links {
-			ls = append(ls, fmt.Sprintf("%s %s -> %s", l.Type, clip(l.Path, 80), clip(l.Target, 120)))
-		}
-		n += "; links: " + capList(ls, 5)
 	}
 	if len(h.Aliases) > 0 {
 		n += fmt.Sprintf("; %d name(s) reach an object another name reaches (a hard link)", len(h.Aliases))
@@ -248,7 +268,7 @@ func (g *onnxGrade) configRefs(refs []keras.Ref) string {
 		where := clip(ref.Source+" "+ref.Where, 200)
 		switch ref.Kind {
 		case keras.Bytecode:
-			g.fail("keras-lambda", where, ref.Detail)
+			g.fail("keras-lambda", where, ref.What()+": "+ref.Detail)
 		case keras.Pickle:
 			g.fail("keras-pickle", where, ref.Detail)
 		case keras.Refused:
@@ -256,17 +276,21 @@ func (g *onnxGrade) configRefs(refs []keras.Ref) string {
 		case keras.Named:
 			if ref.Module != "" && pickle.Dangerous(ref.Module, ref.Name) {
 				g.fail("keras-dangerous-reference", where, ref.What()+
-					": a module the pickle check FAILs, named as a Keras class or function; Keras 3.0 to 3.8 and tf-keras import it and call it while rebuilding the model (CVE-2025-1550)")
+					": a global the pickle check FAILs, named as a Keras class or function; Keras 3.0 to 3.8 and tf-keras import the module by name and take it into the model they rebuild (CVE-2025-1550)")
 				continue
 			}
 			what := clip(ref.What(), 120)
 			if ref.Module == "" {
-				g.gap("classes Keras does not register, which only the caller's code supplies (custom_objects or a registration): code outside this file", what)
+				g.gap("classes and functions Keras does not register, which only the caller's code supplies (custom_objects or a registration): code outside this file", what)
 			} else {
 				g.gap("classes and functions named from modules outside Keras and TensorFlow: code outside this file, which Keras 3.9 and later resolve only from objects the caller registers, and Keras 3.0 to 3.8 and tf-keras import by name", what)
 			}
 		case keras.External:
 			g.gap("paths outside this file that a layer opens", clip(ref.Where+": "+ref.Detail, 200))
+		case keras.PathName:
+			g.lead("keras-name-path", where, fmt.Sprintf("%q: %s", clip(ref.Name, 80), ref.Detail))
+		case keras.Unwalked:
+			g.gap("parts of the config this reader did not walk", clip(ref.Source+": "+ref.Detail, 200))
 		case keras.Addon:
 			addons = append(addons, clip(ref.What(), 100))
 		}
