@@ -119,9 +119,10 @@ var passMeaning = map[string]string{
 		"An archive among the files counts only when the Pickle opcode scan PASSed it and read every entry in it: " +
 		"a torch.save checkpoint with nothing outside torch.save's layout.",
 	"Chat template": "The template parsed and reaches no Python internals or process execution, " +
-		"and carries no override or concealment language, URL, hidden or obfuscated text, or condition on message content. " +
-		"Instructions written as ordinary guidance are not judged: when the template rendered, the notes list the text it adds " +
-		"to the prompt and say whether it matches a reviewed template.",
+		"and carries no override or concealment language, URL, hidden or obfuscated text, or condition on message content " +
+		"other than a standard content-part type such as text or image. " +
+		"Instructions written as ordinary guidance, or added for a content-part type, are not judged: the notes list the text " +
+		"a template adds for a content-part type, and, when the template rendered, the text it adds to the prompt and whether it matches a reviewed template.",
 	"Tokenizer config": "The tokenizer tables are internally consistent, and no control token carries instructions. " +
 		"When a canonical reference table for its family is configured (from a feed or SOCAIR_TOKENIZER_REFERENCE), " +
 		"every token was compared with it and no ordinary token differs; the notes say which reference, or that none was configured or matched.",
@@ -444,7 +445,7 @@ func DefaultCeiling() []string {
 		"Malicious behavior that only emerges at runtime under real traffic.",
 		"Artifact formats we do not parse.",
 		"Pickle code execution through a reviewed class's state, loader bugs, parse differentials, a tampered environment, or code carried as data for a later stage to run.",
-		"Chat-template instructions written as ordinary guidance (no override or concealment phrase, URL, hidden or obfuscated text, or condition on message content): the text a rendered template adds is listed in the report, not judged, unless the template matches a reviewed template.",
+		"Chat-template instructions written as ordinary guidance (no override or concealment phrase, URL, hidden or obfuscated text, or condition on message content other than a standard content-part type such as text or image): the text a rendered template adds, and the text a template adds for a content-part type, is listed in the report, not judged, unless the template matches a reviewed template.",
 		"Legal review of a license, and compliance with its usage policies. The license is identified, and checked only against a policy you configure.",
 	}
 }

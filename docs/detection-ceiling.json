@@ -1,5 +1,5 @@
 {
-  "version": "v4",
+  "version": "v5",
   "statement": "This attestation does not certify the absence of unknown backdoors.",
   "bullets": [
     "Backdoors, trojans, or poisoning in the model weights. Tier 1 reads the weights' layout, never their behavior.",
@@ -9,7 +9,7 @@
     "Malicious behavior that only emerges at runtime under real traffic.",
     "Artifact formats we do not parse.",
     "Pickle code execution through a reviewed class's state, loader bugs, parse differentials, a tampered environment, or code carried as data for a later stage to run.",
-    "Chat-template instructions written as ordinary guidance (no override or concealment phrase, URL, hidden or obfuscated text, or condition on message content): the text a rendered template adds is listed in the report, not judged, unless the template matches a reviewed template.",
+    "Chat-template instructions written as ordinary guidance (no override or concealment phrase, URL, hidden or obfuscated text, or condition on message content other than a standard content-part type such as text or image): the text a rendered template adds, and the text a template adds for a content-part type, is listed in the report, not judged, unless the template matches a reviewed template.",
     "Legal review of a license, and compliance with its usage policies. The license is identified, and checked only against a policy you configure."
   ],
   "notes": [
