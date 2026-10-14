@@ -178,6 +178,10 @@
           "value": "PASS"
         },
         {
+          "name": "socair:check:intake-policy",
+          "value": "PASS"
+        },
+        {
           "name": "socair:does_not_certify",
           "value": "This attestation does not certify the absence of unknown backdoors."
         }
@@ -294,7 +298,8 @@
               "claim:known-bad-hash-match",
               "claim:chat-template",
               "claim:tokenizer-config",
-              "claim:quant-match"
+              "claim:quant-match",
+              "claim:intake-policy"
             ]
           }
         ]
@@ -335,6 +340,11 @@
         "bom-ref": "claim:quant-match",
         "target": "model:13d44e37860489806f575deb0b219c6058c9421fe1982a9311a0e367c4e8f444",
         "predicate": "Check \"Quant match\" returned PASS. It looks for: Declared quantization (file name) against the tensor types in the file."
+      },
+      {
+        "bom-ref": "claim:intake-policy",
+        "target": "model:13d44e37860489806f575deb0b219c6058c9421fe1982a9311a0e367c4e8f444",
+        "predicate": "Check \"Intake policy\" returned PASS. It looks for: The artifact against your intake policy (SOCAIR_INTAKE_POLICY): allowed formats, publisher allow and deny lists, and publishers whose models need a verified signature."
       }
     ]
   },

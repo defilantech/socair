@@ -53,6 +53,7 @@ that gap. Nothing passes silently.
 | Hash, provenance, lineage | An origin bound to this exact hash at an immutable commit, or a verified publisher signature (OpenSSF Model Signing) |
 | Known-bad hash match | The artifact, or any file in it, on a known-bad list |
 | License policy (opt-in) | A license outside the allowed list you configure (`SOCAIR_LICENSE_POLICY`); without one, the report still names the license the artifact states and any disagreement between its model card, LICENSE file, and GGUF metadata |
+| Intake policy (opt-in) | Your organization's intake rules (`SOCAIR_INTAKE_POLICY`): a model file in a format you do not allow, identified from its bytes; a publisher not on your allowed list or on your denied list; a publisher whose models must be signed, without a verified signature. It can only withhold |
 
 Every result is a bounded statement. Socair says what it inspected and lists
 what it cannot see in its
@@ -216,6 +217,7 @@ checks that run the model on your own GPUs, is built here in the open.
 | [intake-host.md](docs/intake-host.md) | Running Socair as the model intake host for an on-prem GPU cluster |
 | [kubernetes.md](docs/kubernetes.md) | The Helm chart: the airlock and the wizard in a cluster, who can reach them, and handing promoted models to LLMKube |
 | [provenance-bundle.md](docs/provenance-bundle.md) | The inputs that move each row: mirrors, denylists, provenance, signatures, a license policy, acceptances |
+| [intake-policy.md](docs/intake-policy.md) | An intake policy that can only withhold: allowed formats, publisher allow and deny lists, required publisher signatures |
 | [feed.md](docs/feed.md) | Signed reference feeds: format, verification, building one |
 | [cyclonedx.md](docs/cyclonedx.md) | The CycloneDX ML-BOM: what each field holds and when it is left out, the G7 SBOM for AI minimum elements, and signing a BOM |
 | [api.md](docs/api.md), [wizard.md](docs/wizard.md) | The local HTTP API, the click-through wizard, and the airlock console (wizard.md) |

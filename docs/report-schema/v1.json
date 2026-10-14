@@ -127,7 +127,17 @@
         "scan_start_utc": { "type": "string" },
         "scan_end_utc": { "type": "string" },
         "inference_budget": { "type": "string" },
-        "reference_data": { "type": "string", "description": "The reference data the checks compared against: a signed feed by issuer, version, dates, and signing key, and each local input (denylist, tokenizer tables, reviewed templates, license policy) by file name and the SHA-256 of the bytes read, never by its path on the scanning host." }
+        "reference_data": { "type": "string", "description": "The reference data the checks compared against: a signed feed by issuer, version, dates, and signing key, and each local input (denylist, tokenizer tables, reviewed templates, license policy) by file name and the SHA-256 of the bytes read, never by its path on the scanning host." },
+        "intake_policy": {
+          "type": "object",
+          "description": "The intake policy (SOCAIR_INTAKE_POLICY) the Intake policy row was checked against: its file's base name and the SHA-256 of its bytes. Present exactly when that row is.",
+          "additionalProperties": false,
+          "required": ["name", "sha256"],
+          "properties": {
+            "name": { "type": "string", "minLength": 1 },
+            "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+          }
+        }
       }
     },
     "checks": {

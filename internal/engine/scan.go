@@ -14,6 +14,7 @@ import (
 
 	"github.com/defilantech/socair/internal/checks"
 	"github.com/defilantech/socair/internal/checks/chattemplate"
+	"github.com/defilantech/socair/internal/checks/intake"
 	"github.com/defilantech/socair/internal/checks/inventory"
 	"github.com/defilantech/socair/internal/checks/license"
 	"github.com/defilantech/socair/internal/checks/pickle"
@@ -242,6 +243,13 @@ func ScanWith(path string, mode Mode, in Inputs) (*report.Document, error) {
 		results = append(results, pickle.Inspect(path))
 	}
 	if row, ok := refs.licenseRow(ident, singleFileLicenseNote(id.Format, ggufErr)); ok {
+		results = append(results, row)
+	}
+	if row, ok := refs.intakeRow(d, func() intake.Facts {
+		f := intake.Identify(path)
+		f.Path = id.FileName
+		return intakeFacts([]intake.File{f}, provOpts, sig, mode == ModeFull)
+	}); ok {
 		results = append(results, row)
 	}
 	measureTier2(d, t2, path)

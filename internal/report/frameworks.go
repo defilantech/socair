@@ -77,6 +77,13 @@ var patternSeverity = map[string]string{
 	// A license outside the operator's policy: a rule broken, not a
 	// compromise.
 	"license-not-allowed": SeverityMedium,
+	// An intake rule broken: a format, a publisher, or a signature the
+	// organization requires. The policy is the organization's, not evidence
+	// of a compromise; the rows that read the bytes grade those.
+	"format-not-allowed":           SeverityMedium,
+	"publisher-denied":             SeverityMedium,
+	"publisher-not-allowed":        SeverityMedium,
+	"publisher-signature-required": SeverityMedium,
 	// Integrity of a label, not of the model.
 	"token-prose":          SeverityLow,
 	"quant-mismatch":       SeverityLow,
@@ -181,6 +188,10 @@ var checkMaps = map[string][]FrameworkRef{
 	// LLM03 names licensing risk among supply-chain vulnerabilities; no
 	// ATLAS technique is a license.
 	"License policy": {owaspSupplyChain},
+	// LLM03's mitigations: use trusted suppliers, and models from verifiable
+	// sources with signing. The policy enforces the organization's rules and
+	// detects no compromise, so it maps to no ATLAS technique.
+	IntakePolicyCheck: {owaspSupplyChain},
 }
 
 // MapsTo returns the framework entries a check addresses, or nil.

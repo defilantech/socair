@@ -9,6 +9,7 @@ import {
 	countOrder,
 	availableLevels,
 	licenseLabel,
+	intakePolicyLabel,
 	measurementPill,
 	measurementSummary,
 	nodeClassFacts,
@@ -192,6 +193,22 @@ describe('license label', () => {
 		expect(licenseLabel(withLicense({ sources: [{ source: 'LICENSE', value: 'ACME' }] }))?.text).toBe('Not identified');
 		expect(licenseLabel(withLicense({}))?.text).toBe('None stated');
 		expect(licenseLabel(doc('withheld', []))).toBeUndefined();
+	});
+});
+
+describe('intake policy label', () => {
+	it('names the policy from the scope, by file name and hash', () => {
+		const d = doc('withheld', []);
+		d.scope = {
+			check_set_version: 'tier1/0.9',
+			execution_context: 'x',
+			input_path: 'local path',
+			intake_policy: { name: 'acme-intake.json', sha256: 'b'.repeat(64) }
+		};
+		expect(intakePolicyLabel(d)).toBe('acme-intake.json (sha256 ' + 'b'.repeat(12) + ')');
+	});
+	it('names nothing when no policy was set', () => {
+		expect(intakePolicyLabel(doc('withheld', []))).toBeUndefined();
 	});
 });
 

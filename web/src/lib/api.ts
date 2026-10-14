@@ -98,6 +98,14 @@ export interface Scope {
 	scan_end_utc?: string;
 	inference_budget?: string;
 	reference_data?: string;
+	/** The intake policy the Intake policy row was checked against, by name and hash; present exactly when that row is. */
+	intake_policy?: PolicyRef;
+}
+
+/** A policy file, by its base name and the SHA-256 of its bytes. */
+export interface PolicyRef {
+	name: string;
+	sha256: string;
 }
 
 // MEASUREMENT_OUTCOMES is the Tier 2 outcome enum of the report contract. A

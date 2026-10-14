@@ -61,7 +61,11 @@
     "input_path": "local path",
     "scan_start_utc": "2026-09-29T00:00:00Z",
     "scan_end_utc": "2026-09-29T00:00:01Z",
-    "inference_budget": ""
+    "inference_budget": "",
+    "intake_policy": {
+      "name": "acme-intake.json",
+      "sha256": "12a53ff063ad028c64acbf140cd95fcaa3676be9e53b6df087f9442ed627e40a"
+    }
   },
   "checks": [
     {
@@ -257,6 +261,21 @@
           "id": "AML.T0010.003",
           "name": "AI Supply Chain Compromise: Model"
         },
+        {
+          "framework": "OWASP LLM Top 10",
+          "version": "2025",
+          "id": "LLM03",
+          "name": "Supply Chain"
+        }
+      ]
+    },
+    {
+      "name": "Intake policy",
+      "looks_for": "The artifact against your intake policy (SOCAIR_INTAKE_POLICY): allowed formats, publisher allow and deny lists, and publishers whose models need a verified signature",
+      "status": "PASS",
+      "notes": "Intake policy acme-intake.json (sha256 12a53ff063ad). Publisher: google (the organization in the bound provenance manifest's repo_url https://huggingface.co/google/gemma-3-12b-it and the manifest's publisher field). Every rule it sets holds: allowed formats (gguf, safetensors): google_gemma-3-12b-it-Q5_K_M.gguf is gguf, identified from the bytes; denied publishers (example-denied-org): google is not on it; allowed publishers (acme-ml, google, meta-llama, mistralai, qwen): google is on it; signature required for (acme-ml): google is not on it.",
+      "pass_means": "Every rule your intake policy sets holds: each model file's format, identified from its bytes, is allowed; the publisher, read from a provenance manifest bound to this hash, is on your allowed list and not on your denied list; and a publisher whose models need a signature has one that verified against a key or root you trust. A rule the policy does not set is not checked. It is your organization's rule, not a finding about the model's safety.",
+      "maps_to": [
         {
           "framework": "OWASP LLM Top 10",
           "version": "2025",

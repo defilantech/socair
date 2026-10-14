@@ -14,6 +14,7 @@ import (
 
 	"github.com/defilantech/socair/internal/checks"
 	"github.com/defilantech/socair/internal/checks/chattemplate"
+	"github.com/defilantech/socair/internal/checks/intake"
 	"github.com/defilantech/socair/internal/checks/inventory"
 	"github.com/defilantech/socair/internal/checks/pickle"
 	"github.com/defilantech/socair/internal/checks/provenance"
@@ -195,6 +196,11 @@ func scanDir(dir string, start time.Time, refs *references, in Inputs, t2 *tier2
 		results = append(results, checks.Merge(pickleParts[0].Result.Name, pickleParts[0].Result.LooksFor, pickleParts))
 	}
 	if row, ok := refs.licenseRow(ident, "A model directory states its license in the model card's front matter (README.md), a LICENSE file, or a GGUF's general.license; this one has none that names a license."); ok {
+		results = append(results, row)
+	}
+	if row, ok := refs.intakeRow(d, func() intake.Facts {
+		return intakeFacts(intake.DirFiles(root, files), provOpts, sig, true)
+	}); ok {
 		results = append(results, row)
 	}
 	measureTier2(d, t2, root)

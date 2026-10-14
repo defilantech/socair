@@ -18,6 +18,7 @@ import (
 	"github.com/defilantech/socair/internal/checks"
 	"github.com/defilantech/socair/internal/checks/chattemplate"
 	"github.com/defilantech/socair/internal/checks/denylist"
+	"github.com/defilantech/socair/internal/checks/intake"
 	"github.com/defilantech/socair/internal/checks/license"
 	"github.com/defilantech/socair/internal/checks/tokenizer"
 	"github.com/defilantech/socair/internal/feed"
@@ -31,7 +32,9 @@ import (
 //
 // The operator's allowed licenses (SOCAIR_LICENSE_POLICY) are read here too:
 // the License policy row compares against them, and with no policy (nil) the
-// row is not added.
+// row is not added. So is the organization's intake policy
+// (SOCAIR_INTAKE_POLICY), beside it and independent of it: the Intake policy
+// row is likewise added only with a policy.
 type references struct {
 	feed      *feed.Feed
 	deny      map[string]denylist.Entry
@@ -40,6 +43,7 @@ type references struct {
 	tables    []tokenizer.Table
 	templates []chattemplate.Reference
 	policy    *license.Policy
+	intake    *intake.Policy
 	describe  []string
 
 	// local and localPath are the local SOCAIR_DENYLIST as read, kept apart
@@ -133,6 +137,17 @@ func loadReferences(now time.Time) (*references, error) {
 		}
 		r.policy = pol
 		r.describe = append(r.describe, pol.Describe())
+	}
+	// An intake policy that cannot be read, or that names a key, format, or
+	// publisher it does not know, stops the scan the same way: a rule that
+	// quietly failed to load would let through what it was written to stop.
+	// The report names it in scope.intake_policy, not in reference_data.
+	if p := strings.TrimSpace(os.Getenv("SOCAIR_INTAKE_POLICY")); p != "" {
+		pol, err := intake.Load(p)
+		if err != nil {
+			return nil, fmt.Errorf("SOCAIR_INTAKE_POLICY: %w", err)
+		}
+		r.intake = pol
 	}
 	if p := strings.TrimSpace(os.Getenv("SOCAIR_DENYLIST")); p != "" {
 		entries, f, err := loadDenylist(p)
