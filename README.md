@@ -220,6 +220,7 @@ checks that run the model on your own GPUs, is built here in the open.
 | [intake-policy.md](docs/intake-policy.md) | An intake policy that can only withhold: allowed formats, publisher allow and deny lists, required publisher signatures |
 | [feed.md](docs/feed.md) | Signed reference feeds: format, verification, building one |
 | [cyclonedx.md](docs/cyclonedx.md) | The CycloneDX ML-BOM: what each field holds and when it is left out, the G7 SBOM for AI minimum elements, and signing a BOM |
+| [sarif.md](docs/sarif.md) | The SARIF log for code-scanning tools: what each result holds, how a finding's fingerprint is computed, and uploading to GitHub code scanning |
 | [api.md](docs/api.md), [wizard.md](docs/wizard.md) | The local HTTP API, the click-through wizard, and the airlock console (wizard.md) |
 | [threat-model.md](docs/threat-model.md) | What Socair protects, whom it trusts for what, and what it does not defend against |
 | [false-positive-baseline.md](docs/false-positive-baseline.md) | How each detector was measured against real models |

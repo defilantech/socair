@@ -54,7 +54,9 @@ The same document also renders as:
 
 - **PDF**, drawn directly in pure Go with the vendored `go-pdf/fpdf`
   (`internal/render/pdf`), so it renders air-gapped. Byte-stable, by test.
-- **SARIF** (`internal/render/sarif`).
+- **SARIF 2.1.0** (`internal/render/sarif`), for code-scanning tools, with a
+  fingerprint per row so a rescan of the same bytes reports the same findings
+  ([sarif.md](sarif.md)).
 - **CycloneDX 1.6 ML-BOM** (`internal/render/cyclonedx`), filled from the
   report only and signable with `socair sign --bom`
   ([cyclonedx.md](cyclonedx.md)).
