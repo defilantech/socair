@@ -976,6 +976,187 @@ its class whatever its device (`getattr(torch, ...)` for a typed one,
 `type(obj)` for an untyped one; neither torch 2.0.0 nor 2.14.1 defines a
 `torch.cuda.UntypedStorage`) and puts the device in the location field.
 
+## Chat templates: content-part types (2026-10-14, check set tier1/0.9)
+
+TranslateGemma's template (`google-translategemma-4b-it.jinja`, added to
+llama.cpp's `models/templates` in
+[`bd4eeaa`](https://github.com/ggml-org/llama.cpp/commit/bd4eeaa047006cb1fe71999fbd11134b5836e167),
+after CI's pin) was a LEAD (`content-conditional-injection`) on six
+instruction fragments (#246). It reads the user message's one content part
+and branches on `content["type"] == 'text'` and `== 'image'`, and each branch
+adds its documented translation prompt ("Produce only the ... translation,
+without any additional explanations ...") to the user turn. The static walk
+read that as instruction text under a condition on message content. The
+template refuses every probe conversation, since it needs a content part with
+a `source_lang_code` and a `target_lang_code` from its own language table, so
+it was never rendered.
+
+**The rule.** A content part's `type` is set by the client for every part of
+that kind, so a branch on a standard type is how a template handles a kind of
+input, as a branch on a role is, and not a trigger. A comparison of a content
+part's type field with a standard type is now structural:
+`part.type == 'image'`, `part['type'] != 'text'`, or
+`part.type in ['image', 'video']` (a list or tuple whose every item is
+standard), where the part is read straight from message content (a name bound
+to it, `message.content`, or `content[i]`). Such a comparison no longer marks
+its branch as content-conditional and no longer feeds a trigger probe. What
+stays:
+
+- A system turn emitted under such a branch is still a LEAD
+  (`content-conditional-injection`): a request's media type opening a system
+  turn is the Pillar shape, not how a template handles input. This now holds
+  in the chain's else as well, where nothing was judged before.
+- Text such a branch adds, and text in the else of its chain, is listed in the
+  row's notes, not judged, as rendered text is: "Under a condition on a
+  content part's type ..., which no probe conversation renders, it emits N
+  text segment(s): ...". No probe conversation carries content parts, so the
+  render never shows it.
+- Everything else is still a trigger: a value that is not a standard type
+  (`part.type == 'activate'`), a list that mixes one in, another field
+  (`part['source_lang_code'] == 'xx'`), a standard type compared on another
+  field (`part.text == 'image'`), a type read through a filter or a call
+  (`part.type|lower == 'text'`, `part.get('type')`), a substring test
+  (`'text' in part.type`), and a standard type combined with a content test
+  (`part.type == 'text' and 'x' in part.text`, which is judged on the
+  content test).
+
+**The standard types**, from two primary sources at pinned versions:
+
+- OpenAI Chat Completions, as openai-python
+  [v3.31.0](https://github.com/openai/openai-python/tree/v3.31.0/src/openai/types/chat)
+  types it: a user message's content is a string or a list of
+  `ChatCompletionContentPartParam`
+  ([`chat_completion_user_message_param.py` L19](https://github.com/openai/openai-python/blob/v3.31.0/src/openai/types/chat/chat_completion_user_message_param.py#L19)),
+  the union of parts typed `text`, `image_url`, `input_audio`, and `file`
+  ([`chat_completion_content_part_param.py` L46 and L57-L62](https://github.com/openai/openai-python/blob/v3.31.0/src/openai/types/chat/chat_completion_content_part_param.py#L46-L62),
+  [`..._text_param.py` L26](https://github.com/openai/openai-python/blob/v3.31.0/src/openai/types/chat/chat_completion_content_part_text_param.py#L26),
+  [`..._image_param.py` L39](https://github.com/openai/openai-python/blob/v3.31.0/src/openai/types/chat/chat_completion_content_part_image_param.py#L39),
+  [`..._input_audio_param.py` L35](https://github.com/openai/openai-python/blob/v3.31.0/src/openai/types/chat/chat_completion_content_part_input_audio_param.py#L35)).
+  A system message takes `text` parts only
+  ([L20](https://github.com/openai/openai-python/blob/v3.31.0/src/openai/types/chat/chat_completion_system_message_param.py#L20)),
+  and an assistant message `text` and `refusal`
+  ([L25](https://github.com/openai/openai-python/blob/v3.31.0/src/openai/types/chat/chat_completion_assistant_message_param.py#L25)).
+- Hugging Face transformers
+  [v5.19.0](https://github.com/huggingface/transformers/tree/v5.19.0):
+  `ProcessorMixin.apply_chat_template` rewrites OpenAI's `image_url` parts as
+  `image` parts
+  ([`processing_utils.py` L2132-L2144](https://github.com/huggingface/transformers/blob/v5.19.0/src/transformers/processing_utils.py#L2132-L2144))
+  and loads the media of `image`, `video`, and `audio` parts
+  ([L2157-L2166](https://github.com/huggingface/transformers/blob/v5.19.0/src/transformers/processing_utils.py#L2157-L2166));
+  the multimodal chat-template guide writes the text beside them as `text`
+  parts
+  ([`chat_templating_multimodal.md` L36-L42 and L116](https://github.com/huggingface/transformers/blob/v5.19.0/docs/source/en/chat_templating_multimodal.md#L36-L42)).
+
+The union of the user-message parts is `text`, `image`, `image_url`,
+`audio`, `input_audio`, `video`, and `file`. Left out, so they stay
+triggers: `refusal` (an assistant-only part in OpenAI's API), `thinking`
+(Mistral's reasoning chunk, in neither source; Ministral 3 compares it and
+PASSes with it as a trigger, since its branch adds no prose), and `audio_url`
+or `video_url` (in neither source; Qwen2.5-Omni tests `audio_url` as a key).
+
+**Measured** before (main at `ddfe650`) and after, with
+`TestRealTemplatesAreNotFlagged` and a stand-in bos and eos token as above:
+
+| Corpus | Before | After |
+|---|---|---|
+| llama.cpp `models/templates` at `7fe450e` (CI's pin, 70 templates) | 70 PASS | 70 PASS; every logged line unchanged, beside the new content-part count (0) |
+| llama.cpp `models/templates` at `bd4eeaa` (73 templates) | 72 PASS, 1 LEAD (TranslateGemma) | 73 PASS |
+| 28 multimodal templates from 23 Hugging Face repos (below) | 28 PASS | 28 PASS |
+
+The rule applies in 14 of the 73 llama.cpp templates (Apertus, Apriel 1.5
+and 1.6, Devstral Small 2507, Gemma 4 31B and its interleaved variant,
+Granite 4.0 and 4.1, Kimi K2, MiniMax M1 and M3, Ministral 3 14B Reasoning,
+Mistral Small 3.2, TranslateGemma) and in 16 of the 28 Hugging Face
+templates. In all of them but TranslateGemma the branches add special tokens
+or the part's own text, so nothing is listed. In 22 of them a standard type
+no longer feeds a trigger probe; those probes (the literal put in a string
+message) had changed no render. TranslateGemma's row now PASSes, not
+rendered as before (its refused probes fall from 7 to 5, the two trigger
+probes for `text` and `image` gone), and lists its six fragments under the
+content-part sentence. A standard type tested another way keeps its trigger
+probe, and those templates PASS either way, since the branches add only
+special tokens: key presence (`'image' in content`, in the Qwen VL and Omni
+templates, Kimi K2, and Kimi-VL), a filter (`item.type|lower`, Cohere2MoE),
+and `"text" in messages[0].content` (Apertus).
+
+The Hugging Face set is each repo's chat template at the commit named, from
+`chat_template.jinja`, `chat_template.json`, or `tokenizer_config.json`
+(distinct texts only), or from the Hub API's `config.tokenizer_config` for a
+gated repo: Qwen2-VL 7B Instruct `eed1309`, Qwen2.5-VL 7B Instruct `cc59489`,
+Qwen2-Audio 7B Instruct `0a09522`, Qwen2.5-Omni 7B `ae9e169`, Qwen3-VL 8B
+Instruct `0c351dd`, SmolVLM Instruct `81cd9a7`, SmolVLM2 2.2B Instruct
+`482adb5`, Idefics3 8B Llama3 `fddb4ff` (two), llava-1.5 7b-hf `b234b80`,
+llava-onevision qwen2 7b `0d50680` (two), llava-v1.6 mistral 7b `2424fdd`
+(two), Phi-3.5 vision `12b77fb`, Phi-4 multimodal `93f923e`, Gemma 3 4B it
+`093f9f3`, Llama 3.2 11B Vision Instruct `9eb2daa`, Mistral Small 3.1 24B
+`68faf51`, pixtral-12b (mistral-community) `c2756cb`, InternVL3 8B hf
+`259a3b6`, Granite Vision 3.2 2B `ec89419` (two), Aya Vision 8B `d7601ac`,
+Kimi-VL A3B Instruct `398eede` (two), GLM-4.1V 9B Thinking `3c1471e`, LFM2-VL
+1.6B `2c2e7f9`. Gemma 3n, TranslateGemma, and Llama 4 Scout are gated and
+their API config carries no template, so they were not measured here;
+TranslateGemma's text is the llama.cpp copy above.
+
+**Why not probes with content parts.** The issue's other option was to give
+the probe set conversations whose content is a list of parts, so such
+templates render and their text is listed from the render. It would not have
+rendered TranslateGemma: a generic part without a language code from its
+table is refused at `languages[source_lang_code]`, as every probe is now.
+It is a probe-set change of its own (`probes/v2`, with a fidelity measurement
+against Jinja2 like the one above), and it is what the two known misses below
+need; it is left for that change.
+
+**Evasion corpus.** Ten fixtures, from 25 to 35:
+
+| Fixture | Shape | Before | After |
+|---|---|---|---|
+| `benign-part-type-instructions.jinja` | TranslateGemma's shape: translation instructions under `part['type'] == 'text'` and `== 'image'` | LEAD | PASS, no findings, text listed |
+| `part-type-nonstandard-literal.jinja` | instructions under `part['type'] == 'activate'` | LEAD | LEAD |
+| `part-type-mixed-tuple.jinja` | instructions under `part.type in ('image', 'activate')` | PASS | LEAD |
+| `part-field-not-type.jinja` | instructions under `part['source_lang_code'] == 'xx'` | LEAD | LEAD |
+| `part-standard-type-other-field.jinja` | instructions under `part['text'] == 'image'` | LEAD | LEAD |
+| `part-type-and-content.jinja` | instructions under `part.type == 'text' and 'quarterly report' in part.text` | LEAD | LEAD |
+| `part-type-system-turn.jinja` | a system turn under `part.type == 'image_url'` | LEAD | LEAD |
+| `tuple-membership-trigger.jinja` | a system turn under `message['content'] in ('Summarize the invoice', 'Total the invoice')` | PASS | LEAD |
+| `known-miss-part-type-else.jinja` | instructions in the else of a chain that names all seven standard types, so only a non-standard type reaches it | PASS, not listed | PASS, listed (known miss) |
+| `known-miss-part-type-macro-system.jinja` | a system turn from a macro called under `part.type == 'image'` | PASS | PASS (known miss) |
+
+The tuple rows are a gap found while writing the mixed-list case: the
+analysis took a list literal as a constant and a tuple literal as not, so
+`content in ('a', 'b')` and `content.startswith(('a', 'b'))` were not content
+conditions at all and got no trigger probe. A tuple is now a sequence like a
+list. No template in the three corpora tests content against a tuple, so no
+verdict there changes.
+
+The two known misses are what no probe reaches while the probes carry no
+content parts. The else of a chain that names every standard type runs only
+for a type no client sends, which is a trigger without a literal; its text is
+listed, not judged, since judging it would also judge the ordinary fallback
+for a type a template does not handle. A macro's text is attributed to its
+call site only by the render, which never takes the part-type branch.
+Neither was caught before this change.
+
+**Wording.** The row's fixed PASS statement and the published ceiling
+(version v5) said a PASS carries no condition on message content, and that
+only instructions without one go unjudged. Both now name the exception: a
+standard content-part type is not such a condition, and the text a template
+adds for one is listed, not judged.
+
+**CI.** The `real-template-corpus` job now pins llama.cpp at `bd4eeaa`
+(2026-10-07), 73 templates: the 70 at `7fe450e`, unchanged, and
+TranslateGemma, `IFM-K2-Horizon.jinja`, and
+`llm-jp-llm-jp-4.1-8b-thinking.jinja`. llama.cpp's master on 2026-10-14
+(`df18bee`) has the same `models/templates`, file for file.
+
+Reproduce:
+
+```
+SOCAIR_TEMPLATE_CORPUS=/path/to/templates go test ./internal/checks/chattemplate -run RealTemplates -v
+go test ./internal/checks/chattemplate -run 'EvasionCorpus|PartType|GuardLiterals' -v
+```
+
+The corpus test now also logs, per template, the text it emits under a
+content-part type condition.
+
 ## Follow-ups from the first run, since done
 
 1. The GGML file-type mapping follows llama.cpp's `llama_ftype` enum, and the

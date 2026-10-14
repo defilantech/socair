@@ -31,7 +31,7 @@ func TestRealTemplatesAreNotFlagged(t *testing.T) {
 		t.Fatalf("no .jinja files under %s", dir)
 	}
 	tally := map[checks.Status]int{}
-	var rendered, adding, triggered int
+	var rendered, adding, triggered, parted int
 	for _, f := range files {
 		b, err := os.ReadFile(f)
 		if err != nil {
@@ -52,7 +52,14 @@ func TestRealTemplatesAreNotFlagged(t *testing.T) {
 		if err != nil {
 			continue
 		}
-		res := renderCheck(string(b), nodes, analyse(nodes), corpusOptions)
+		an := analyse(nodes)
+		// What it emits under a condition on a content part's type, which
+		// no probe renders: listed, not judged.
+		if len(an.partText) > 0 {
+			parted++
+			t.Logf("%s: under a content-part type condition it emits %d text segment(s): %q", name, len(an.partText), an.partText)
+		}
+		res := renderCheck(string(b), nodes, an, corpusOptions)
 		if res.skipped != "" {
 			t.Logf("%s: not rendered: %s", name, res.skipped)
 			continue
@@ -81,6 +88,7 @@ func TestRealTemplatesAreNotFlagged(t *testing.T) {
 		len(files), tally[checks.Pass], tally[checks.Lead], tally[checks.Fail], tally[checks.NotTested])
 	t.Logf("render: %d of %d rendered, %d add text of their own, %d add text under a content condition",
 		rendered, len(files), adding, triggered)
+	t.Logf("content-part types: %d emit text under a condition on a content part's type (listed, not judged)", parted)
 }
 
 // TestEvasionCorpus holds the check to the evasion fixtures in
