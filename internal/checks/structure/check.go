@@ -1,8 +1,13 @@
 // Package structure validates the container structure of an artifact.
 //
-// The check yields PASS when the header parses cleanly, and NOT_TESTED when it
-// cannot be parsed or carries an internal contradiction. It never returns
-// FAIL: a container we cannot read is ambiguity, not evidence of malice.
+// The check yields PASS when the container parses cleanly and its layout
+// holds, and NOT_TESTED when it cannot be parsed or fully checked: a
+// container we cannot read is ambiguity, not evidence of malice. It FAILs
+// only on positive evidence: a tensor layout that does not describe the
+// file, a repeated key, and in an ONNX model a tensor whose data does not
+// match its type and shape, or external data that leaves the model's
+// directory (onnx.go). An ONNX location that different systems resolve
+// differently is a LEAD.
 package structure
 
 import (
@@ -12,6 +17,7 @@ import (
 
 	"github.com/defilantech/socair/internal/checks"
 	"github.com/defilantech/socair/internal/gguf"
+	"github.com/defilantech/socair/internal/onnx"
 	"github.com/defilantech/socair/internal/safetensors"
 )
 
@@ -27,11 +33,15 @@ func Validate(path string) checks.Result {
 	}
 
 	m, err := gguf.ReadHeader(path)
+	if errors.Is(err, gguf.ErrNotGGUF) && onnx.Sniff(path) {
+		// A single file: external data beside it is not in the scan.
+		return validateONNX(r, path, nil)
+	}
 	if err != nil {
 		r.Status = checks.NotTested
 		switch {
 		case errors.Is(err, gguf.ErrNotGGUF):
-			r.Notes = "not a GGUF or safetensors artifact (unrecognized container)"
+			r.Notes = "not a GGUF, safetensors, or ONNX artifact (unrecognized container)"
 		default:
 			r.Notes = "could not parse structure: " + err.Error()
 		}

@@ -1363,6 +1363,65 @@ torch.save does not write any `torch.cuda.*` storage name in 2.x (a typed
 storage is named `getattr(torch, ...)`, an untyped one by its class in
 `torch.storage`), so no file torch writes changes.
 
+## ONNX models (2026-10-14, check set tier1/0.10)
+
+The Format and structure and File inventory rows read ONNX models (#264,
+[onnx.md](onnx.md)). Measured on 43 `.onnx` files (38 distinct; the three
+`qint8` variants in each sentence-transformers repository are one file) from
+six Hugging Face repositories, fetched by commit into a scratch directory
+outside the repository. Only `.onnx` files were fetched. The external data
+files of the two onnx-community LLM repositories were not: each was replaced
+by a zero-filled sparse file of the size the hub lists for it, which is all
+the check reads of one. Nothing was loaded or run.
+
+| Repository | Commit | `.onnx` files | Producer | `com.microsoft` operators | External data |
+|---|---|---|---|---|---|
+| sentence-transformers/all-MiniLM-L6-v2 | `1110a243fdf4` | 9 (`model`, `model_O1` to `model_O4`, three `qint8`, `quint8_avx2`), 23 to 90 MB | pytorch 2.5.0, onnxruntime.transformers 1.19.2, onnx.quantize 0.1.0 | O2 to O4: `SkipLayerNormalization`, `BiasGelu` or `FastGelu` | none |
+| sentence-transformers/paraphrase-MiniLM-L3-v2 | `4ca70771034a` | 9, as above, 17 to 69 MB | as above | as above | none |
+| Xenova/all-MiniLM-L6-v2 | `751bff37182d` | 8 (`model`, `bnb4`, `fp16`, `int8`, `q4`, `q4f16`, `quantized`, `uint8`), 23 to 90 MB | pytorch 2.0.1, onnx.quantize 0.1.0 | `MatMulNBits` (q4, q4f16), `MatMulBnb4` (bnb4) | none |
+| onnx-community/whisper-tiny | `ff4177021cc4` | 6 (encoder `q4`, `fp16`, `bnb4`; `decoder_model_merged` `quantized`, `fp16`, `q4`), 9 to 87 MB; the merged decoders hold `If` subgraphs | pytorch 2.3.0, optimum-onnx, onnx.quantize 0.1.0 | `MatMulNBits`, `MatMulBnb4` | none |
+| onnx-community/gemma-3-270m-it-ONNX | `2dbbfdb1b59b` | 5 graphs (`model`, `fp16`, `q4`, `q4f16`, `quantized`), 185 to 331 KB | huggingface | `GroupQueryAttention`; `MatMulNBits`, `GatherBlockQuantized` in the quantized ones | 240 to 495 tensors each, in `model*.onnx_data` (0.27 to 1.14 GB) |
+| onnx-community/embeddinggemma-300m-ONNX | `5090578d9565` | 6 graphs (`model`, `fp16`, `no_gather_q4`, `q4`, `q4f16`, `quantized`), 480 to 705 KB | huggingface | `MultiHeadAttention`, `RotaryEmbedding`; `MatMulNBits`, `GatherBlockQuantized` in the 4-bit ones | 320 to 491 tensors each, in `model*.onnx_data` (0.18 to 1.23 GB) |
+
+**The reader against the reference.** For every file, the reader's node count
+(subgraphs included), the domain and type of every operator, how each
+initializer stores its data (raw, typed, or external), each external
+location, and the subgraph nesting equal what the `onnx` 1.23.2 Python package
+reports, and no file holds a field the reader does not model.
+
+**Gate:** `SOCAIR_ONNX_CORPUS=<the six directories> go test ./internal/checks/structure -run RealONNX -v`
+(43 PASS, 0 FAIL, 0 LEAD, 0 NOT_TESTED), and `socair scan` of each file and
+each directory, with the `main` build (before) and this one (after):
+
+| Scan | Row | Before | After |
+|---|---|---|---|
+| each of the 43 files on its own | Format and structure | 43 NOT_TESTED ("not a GGUF or safetensors artifact") | 32 PASS; 11 NOT_TESTED, the external-data models: "N tensor(s) keep their data in `model*.onnx_data`, outside a single-file scan" |
+| | File inventory and payloads | 43 NOT_TESTED ("cannot inventory") | 43 NOT_TESTED, each with its text scanned and no payload indicator: a single file has no repo listing |
+| | Pickle opcode scan | 43 NOT_TESTED ("not a pickle opcode stream") | no row: it does not run on an ONNX model |
+| each of the six directories | Format and structure | 6 NOT_TESTED (".onnx is not a container this scanner parses", every file) | 6 PASS (43 of 43 files; the 11 external-data models with every external tensor found inside its file) |
+| | File inventory and payloads | 6 PASS (the repo listing only) | 6 PASS (the listing, and each model's text: 1 to 27 values, at most 368 bytes, no payload indicator) |
+
+No row FAILs or LEADs on any file. The directories stay withheld on rows this
+change does not touch: they hold only `onnx/` and a config, so the tokenizer,
+chat-template, and provenance rows have nothing to read.
+
+**Operator domains, measured before deciding.** 23 of the 43 files have a node
+in `com.microsoft`: every O2 to O4 sentence-transformers export, every 4-bit
+Xenova and whisper-tiny export, and every gemma-3 and embeddinggemma export.
+No file has a node in any other domain outside ONNX's. The O1 exports import
+seven opsets besides `ai.onnx` (`com.microsoft.nchwc`, `ai.onnx.ml`,
+`ai.onnx.training`, `ai.onnx.preview.training`, `com.microsoft`,
+`com.microsoft.experimental`, `org.pytorch.aten`) that no node uses; the row
+grades the domains nodes use, so they change nothing. A LEAD on
+`com.microsoft` would have withheld 23 of 43 with no recourse; it is named in
+the notes instead, and a domain outside ONNX's and onnxruntime's is
+NOT_TESTED ([onnx.md](onnx.md#operators)).
+
+**What still withholds a whole sentence-transformers pull.** Its `openvino/`
+export: an `openvino_model.bin` reaches the Pickle opcode scan by its
+extension and is NOT_TESTED there ("not a pickle opcode stream"), checked on
+a synthetic file of float bytes. OpenVINO IR is a follow-up.
+
 ## Tensor reference (2026-10-14, check set tier1/0.10)
 
 The Tensor reference row (#262, [tensors.md](tensors.md)) is new and opt-in,

@@ -240,6 +240,7 @@ jobs:
           done <<'TARGETS'
           ./internal/gguf FuzzGGUFHeader
           ./internal/safetensors FuzzSafetensorsHeader
+          ./internal/onnx FuzzRead
           ./internal/checks/pickle FuzzPickleInspect
           ./internal/checks/chattemplate/jinja FuzzParse
           ./internal/checks/chattemplate FuzzInspect

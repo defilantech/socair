@@ -73,7 +73,7 @@
       "looks_for": "Malformed container structure, unexpected tensors",
       "status": "PASS",
       "notes": "GGUF v3 parsed: 626 tensors, 44 metadata pairs",
-      "pass_means": "The container parsed, and its tensor data tiles the data section exactly: no unaccounted bytes, overlapping tensors, or duplicate names.",
+      "pass_means": "The container parsed, and its tensor data tiles the data section exactly: no unaccounted bytes, overlapping tensors, or duplicate names. For an ONNX model: every tensor holds exactly the data its type and shape need, no two initializers of a graph share a name, external data stays inside the model's directory and fits its file, and every operator is ONNX's own, one of onnxruntime's contrib operators, or a function the model defines. Tensor values are not judged, and an operator library a deployment registers is outside the model.",
       "maps_to": [
         {
           "framework": "MITRE ATLAS",

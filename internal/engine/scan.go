@@ -25,6 +25,7 @@ import (
 	"github.com/defilantech/socair/internal/checks/tokenizer"
 	"github.com/defilantech/socair/internal/feed"
 	"github.com/defilantech/socair/internal/gguf"
+	"github.com/defilantech/socair/internal/onnx"
 	"github.com/defilantech/socair/internal/report"
 	"github.com/defilantech/socair/internal/safetensors"
 	"github.com/defilantech/socair/internal/tensors"
@@ -152,6 +153,16 @@ func ScanWith(path string, mode Mode, in Inputs) (*report.Document, error) {
 		}
 	} else if isGGUF, err := gguf.IsGGUF(path); err != nil {
 		return nil, err
+	} else if !isGGUF && onnx.Sniff(path) {
+		// An ONNX model, recognised by its bytes. It has no name or
+		// architecture field to identify it by; the structure and inventory
+		// rows read it.
+		o, err := readOpaque(path)
+		if err != nil {
+			return nil, err
+		}
+		o.Format = "ONNX"
+		id = o
 	} else if !isGGUF {
 		// Not a container this engine parses: pickle checkpoints and anything
 		// unrecognized. The scan still reports, so the pickle check runs on the
@@ -252,7 +263,7 @@ func ScanWith(path string, mode Mode, in Inputs) (*report.Document, error) {
 		}
 		results = append(results, meta...)
 	}
-	if id.Format != "GGUF" && id.Format != "safetensors" {
+	if id.Format != "GGUF" && id.Format != "safetensors" && id.Format != "ONNX" {
 		results = append(results, pickle.Inspect(path))
 	}
 	if row, ok := refs.licenseRow(ident, singleFileLicenseNote(id.Format, ggufErr)); ok {
@@ -570,7 +581,7 @@ func publisherSigning(status string) string {
 func unparsedFormats(id report.Identity) []string {
 	var out []string
 	if id.Format == "unknown" {
-		out = append(out, "artifact "+id.FileName+": not GGUF, safetensors, or pickle, so no format check ran")
+		out = append(out, "artifact "+id.FileName+": not GGUF, safetensors, ONNX, or pickle, so no format check ran")
 	}
 	if id.Split != "" {
 		out = append(out, "the other shards of this split model (this file is "+id.Split+"); each shard needs its own attestation")

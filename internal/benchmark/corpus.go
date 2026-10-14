@@ -31,6 +31,7 @@ import (
 
 	"github.com/defilantech/socair/internal/checks/pickle/pickletest"
 	"github.com/defilantech/socair/internal/gguf/gguftest"
+	"github.com/defilantech/socair/internal/onnx/onnxtest"
 	"github.com/defilantech/socair/internal/safetensors/safetensorstest"
 	"github.com/defilantech/socair/internal/tensors"
 )
@@ -342,8 +343,28 @@ const (
 	srcShadow      = "ShadowPickle (arXiv 2607.17503): OrderedDict handed a code string passes torch.load(weights_only=True), which checks the callable and not its arguments"
 	srcDifferent   = "PickleFuzzer (arXiv 2605.15084): streams scanners and CPython parse differently"
 	srcByName      = "Scanners that choose which files are pickles by extension, as Socair's directory scan did before #186: a pickle under another name is never opened"
+	srcONNXPath    = "ONNX external data directory traversal: CVE-2022-25882 (onnx before 1.13.0) and its bypass CVE-2024-27318 (onnx through 1.15.0)"
+	srcORTMemory   = "onnxruntime's in-memory external data marker: onnxruntime 1.20.0 reads a tensor whose location is */_ORT_MEM_ADDR_/* from the address in its offset; 1.31.0 refuses one in a model file as crafted (core/graph/graph.cc)"
+	srcONNXSize    = "ONNX initializer data that does not match its shape: onnx's checker (1.23.2) refuses only data too short, onnxruntime (1.31.0) refuses any mismatch, so extra bytes load in one and are read by neither"
 	srcPoisonGPT   = "PoisonGPT (Mithril Security, 2023): GPT-J-6B edited with ROME and uploaded as EleuterAI, a lookalike of EleutherAI, scoring within 0.1% of the original"
 )
+
+// onnxExternal is a clean ONNX model with one more initializer, stored at
+// location in an external file.
+func onnxExternal(location string) []byte {
+	m := onnxtest.Clean()
+	m.Graph.Initializers = append(m.Graph.Initializers, onnxtest.ExternalWeight("embeddings", location, 0, 4))
+	return m.Bytes()
+}
+
+// onnxOptimized is a clean ONNX model with an onnxruntime contrib operator,
+// as an optimum O2 to O4 export has.
+func onnxOptimized() []byte {
+	m := onnxtest.Clean()
+	m.Opsets = append(m.Opsets, onnxtest.Opset{Domain: "com.microsoft", Version: 1})
+	m.Graph.Nodes = append(m.Graph.Nodes, onnxtest.Node{Inputs: []string{"y"}, Outputs: []string{"z"}, Name: "/FastGelu", OpType: "FastGelu", Domain: "com.microsoft"})
+	return m.Bytes()
+}
 
 // Cases is the corpus, in report order: benign controls, then attacks.
 func Cases() []Case {
@@ -371,6 +392,17 @@ func Cases() []Case {
 		// not become a LEAD on every repository that ships one.
 		{"control-dir-torchscript", "model directory", "benign directory with a TorchScript archive, rust_model.ot, as sentence-transformers ships", "control", "", Clean,
 			repo(map[string][]byte{"rust_model.ot": torchScriptZip()})},
+		{"control-onnx", "onnx", "benign ONNX model: standard operators, weights inline", "control", "", Clean,
+			file("model.onnx", onnxtest.Clean().Bytes())},
+		// sentence-transformers repositories ship onnx/ exports beside the
+		// safetensors weights: external data, and onnxruntime's contrib
+		// operators in the optimized variants (#264).
+		{"control-dir-onnx", "model directory", "benign directory with an onnx/ export as sentence-transformers ships: external data beside the model, and an onnxruntime contrib operator", "control", "", Clean,
+			repo(map[string][]byte{
+				"onnx/model.onnx":      onnxExternal("model.onnx_data"),
+				"onnx/model.onnx_data": make([]byte, 16),
+				"onnx/model_O2.onnx":   onnxOptimized(),
+			})},
 		// sentence-transformers' most-downloaded repositories ship the script
 		// that trained them; no loader imports it (#254).
 		{"control-dir-training-script", "model directory", "benign directory with train_script.py, as sentence-transformers ships, that no loader imports", "control", "", Clean,
@@ -486,6 +518,29 @@ func Cases() []Case {
 		{"safetensors-metadata-script", "safetensors", "a script in the header metadata", srcPayloadMeta, "File inventory and payloads", Detect,
 			file("model.safetensors", safetensorstest.Build(map[string]string{"note": "#!/bin/sh\n" + Payload},
 				[]safetensorstest.TensorSpec{{Name: "w", Start: 0, End: 64, Dtype: "F32", Shape: []int64{16}}}))},
+
+		// ONNX: no code, but external data names files a loader reads.
+		{"onnx-external-data-traversal", "onnx", "an initializer's external data location climbs out of the model's directory to /etc/hosts", srcONNXPath, "Format and structure", Detect,
+			file("model.onnx", onnxExternal("../../../../etc/hosts"))},
+		{"onnx-external-data-memory", "onnx", "an initializer's external data location is onnxruntime's in-memory marker, with an address as its offset", srcORTMemory, "Format and structure", Detect,
+			file("model.onnx", func() []byte {
+				m := onnxtest.Clean()
+				w := onnxtest.ExternalWeight("embeddings", "*/_ORT_MEM_ADDR_/*", 0x7f0000000000, 4)
+				m.Graph.Initializers = append(m.Graph.Initializers, w)
+				return m.Bytes()
+			}())},
+		{"onnx-initializer-size", "onnx", "an initializer whose raw_data holds 4096 bytes where its dims need 64", srcONNXSize, "Format and structure", Detect,
+			file("model.onnx", func() []byte {
+				m := onnxtest.Clean()
+				m.Graph.Initializers[0].Raw = make([]byte, 4096)
+				return m.Bytes()
+			}())},
+		{"onnx-metadata-script", "onnx", "a shell script in the model's metadata_props", srcPayloadMeta, "File inventory and payloads", Detect,
+			file("model.onnx", func() []byte {
+				m := onnxtest.Clean()
+				m.Metadata = []onnxtest.KV{{Key: "note", Value: "#!/bin/sh\n" + Payload}}
+				return m.Bytes()
+			}())},
 
 		// Model directories: everything a loader reads.
 		{"dir-remote-code", "model directory", "auto_map pointing at repository code that runs a command", srcRemoteCode, "Remote code", Detect,

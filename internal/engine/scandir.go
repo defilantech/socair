@@ -135,6 +135,10 @@ func scanDir(dir string, start time.Time, refs *references, in Inputs, t2 *tier2
 			if ext == ".gguf" {
 				unparsed = append(unparsed, f.Path+": GGUF metadata checks (chat template, tokenizer, quant) run when the file is scanned on its own")
 			}
+		case ext == ".onnx":
+			// Its external data is resolved in the snapshot, beside it.
+			structParts = append(structParts, checks.Part{File: f.Path, Result: structure.ValidateONNX(root, f.Path)})
+			invFiles = append(invFiles, f)
 		case pickleExt[ext]:
 			pickleParts = append(pickleParts, checks.Part{File: f.Path, Result: inspectPickle(f)})
 		case f.Role == modeldir.RoleAdapter:
