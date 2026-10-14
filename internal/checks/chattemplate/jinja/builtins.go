@@ -912,6 +912,11 @@ func (r *renderer) printf(f str, operand Value) (Value, error) {
 			if err != nil {
 				return nil, err
 			}
+			// Python's %c takes a code point, 0 to 0x10FFFF, and raises
+			// OverflowError for any other value.
+			if n < 0 || n > unicode.MaxRune {
+				return nil, failf("%%c arg not in range(0x110000)")
+			}
 			w.lit(string(rune(n)), false)
 		default:
 			return nil, &UnsupportedError{What: fmt.Sprintf("the format conversion %%%c", flat[i])}

@@ -148,7 +148,7 @@
     <div class="badge promo {{ promotionClass .Document.PromotionAuthorization.State }}">Promotion: {{ promotionLabel .Document.PromotionAuthorization.State }}</div>
     {{- if .Document.PromotionAuthorization.Accepted }}
     <div class="accepted">
-      Accepted, not tested: {{ range $i, $s := .Document.PromotionAuthorization.Accepted }}{{ if $i }}, {{ end }}{{ $s }}{{ end }}.
+      Accepted, not tested: {{ range $i, $s := .Document.PromotionAuthorization.Accepted }}{{ if $i }}; {{ end }}{{ $s }}{{ end }}.
       {{- if .Document.PromotionAuthorization.AcceptedBy }}
       Accepted by {{ .Document.PromotionAuthorization.AcceptedBy }} on {{ .Document.PromotionAuthorization.AcceptedAt }}
       {{- if .Document.PromotionAuthorization.Signed }} (signed acceptance{{ if .Document.PromotionAuthorization.AcceptanceExpires }}, until {{ .Document.PromotionAuthorization.AcceptanceExpires }}{{ end }}).{{ else }} <strong>(unsigned: named at scan time, not signed by the acceptor)</strong>.{{ end }}
@@ -255,7 +255,7 @@
 
   <h2>Promotion authorization</h2>
   <p>
-    Clean-store promotion: <strong>{{ if .Document.PromotionAuthorization.Authorized }}authorized{{ else }}withheld{{ end }}</strong>
+    Clean-store promotion: <strong>{{ promotionLabel .Document.PromotionAuthorization.State }}</strong>
     {{- if .Document.PromotionAuthorization.Level }} &middot; {{ .Document.PromotionAuthorization.Level }}{{ end }}
   </p>
   {{- if .Document.PromotionAuthorization.Conditions }}

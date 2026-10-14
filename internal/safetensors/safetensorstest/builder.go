@@ -6,7 +6,12 @@ package safetensorstest
 import (
 	"encoding/binary"
 	"encoding/json"
+	"fmt"
 )
+
+// maxFixtureData bounds a fixture's data section. Fixtures are small; the
+// bound keeps the allocation's size a known int on every platform.
+const maxFixtureData = 1 << 30
 
 // TensorSpec is one tensor header entry for a generated fixture.
 type TensorSpec struct {
@@ -64,6 +69,10 @@ func BuildWithDataLen(meta map[string]string, tensors []TensorSpec, dataLen int6
 		panic("safetensorstest: marshal header: " + err.Error())
 	}
 
+	// A fixture is small; a data length past this is a mistake in the test.
+	if dataLen < 0 || dataLen > maxFixtureData {
+		panic(fmt.Sprintf("safetensorstest: data length %d is outside 0..%d", dataLen, maxFixtureData))
+	}
 	out := make([]byte, 8+len(raw)+int(dataLen))
 	binary.LittleEndian.PutUint64(out[:8], uint64(len(raw)))
 	copy(out[8:], raw)

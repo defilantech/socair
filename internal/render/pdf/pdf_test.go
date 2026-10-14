@@ -110,7 +110,7 @@ func coverText(t *testing.T, d *report.Document) string {
 	p := fpdf.New("P", "mm", "A4", "")
 	p.SetCompression(false)
 	p.AddPage()
-	cover(p, d)
+	cover(page{p}, d)
 	var b bytes.Buffer
 	if err := p.Output(&b); err != nil {
 		t.Fatal(err)
