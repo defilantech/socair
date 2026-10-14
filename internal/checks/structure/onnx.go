@@ -37,12 +37,6 @@ const runtimeDomain = "com.microsoft"
 // file, and v1.20.0 reads it.
 var memoryTags = map[string]bool{"*/_ORT_MEM_ADDR_/*": true, "*/_ORT_NATIVE_ENDIAN_MEM_ADDR_/*": true}
 
-// knownExternalKeys are the external_data keys onnx.proto defines and both
-// onnx and onnxruntime read. onnxruntime refuses any other key (except its
-// own prepacked ones), and onnx ignores one (it accepts basepath), so such a
-// key is read differently by the two.
-var knownExternalKeys = map[string]bool{"location": true, "offset": true, "length": true, "checksum": true}
-
 var (
 	windowsDrive = regexp.MustCompile(`^[A-Za-z]:`)
 	decimal      = regexp.MustCompile(`^[0-9]{1,19}$`)
@@ -73,7 +67,6 @@ type onnxGrade struct {
 	leads    int
 	perPat   map[string]int
 	dropped  int
-	gaps     []string
 	gapCount map[string]*gapGroup
 	gapOrder []string
 }
