@@ -15,6 +15,10 @@ func main() {
 		usage()
 		os.Exit(2)
 	}
+	if asksForHelp(os.Args[2:]) {
+		usage()
+		return
+	}
 	switch os.Args[1] {
 	case "version":
 		fmt.Printf("socair %s\n", engine.Version)

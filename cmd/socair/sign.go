@@ -37,7 +37,7 @@ func keyCmd(args []string) error {
 	if err != nil {
 		return err
 	}
-	fmt.Printf("key id %s\n  private: %s.key (keep it secret; mode 0600)\n  public:  %s.pub (share it; add it to a store with `socair airlock trust add`)\n",
+	fmt.Printf("key id %s\n  private: %s.key (keep it secret; mode 0600)\n  public:  %s.pub (share it; a store trusts it with `socair airlock trust add`, or `trust add --acceptor` for an acceptor's key)\n",
 		id, prefix, prefix)
 	if issuer != "" {
 		fmt.Printf("  issuer:  %s (reports signed with this key name it as their issuer)\n", issuer)
@@ -150,7 +150,7 @@ func verifyCmd(args []string) error {
 			if err != nil {
 				return fmt.Errorf("%w: acceptance: %v", attest.ErrVerify, err)
 			}
-			fmt.Printf("  acceptance verified: %s, acceptor key %s, until %s, of %s\n", a.AcceptedBy, attest.ShortID(a.KeyID), a.Expires, strings.Join(a.AcceptedSurfaces, ", "))
+			fmt.Printf("  acceptance verified: %s, acceptor key %s, until %s, of %s\n", a.AcceptedBy, attest.ShortID(a.KeyID), a.Expires, report.RowNames(a.AcceptedSurfaces))
 		}
 	}
 	if fs.val("artifact") == "" {
@@ -221,7 +221,7 @@ func reissueCmd(fs *flagSet) error {
 	}
 	pa := d.PromotionAuthorization
 	fmt.Printf("re-issued %s as authorized_with_conditions: %s accepted %s until %s\n  %s\n",
-		v.Document.Header.DocumentID, pa.AcceptedBy, strings.Join(pa.AcceptedSurfaces, ", "), pa.AcceptanceExpires, dst)
+		v.Document.Header.DocumentID, pa.AcceptedBy, report.RowNames(pa.AcceptedSurfaces), pa.AcceptanceExpires, dst)
 	return nil
 }
 

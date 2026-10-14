@@ -20,7 +20,7 @@ func tier2Text(t *testing.T, d *report.Document) string {
 	p := fpdf.New("P", "mm", "A4", "")
 	p.SetCompression(false)
 	p.AddPage()
-	tier2Section(p, d)
+	tier2Section(page{p}, d)
 	var b bytes.Buffer
 	if err := p.Output(&b); err != nil {
 		t.Fatal(err)
