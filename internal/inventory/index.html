@@ -19,6 +19,6 @@ table{border-collapse:collapse;width:100%;margin:12px 0}th,td{text-align:left;bo
 <td>{{.Issuer}}</td><td>{{range $i, $s := .AcceptedSurfaces}}{{if $i}}, {{end}}{{$s}}{{end}}</td><td>{{.PromotedAt}}</td></tr>{{end}}</table>
 {{else}}<p>No approved models.</p>{{end}}
 {{if .St.Predicate.Other}}<h2>Not approved</h2><table><tr><th>Model</th><th>Stage</th><th>Reason</th></tr>
-{{range .St.Predicate.Other}}<tr><td>{{.Name}}<br><code>{{.ID}}</code></td><td class="{{if or (eq .Stage "does-not-verify") (eq .Stage "acceptance-expired") (eq .Stage "blocked")}}red{{end}}">{{.Stage}}</td><td>{{.Reason}}</td></tr>{{end}}</table>{{end}}
+{{range .St.Predicate.Other}}<tr><td>{{.Name}}<br><code>{{.ID}}</code></td><td class="{{if or (eq .Stage "flagged") (eq .Stage "does-not-verify") (eq .Stage "acceptance-expired") (eq .Stage "blocked")}}red{{end}}">{{.Stage}}</td><td>{{.Reason}}</td></tr>{{end}}</table>{{end}}
 <p class="note">Each approved model's attestation.dsse.json is in models/&lt;id&gt;/ and verifies offline: <code>socair verify models/&lt;id&gt;/attestation.dsse.json --trusted &lt;operator.pub&gt;</code>. The whole snapshot: <code>socair inventory verify . --trusted &lt;operator.pub&gt;</code>.</p>
 </body></html>

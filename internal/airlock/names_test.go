@@ -128,7 +128,7 @@ func TestStagingRefusesEvidenceNames(t *testing.T) {
 	sha := strings.Repeat("a", 64)
 	// Case variants too: on a case-insensitive filesystem (macOS APFS,
 	// Windows) REPORT.JSON is the same file as report.json.
-	for _, name := range []string{StagedReport, StagedAttestation, StagedAcceptance, StagedConditional, ProvenanceFile, "attestation.json", "attestation.dsse.json", "REPORT.JSON", "Report.DSSE.json"} {
+	for _, name := range []string{StagedReport, StagedAttestation, StagedAcceptance, StagedConditional, ProvenanceFile, "attestation.json", "attestation.dsse.json", RecheckFile, "REPORT.JSON", "Report.DSSE.json"} {
 		if p, err := s.StagingFile(sha, name); err == nil || !strings.Contains(err.Error(), name) {
 			t.Errorf("StagingFile(%q) = %q, %v; want an error naming it", name, p, err)
 		}

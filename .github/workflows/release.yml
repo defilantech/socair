@@ -191,6 +191,15 @@ jobs:
           REGISTRY_TOKEN: ${{ github.token }}
         run: |
           v="${GITHUB_REF_NAME#v}"
+          # Artifact Hub's metadata follows the tag too: the image it lists,
+          # and whether this is a pre-release (a version with a suffix).
+          prerelease=false
+          case "$v" in *-*) prerelease=true ;; esac
+          V="$v" P="$prerelease" yq -i '
+            .annotations."artifacthub.io/prerelease" = strenv(P) |
+            .annotations."artifacthub.io/images" = "- name: socair\n  image: ghcr.io/defilantech/socair:" + strenv(V) + "\n  platforms:\n    - linux/amd64\n    - linux/arm64\n"
+          ' charts/socair/Chart.yaml
+          grep -qF "ghcr.io/defilantech/socair:$v" charts/socair/Chart.yaml
           helm package charts/socair --version "$v" --app-version "$v" -d chart-dist
           printf '%s' "$REGISTRY_TOKEN" | helm registry login ghcr.io -u "$REGISTRY_USER" --password-stdin
           helm push "chart-dist/socair-$v.tgz" oci://ghcr.io/defilantech/charts 2>&1 | tee push.log

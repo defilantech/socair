@@ -103,6 +103,18 @@
 	{/each}
 {/if}
 
+<section aria-labelledby="recheck-h">
+	<h2 id="recheck-h">Re-check against a new feed</h2>
+	<p class="prose">
+		When a new signed feed or a new socair arrives, re-check what is already here. A model that would now be withheld
+		is flagged and listed first; nothing is moved or re-signed. STORE is this store's path.
+	</p>
+	<Command
+		command="socair airlock recheck --store STORE"
+		purpose="Re-checks every model in the clean store against the current feed and check set"
+	/>
+</section>
+
 <section aria-labelledby="snapshot-h">
 	<h2 id="snapshot-h">Share a snapshot</h2>
 	<p class="prose">

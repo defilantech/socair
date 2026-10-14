@@ -12,12 +12,12 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"mime"
 	"net"
 	"net/http"
 	"os"
 	"path"
-	"path/filepath"
 	"strings"
 	"time"
 
@@ -49,6 +49,30 @@ type Options struct {
 	// the API by a real host name. The origin and content-type rules still
 	// apply.
 	AllowAnyHost bool
+	// ScanRoots are the directories the scan, ingest, and promote routes may
+	// read a caller-named path under (socair serve --scan-root). With a
+	// store, its staging area is one too. With neither, those routes refuse
+	// every path (roots.go).
+	ScanRoots []string
+
+	// readers is what the path-taking routes call; nil means the engine and
+	// the airlock. A test sets a spy to see which paths reach them.
+	readers *pathReaders
+}
+
+// pathReaders are the calls that read a path a caller named. Each route
+// passes them only a path contain returned.
+type pathReaders struct {
+	scan    func(path string) (*report.Document, error)
+	ingest  func(path string) (string, error)
+	promote func(s *airlock.Store, artifact, envelope string) (airlock.Event, error)
+}
+
+func (o Options) read() pathReaders {
+	if o.readers != nil {
+		return *o.readers
+	}
+	return pathReaders{scan: engine.Scan, ingest: airlock.IngestLocal, promote: airlock.Promote}
 }
 
 // maxHeavy bounds concurrent scans, pulls, and promotions: each reads or
@@ -244,8 +268,13 @@ func (o Options) scan(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "path is required")
 		return
 	}
+	path, err := o.contain(path)
+	if err != nil {
+		writeError(w, http.StatusUnprocessableEntity, err.Error())
+		return
+	}
 
-	d, err := engine.Scan(path)
+	d, err := o.read().scan(path)
 	if err != nil {
 		writeError(w, http.StatusUnprocessableEntity, err.Error())
 		return
@@ -345,7 +374,10 @@ func (o Options) airlockIngest(w http.ResponseWriter, r *http.Request) {
 	switch {
 	case strings.TrimSpace(req.Local) != "":
 		source = "local"
-		resolved, err = airlock.IngestLocal(req.Local)
+		var local string
+		if local, err = o.contain(strings.TrimSpace(req.Local)); err == nil {
+			resolved, err = o.read().ingest(local)
+		}
 	case strings.TrimSpace(req.Repo) != "":
 		source = "cache"
 		resolved, err = airlock.ResolveCache(airlock.DefaultCacheDir(), req.Repo, req.Revision, req.File)
@@ -425,6 +457,11 @@ func (o Options) airlockPromote(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
+	artifact, err := o.contain(strings.TrimSpace(req.Artifact))
+	if err != nil {
+		writeError(w, http.StatusUnprocessableEntity, err.Error())
+		return
+	}
 
 	// The gate reads the envelope from disk, so stage it to a temp file and
 	// hand the path to the one gate implementation. The bytes are passed
@@ -443,7 +480,7 @@ func (o Options) airlockPromote(w http.ResponseWriter, r *http.Request) {
 	}
 	tmp.Close()
 
-	e, err := airlock.Promote(s, req.Artifact, tmpName)
+	e, err := o.read().promote(s, artifact, tmpName)
 	if err != nil {
 		status := http.StatusInternalServerError
 		if errors.Is(err, airlock.ErrRefused) {
@@ -462,22 +499,32 @@ func (o Options) store() (*airlock.Store, error) {
 	return airlock.Open(o.StoreRoot)
 }
 
-// spaHandler serves a SvelteKit static build with the SPA fallback. It never
-// serves a path outside the build directory.
+// spaHandler serves a SvelteKit static build with the SPA fallback. It reads
+// through an os.Root on the build directory, so neither a ".." in the request
+// nor a symlink in the build reaches a file outside it.
 func spaHandler(dir string) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		clean := path.Clean("/" + r.URL.Path)
-		p := filepath.Join(dir, filepath.FromSlash(clean))
-		if fi, err := os.Stat(p); err == nil && !fi.IsDir() {
-			http.ServeFile(w, r, p)
-			return
-		}
-		fallback := filepath.Join(dir, "200.html")
-		if _, err := os.Stat(fallback); err != nil {
+		// Opened per request, so a rebuilt directory is picked up.
+		root, err := os.OpenRoot(dir)
+		if err != nil {
 			http.NotFound(w, r)
 			return
 		}
-		http.ServeFile(w, r, fallback)
+		defer root.Close()
+		fsys := root.FS()
+		name := strings.TrimPrefix(path.Clean("/"+r.URL.Path), "/")
+		if name == "" {
+			name = "."
+		}
+		if fi, err := fs.Stat(fsys, name); err == nil && !fi.IsDir() {
+			http.ServeFileFS(w, r, fsys, name)
+			return
+		}
+		if _, err := fs.Stat(fsys, "200.html"); err != nil {
+			http.NotFound(w, r)
+			return
+		}
+		http.ServeFileFS(w, r, fsys, "200.html")
 	})
 }
 

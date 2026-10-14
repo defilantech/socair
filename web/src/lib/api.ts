@@ -19,8 +19,8 @@ export interface CheckResult {
 	pass_means?: string;
 	/** Triage grade of a FAIL or LEAD row; absent otherwise. Does not change promotion. */
 	severity?: 'critical' | 'high' | 'medium' | 'low';
-	/** External framework entries the check addresses. */
-	maps_to?: { framework: string; id: string; name: string }[];
+	/** External framework entries the check addresses, with the framework edition (absent in older reports). */
+	maps_to?: { framework: string; version?: string; id: string; name: string }[];
 }
 
 export interface PromotionAuthorization {
@@ -316,7 +316,8 @@ export type Stage =
 	| 'blocked'
 	| 'approved'
 	| 'acceptance-expired'
-	| 'does-not-verify';
+	| 'does-not-verify'
+	| 'flagged';
 
 export interface Model {
 	id: string;
@@ -334,6 +335,10 @@ export interface Model {
 	acceptance_expires?: string;
 	expires_soon?: boolean;
 	promoted_at?: string;
+	/** The clean entry's last recheck (socair airlock recheck), from its recheck.json. */
+	rechecked_at?: string;
+	recheck_outcome?: 'flagged' | 'unchanged' | 'incomplete';
+	recheck_reason?: string;
 	next: { action: 'scan' | 'sign' | 'accept' | 'promote' | 'none'; command?: string };
 }
 

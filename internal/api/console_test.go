@@ -405,3 +405,62 @@ func TestConsoleDetailListsEvidencePresent(t *testing.T) {
 		}
 	}
 }
+
+// A recheck's flag reaches the console as the engine derived it: the clean
+// entry's stage and reason, its staged copy no longer offered, the recheck
+// evidence served, and the recheck in the model's events.
+func TestConsoleShowsAFlaggedModel(t *testing.T) {
+	root, id := consoleStore(t)
+	env := signedStaged(t, root, id)
+	s, _ := airlock.Open(root)
+	envPath := filepath.Join(t.TempDir(), "attestation.dsse.json")
+	if err := os.WriteFile(envPath, env, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := airlock.Promote(s, filepath.Join(s.StagingPath(id), "fixture.safetensors"), envPath); err != nil {
+		t.Fatal(err)
+	}
+	list := filepath.Join(t.TempDir(), "deny.txt")
+	if err := os.WriteFile(list, []byte(id+"  reported after promotion\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("SOCAIR_FEED", "")
+	t.Setenv("SOCAIR_DENYLIST", list)
+	if _, err := s.Recheck(airlock.RecheckOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	ts := server(t, Options{StoreRoot: root})
+
+	code, _, body := get(t, ts, "/api/airlock/models")
+	var out struct{ Models []airlock.Model }
+	if code != http.StatusOK || json.Unmarshal(body, &out) != nil || len(out.Models) != 1 {
+		t.Fatalf("%d %s", code, body)
+	}
+	m := out.Models[0]
+	if m.Location != "clean" || m.Stage != airlock.StageFlagged || !strings.Contains(m.StageReason, "reported after promotion") ||
+		m.RecheckOutcome != airlock.OutcomeFlagged || m.RecheckedAt == "" {
+		t.Fatalf("listing: %+v", m)
+	}
+	if !strings.Contains(string(body), `"stage":"flagged"`) || !strings.Contains(string(body), `"recheck_outcome":"flagged"`) {
+		t.Fatalf("wire shape: %s", body)
+	}
+
+	code, _, body = get(t, ts, "/api/airlock/models/"+id)
+	var detail struct {
+		Events   []airlock.Event
+		Evidence []string
+	}
+	if code != http.StatusOK || json.Unmarshal(body, &detail) != nil {
+		t.Fatalf("%d %s", code, body)
+	}
+	if last := detail.Events[len(detail.Events)-1]; last.Action != airlock.ActionRecheck || last.Outcome != airlock.OutcomeFlagged {
+		t.Fatalf("events: %+v", detail.Events)
+	}
+	if !strings.Contains(strings.Join(detail.Evidence, ","), airlock.RecheckFile) {
+		t.Fatalf("evidence: %v", detail.Evidence)
+	}
+	if code, _, body := get(t, ts, "/api/airlock/models/"+id+"/files/"+airlock.RecheckFile); code != http.StatusOK ||
+		!strings.Contains(string(body), `"outcome": "flagged"`) {
+		t.Fatalf("recheck evidence download: %d %s", code, body)
+	}
+}

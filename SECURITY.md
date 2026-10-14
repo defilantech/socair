@@ -49,6 +49,7 @@ We assess each report on its impact; this is where we start:
 | A FAIL or a LEAD comes out as NOT_TESTED. This is a bypass too: a signed acceptance can clear NOT_TESTED, never a FAIL or a LEAD | High |
 | `HF_TOKEN` or a private key leaks to a log, an error, or another host | High |
 | The local API answers a request from another origin, or through a non-loopback `Host`, that it should refuse | High |
+| The local API reads a file outside its scan roots (other than through the check-to-open race `docs/api.md` describes), or answers differently for a path outside them depending on whether it exists | High |
 | A small input crashes or hangs the scanner, or makes it allocate far more than its size | Medium |
 
 ## Safe harbor

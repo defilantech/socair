@@ -152,6 +152,7 @@ Sign and verify:
 ./socair key gen --out operator --issuer "Acme ML Platform"
 ./socair sign --key operator.key --report report.json   # report.dsse.json
 ./socair verify report.dsse.json --trusted operator.pub --artifact model.gguf
+./socair sign --key operator.key --bom --attestation report.dsse.json   # report.cdx.dsse.json, a signed CycloneDX BOM
 ```
 
 ## The trust model
@@ -200,12 +201,14 @@ checks that run the model on your own GPUs, is built here in the open.
 |---|---|
 | [attestation-template.md](docs/attestation-template.md) | The attestation, section by section: the source of truth for what a report contains |
 | [report-schema/v1.json](docs/report-schema/v1.json) | The report's JSON schema |
+| [control-mapping.md](docs/control-mapping.md) | Which rows and features are evidence for which framework controls (MITRE ATLAS, OWASP LLM, NIST, AI supply-chain guidance), full or partial, and why |
 | [tier2.md](docs/tier2.md) | Tier 2, opt-in: measurements made by running the model, the node-class record, the probe-helper protocol, isolation, and the roadmap |
 | [airlock.md](docs/airlock.md) | The airlock: pull, ingest, promote, the trust policy, the log, the signed inventory export |
 | [intake-host.md](docs/intake-host.md) | Running Socair as the model intake host for an on-prem GPU cluster |
 | [kubernetes.md](docs/kubernetes.md) | The Helm chart: the airlock and the wizard in a cluster, who can reach them, and handing promoted models to LLMKube |
 | [provenance-bundle.md](docs/provenance-bundle.md) | The inputs that move each row: mirrors, denylists, provenance, signatures, a license policy, acceptances |
 | [feed.md](docs/feed.md) | Signed reference feeds: format, verification, building one |
+| [cyclonedx.md](docs/cyclonedx.md) | The CycloneDX ML-BOM: what each field holds and when it is left out, the G7 SBOM for AI minimum elements, and signing a BOM |
 | [api.md](docs/api.md), [wizard.md](docs/wizard.md) | The local HTTP API, the click-through wizard, and the airlock console (wizard.md) |
 | [threat-model.md](docs/threat-model.md) | What Socair protects, whom it trusts for what, and what it does not defend against |
 | [false-positive-baseline.md](docs/false-positive-baseline.md) | How each detector was measured against real models |

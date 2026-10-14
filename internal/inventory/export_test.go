@@ -144,6 +144,39 @@ func TestExportEmptyStore(t *testing.T) {
 	}
 }
 
+// A model a recheck flagged is not exported as approved: it is listed with
+// the other entries, in red, with the recheck's reason, and the snapshot and
+// the log chain still verify. Falsification: treat flagged as approved in
+// Build and it lands in models.
+func TestExportListsAFlaggedModelAsNotApproved(t *testing.T) {
+	s, id, k, ring := promotedStore(t)
+	list := filepath.Join(t.TempDir(), "deny.txt")
+	if err := os.WriteFile(list, []byte(id+"  reported after promotion\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("SOCAIR_FEED", "")
+	t.Setenv("SOCAIR_DENYLIST", list)
+	if _, err := s.Recheck(airlock.RecheckOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	dir := filepath.Join(t.TempDir(), "snap")
+	st, err := Export(s, dir, k, time.Now(), "socair test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(st.Predicate.Models) != 0 || len(st.Predicate.Other) != 1 || st.Predicate.Other[0].Stage != airlock.StageFlagged ||
+		!strings.Contains(st.Predicate.Other[0].Reason, "reported after promotion") {
+		t.Fatalf("a flagged model must be listed as not approved: %+v", st.Predicate)
+	}
+	if _, err := Verify(dir, ring, VerifyOptions{}); err != nil {
+		t.Fatalf("the snapshot must verify: %v", err)
+	}
+	idx, _ := os.ReadFile(filepath.Join(dir, "index.html"))
+	if !strings.Contains(string(idx), `class="red">flagged`) {
+		t.Fatalf("index.html must show the flag in red: %s", idx)
+	}
+}
+
 // Falsification: a log whose chain link is wrong refuses the export.
 func TestExportRefusesBrokenChain(t *testing.T) {
 	s, _, k, _ := promotedStore(t)

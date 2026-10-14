@@ -199,7 +199,7 @@ func ScanWith(path string, mode Mode, in Inputs) (*report.Document, error) {
 	var sig *provenance.Signature
 	if mode == ModeFull {
 		var err error
-		if sig, err = fileSignature(original, id.SHA256); err != nil {
+		if sig, err = fileSignature(original, id.SHA256, start); err != nil {
 			return nil, err
 		}
 	}

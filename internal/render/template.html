@@ -172,7 +172,7 @@
       {{- range .Document.Checks }}
       <tr>
         <td>{{ .Name }}</td>
-        <td class="looks">{{ .LooksFor }}{{ if .PassMeans }}<div class="passmeans"><strong>PASS means:</strong> {{ .PassMeans }}</div>{{ end }}{{ if .MapsTo }}<div class="maps">Addresses {{ range $i, $m := .MapsTo }}{{ if $i }} &middot; {{ end }}<span title="{{ $m.Name }}">{{ $m.ID }}</span>{{ end }}</div>{{ end }}</td>
+        <td class="looks">{{ .LooksFor }}{{ if .PassMeans }}<div class="passmeans"><strong>PASS means:</strong> {{ .PassMeans }}</div>{{ end }}{{ if .MapsTo }}<div class="maps">Addresses {{ range $i, $m := .MapsTo }}{{ if $i }} &middot; {{ end }}<span title="{{ $m.Name }}{{ if $m.Version }} ({{ $m.Framework }} {{ $m.Version }}){{ end }}">{{ $m.ID }}</span>{{ end }}</div>{{ end }}</td>
         <td>
           <span class="pill {{ statusClass .Status }}">{{ .Status }}</span>
           {{- if isNotTested .Status }}<span class="tag">not tested</span>{{ end }}
@@ -184,6 +184,9 @@
       {{- end }}
     </tbody>
   </table>
+  {{- with editions .Document.Checks }}
+  <p class="maps">Framework editions: {{ range $i, $e := . }}{{ if $i }}, {{ end }}{{ $e }}{{ end }}.</p>
+  {{- end }}
   {{- with .Document.Tier2 }}
 
   <h2>Tier 2 measurements</h2>

@@ -72,9 +72,9 @@ func ResolveCache(cacheDir, repo, revision, file string) (string, error) {
 			}
 		}
 	}
-	p := filepath.Join(snap, revision, file)
-	if !within(snap, p) {
-		return "", fmt.Errorf("cache path %q escapes the cache", p)
+	p, ok := inside(snap, filepath.Join(snap, revision, file))
+	if !ok {
+		return "", fmt.Errorf("cache path for %s/%s (%s) escapes the cache", repo, file, revision)
 	}
 	fi, err := os.Stat(p)
 	if err != nil {
