@@ -196,6 +196,11 @@ func Verify(envelope []byte, trusted Keyring) (*Verified, error) {
 	dec := json.NewDecoder(bytes.NewReader(a.Predicate))
 	dec.DisallowUnknownFields()
 	if err := dec.Decode(&d); err != nil {
+		if strings.Contains(err.Error(), "unknown field") {
+			// The document hash is recomputed from the fields this build
+			// knows, so a newer report cannot verify here even in part.
+			return nil, verifyErr("predicate is not a Socair report document this socair can read: %v; a report from a newer socair carries fields an older one does not know, so verify it with the socair that signed it or a later one", err)
+		}
 		return nil, verifyErr("predicate is not a Socair report document: %v", err)
 	}
 	h, err := DocumentHash(d)
