@@ -28,6 +28,7 @@ them as it refuses a pull.
   incoming/<sha256>/report.dsse.json  a signed attestation (socair sign)
   incoming/<sha256>/report.acceptance.dsse.json   a signed acceptance (socair accept)
   incoming/<sha256>/report.conditional.dsse.json  the attestation re-issued with it (socair sign --acceptance)
+  incoming/<sha256>/derivation.dsse.json  a converted output's signed derivation record (socair airlock convert)
   clean/<sha256>/<file>               the clean store, keyed by artifact hash
   clean/<digest>/<name>/              a promoted model directory, keyed by manifest digest
   clean/<sha256>/attestation.dsse.json  the signed attestation that let it cross
@@ -65,6 +66,7 @@ socair airlock ingest --cache --repo <org/name> [--file <name>] [--revision main
 socair airlock trust add <key.pub> [--name <issuer>]
 socair airlock trust add --acceptor <key.pub>
 socair airlock promote <artifact or directory> --attestation <attestation.dsse.json>
+socair airlock convert <checkpoint> --attestation <attestation.dsse.json> --key <operator.key>
 socair airlock recheck [--rescan]
 socair airlock feed accept <feed dir> --keys <key.pub|dir> --reason <why>
 socair airlock log [--verify [--expect-head <head>]]
@@ -144,6 +146,15 @@ Every command also takes `--store <path>`.
   recomputed manifest digest is the attested subject. Otherwise it refuses and
   names each file added, removed, or changed. A repeat promotion replaces the
   stored tree, so an altered one is restored.
+- `convert` rebuilds a PyTorch checkpoint as safetensors without unpickling
+  it, from what the Pickle opcode scan's grammar read. Its attestation must
+  verify against the trust policy, carry no FAIL or LEAD, and PASS the Pickle
+  row, and the bytes, copied and hashed, must be the attested subject. The
+  output lands in `incoming/<sha256>/` beside a derivation record signed with
+  `--key` (a key the store trusts) that binds it to the input. The output is
+  a new artifact, staged unscanned: scan, sign, and promote it like any
+  other; the input's attestation does not admit it. See
+  [derivation.md](derivation.md).
 - `recheck` re-checks every model in the clean store against the current feed
   and check set, and flags the ones that would now be withheld. It moves,
   deletes, and re-signs nothing. See [Rechecking the clean
@@ -256,8 +267,9 @@ re-accepted.
 
 Because a single-file pull is staged flat beside these files, `pull` refuses
 an artifact file named like one of them (`provenance.json`, the four `report*`
-names, `attestation.json`, `attestation.dsse.json`, `recheck.json`). A whole
-repo is staged under its own name, so only the repo name is checked.
+names, `attestation.json`, `attestation.dsse.json`, `recheck.json`,
+`derivation.dsse.json`). A whole repo is staged under its own name, so only
+the repo name is checked.
 
 The console reads attestations and does not re-hash model bytes when it shows
 them. Re-running `socair airlock promote` re-verifies the bytes.
@@ -492,12 +504,14 @@ the two disagree ([feed.md](feed.md), "Where the record lives").
 ```
 
 Actions are `pull`, `ingest`, `trust`, `promote`, `refuse`, `recheck`,
-`feed`. Outcomes are `ok`, `conditional`, `refused`, for a recheck `flagged`,
-`unchanged`, `incomplete`, and for a feed `accepted` (an operator's `feed
-accept`). A `feed` entry carries the feed it is about in `feed` (issuer,
-version, issue and expiry times, key id, statement hash), and the statement
-hash in `sha256`. An entry caused through the HTTP API also carries
-`"actor":"local-operator"`; the CLI records no actor.
+`convert`, and `feed`. Outcomes are `ok`, `conditional`, `refused`, for a
+recheck `flagged`, `unchanged`, `incomplete`, and for a feed `accepted` (an
+operator's `feed accept`). A `convert` entry carries the output's hash when it
+is `ok` and the input's when it is `refused`. A `feed` entry carries the feed
+it is about in `feed` (issuer, version, issue and expiry times, key id,
+statement hash), and the statement hash in `sha256`. An entry caused through
+the HTTP API also carries `"actor":"local-operator"`; the CLI records no
+actor.
 
 ### Hash chain
 

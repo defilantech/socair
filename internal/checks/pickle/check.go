@@ -140,6 +140,9 @@ type scan struct {
 	// torch is what the grammar read of a torch.save zip, entry by entry,
 	// when it read one.
 	torch *torchCover
+	// zip is the torch.save zip's data.pkl as the grammar read it, for
+	// StateDict.
+	zip *zipRead
 }
 
 // proof is what conforming streams and containers showed.
@@ -209,9 +212,12 @@ func InspectArchive(path string, opts Options) (checks.Result, *checks.ArchiveRe
 	return r, s.torch.read()
 }
 
+// CheckName is the row this check fills.
+const CheckName = "Pickle opcode scan"
+
 func inspect(path string, opts Options) (checks.Result, *scan) {
 	r := checks.Result{
-		Name:     "Pickle opcode scan",
+		Name:     CheckName,
 		LooksFor: "Imports in pickle-based model files that reach code execution, and pickles that build more than tensors and plain containers",
 	}
 

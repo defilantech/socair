@@ -160,6 +160,8 @@ Usage:
   socair airlock ingest    resolve a local file or directory, or an offline HF cache entry
   socair airlock trust add <key.pub>   trust a signing key for promotion
   socair airlock promote   promote a file or model directory with a signed attestation
+  socair airlock convert <checkpoint> --attestation <a.dsse.json> --key <key>
+                           rebuild a pickle checkpoint as safetensors in staging, with a signed derivation record
   socair airlock recheck [--rescan]   re-check the clean store against the current feed and check set
   socair airlock feed accept <feed dir> --keys <key.pub|dir> --reason <why>
                            make a feed the store's newest on purpose, even an older one (logged)

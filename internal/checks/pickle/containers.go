@@ -274,6 +274,7 @@ func (s *scan) zipArchive(zr *zip.Reader) {
 	if g.root == nil {
 		return
 	}
+	s.zip = &zipRead{dir: dir, data: data, g: g}
 	if total > g.end {
 		s.unaccounted(data, fmt.Sprintf("%d byte(s) after STOP", total-g.end))
 	}

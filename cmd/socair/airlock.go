@@ -21,7 +21,7 @@ import (
 // store. A pull lands in staging; only a promotion moves bytes across.
 func airlockCmd(args []string) error {
 	if len(args) == 0 {
-		return errors.New("usage: socair airlock <init|pull|ingest|trust|promote|recheck|feed|log|export|serve-hub>")
+		return errors.New("usage: socair airlock <init|pull|ingest|trust|promote|convert|recheck|feed|log|export|serve-hub>")
 	}
 	switch args[0] {
 	case "init":
@@ -34,6 +34,8 @@ func airlockCmd(args []string) error {
 		return airlockTrust(args[1:])
 	case "promote":
 		return airlockPromote(args[1:])
+	case "convert":
+		return airlockConvert(args[1:])
 	case "recheck":
 		return airlockRecheck(args[1:])
 	case "feed":
