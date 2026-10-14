@@ -40,6 +40,10 @@ type Options struct {
 	// engine sets it, and only when the listing and that check read the same
 	// bytes: a directory scan's snapshot.
 	Read map[string]checks.ArchiveRead
+	// ArtifactOnly grades the artifact's own metadata and leaves the repo
+	// listing to the caller, which grades it once with InspectRepo: a
+	// directory scan, whose files share one listing. RepoMirror is ignored.
+	ArtifactOnly bool
 }
 
 // payload patterns are high-confidence indicators of an embedded executable or
@@ -220,6 +224,11 @@ func Inspect(path string, opts Options) checks.Result {
 
 	artifactNote := invNote + ", no payload indicator"
 
+	if opts.ArtifactOnly {
+		r.Status = checks.Pass
+		r.Notes = artifactNote
+		return r
+	}
 	if opts.RepoMirror == "" {
 		r.Status = checks.NotTested
 		r.Notes = artifactNote + ". Repo mirror not provided, so the repo file listing was not inspected."

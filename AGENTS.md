@@ -16,7 +16,7 @@ go test ./...
 go test ./internal/checks/chattemplate -run TestName   # single test
 gofmt -l cmd internal                                  # CI fails if this prints anything
 go mod verify                                          # CI checks vendor/ is in sync
-go run ./cmd/socair scan <path>                        # report JSON to stdout
+go run ./cmd/socair scan <path>                        # report JSON to stdout; on stderr, what would close each gap (engine.NextSteps)
 go run ./cmd/socair render <path> > report.html
 go run ./cmd/socair render --attestation r.dsse.json --trusted op.pub --pdf r.pdf   # verifies, then renders; --report r.json renders a saved report unsigned
 go run ./cmd/socair serve --web web/build --scan-root <dir>   # API + wizard on 127.0.0.1:8080

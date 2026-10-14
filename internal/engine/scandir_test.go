@@ -434,3 +434,46 @@ func TestDirectoryWithNoPickleSaysSo(t *testing.T) {
 		t.Fatalf("inventory notes do not say there is no pickle: %s", inv.Notes)
 	}
 }
+
+// TestDirectoryListingIsGradedOnce: the File inventory row grades each file's
+// metadata on its own and the directory's listing once. It graded the listing
+// with every file, so a directory of eleven files repeated the listing's note
+// eleven times and listed a native executable's finding once per file.
+// Falsification: grade the listing with each file again and the counts below
+// exceed one.
+func TestDirectoryListingIsGradedOnce(t *testing.T) {
+	var zipped bytes.Buffer
+	zw := zip.NewWriter(&zipped)
+	w, _ := zw.Create("notes.txt")
+	_, _ = w.Write([]byte("an archive no check reads"))
+	_ = zw.Close()
+	shards := map[string]string{
+		"a.safetensors": string(safetensorstest.Clean()),
+		"b.safetensors": string(safetensorstest.Clean()),
+		"bundle.zip":    zipped.String(),
+	}
+	d, err := Scan(modelRepo(t, shards))
+	if err != nil {
+		t.Fatal(err)
+	}
+	inv := row(d, "File inventory and payloads")
+	if inv.Status != report.StatusNotTested {
+		t.Fatalf("an unscanned archive: %s %s", inv.Status, inv.Notes)
+	}
+	if n := strings.Count(inv.Notes, "Archive contents were not scanned"); n != 1 {
+		t.Fatalf("the listing's note appears %d times: %s", n, inv.Notes)
+	}
+	if !strings.Contains(inv.Notes, "directory listing: NOT_TESTED") || !strings.Contains(inv.Notes, "3 of 4 file(s) PASS") {
+		t.Fatalf("the files and the listing are not graded apart: %s", inv.Notes)
+	}
+
+	shards["bin/helper"] = "\x7fELF\x02\x01\x01" + strings.Repeat("\x00", 64)
+	d, err = Scan(modelRepo(t, shards))
+	if err != nil {
+		t.Fatal(err)
+	}
+	inv = row(d, "File inventory and payloads")
+	if inv.Status != report.StatusFail || strings.Count(inv.Evidence, "repo-binary") != 1 {
+		t.Fatalf("a native executable: %s, evidence %q", inv.Status, inv.Evidence)
+	}
+}
