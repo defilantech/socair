@@ -49,6 +49,8 @@ const (
 	ActionPromote = "promote"
 	ActionRefuse  = "refuse"
 	ActionTrust   = "trust"
+	// ActionConvert is a conversion (Convert): ok, or refused with the reason.
+	ActionConvert = "convert"
 )
 
 // Activity outcomes.
