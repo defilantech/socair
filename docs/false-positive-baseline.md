@@ -1420,7 +1420,7 @@ NOT_TESTED ([onnx.md](onnx.md#operators)).
 **What still withholds a whole sentence-transformers pull.** Its `openvino/`
 export: an `openvino_model.bin` reaches the Pickle opcode scan by its
 extension and is NOT_TESTED there ("not a pickle opcode stream"), checked on
-a synthetic file of float bytes. OpenVINO IR is a follow-up.
+a synthetic file of float bytes. OpenVINO IR is read since #268 (see "OpenVINO IR models" below).
 
 ## Tensor reference (2026-10-14, check set tier1/0.10)
 
@@ -1456,6 +1456,91 @@ also ships ONNX and OpenVINO copies the fingerprints do not read).
 
 **Speed.** Fingerprinting the 3.6 GB safetensors directory took 7.8 s on one
 core (about 460 MB/s): the raw-bytes hash and the values hash in one pass.
+
+## OpenVINO IR models (2026-10-14, check set tier1/0.10)
+
+The Format and structure and File inventory rows read OpenVINO IR models
+(#268, [openvino.md](openvino.md)). Measured on 46 IR `.xml` files from 18
+Hugging Face repositories, fetched by commit into a scratch directory outside
+the repository. Every `.xml` was fetched in full. The `.bin` files of the two
+sentence-transformers repositories the issue names were fetched in full (113
+and 86 MB); every other `.bin` was replaced by a zero-filled sparse file of
+the size the hub lists for it, which is all the check reads of one. Nothing
+was loaded or run by Socair.
+
+| Repository | Commit | IRs | Written by (`rt_info`) | `.bin` |
+|---|---|---|---|---|
+| sentence-transformers/all-MiniLM-L6-v2 | `1110a243fdf4` | 2 (`openvino_model`, `openvino_model_qint8_quantized`) | OpenVINO 2024.4.1, optimum-intel 1.20.0.dev0 | real, 23 and 90 MB |
+| sentence-transformers/paraphrase-MiniLM-L3-v2 | `4ca70771034a` | 2, as above | OpenVINO 2024.4.1, optimum-intel 1.20.0.dev0 | real, 17 and 69 MB |
+| sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2 | `e8f8c211226b` | 2, as above | OpenVINO 2024.4.1, optimum-intel 1.20.0.dev0 | sparse, 119 and 470 MB |
+| sentence-transformers/paraphrase-albert-small-v2 | `9d490b476eb5` | 2, as above | OpenVINO 2024.4.1, optimum-intel 1.20.0.dev0 | sparse, 11 and 44 MB |
+| cross-encoder/ms-marco-MiniLM-L6-v2 | `233902d25c44` | 2, as above | OpenVINO 2024.4.1, optimum-intel 1.20.1 | sparse, 23 and 91 MB |
+| thenlper/gte-small | `17e1f347d17f` | 2, as above | OpenVINO 2024.4.1, optimum-intel 1.20.1 | sparse, 34 and 133 MB |
+| mixedbread-ai/mxbai-embed-large-v1 | `b33106f585b9` | 2, as above | OpenVINO 2024.4.1, optimum-intel 1.20.1 | sparse, 337 MB and 1.3 GB |
+| intfloat/multilingual-e5-small | `614241f622f5` | 1 | OpenVINO 2024.4.1, optimum-intel 1.20.1 | sparse, 470 MB |
+| jhgan/ko-sroberta-multitask | `8fca7c9c98c2` | 1 | OpenVINO 2024.4.1, optimum-intel 1.20.1 | sparse, 440 MB |
+| OpenVINO/Qwen3-0.6B-int4-ov | `f864c6106efb` | 3 (model, tokenizer, detokenizer) | OpenVINO 2025.1.0, optimum-intel 1.23.0.dev0, NNCF 2.15.0 | sparse, 2.2 to 428 MB |
+| OpenVINO/Qwen3-Embedding-0.6B-int8-ov | `dfe67308c933` | 3 | OpenVINO 2026.0.0, optimum-intel 1.27.0.dev0, NNCF 3.0.0.dev0 | sparse, 2.2 to 616 MB |
+| OpenVINO/Qwen3.5-0.8B-fp16-ov | `5df3457c3b2d` | 8 (language model with 18 `Loop` bodies, MTP, vision encoder, merger, two embedding models, tokenizer, detokenizer) | OpenVINO 2026.4.0, optimum-intel 2.3.0.dev0 | sparse, 2.4 MB to 1.5 GB |
+| OpenVINO/TinyLlama-1.1B-Chat-v1.0-int4-ov | `72fd31b87453` | 3 | OpenVINO 2025.4.0, optimum-intel 1.27.0.dev0, NNCF 2.19.0.dev0 | sparse, 0.5 to 631 MB |
+| OpenVINO/whisper-base-int8-ov | `0606293f0511` | 4 (encoder, decoder, tokenizer, detokenizer) | OpenVINO 2026.0.0, optimum-intel 1.27.0, NNCF 3.0.0 | sparse, 0.7 to 52 MB |
+| OpenVINO/Kokoro-82M-int8-ov | `9c035d0bfab1` | 1 | OpenVINO 2026.3.0, optimum-intel 2.1.0.dev0, NNCF 3.3.0.dev0 | sparse, 114 MB |
+| OpenVINO/phi-2-int8-ov | `7e4a902c9f30` | 3 | OpenVINO 2024.1.0, optimum-intel 1.17.0.dev0, NNCF 2.10.0 | sparse, 0.6 MB to 2.8 GB |
+| OpenVINO/bert-base-uncased-sst2-unstructured80-int8-ov | `6a92100dddab` | 1 | not recorded (an empty `rt_info`; the net is named `torch_jit`, an ONNX conversion); the repository dates from 2023-03 | sparse, 182 MB |
+| bes-dev/stable-diffusion-v1-4-openvino | `8d929b16caa1` | 4 (text encoder, UNet, VAE encoder and decoder) | Model Optimizer and OpenVINO 2022.3.0 | sparse, 68 MB to 1.7 GB |
+
+**The reader against the reference.** For all 46 IRs, every Const's element
+type, shape, offset, and size, and the count of every `(version, type)`, equal
+what Python's `xml.etree` reads (bodies included), every layer is built, and
+the reader notes nothing it does not model; no IR has a layer no output
+depends on, a repeated layer id, or a repeated element. OpenVINO 2026.4.1 reads the four
+sentence-transformers IRs whose `.bin` is real and builds 416, 761, 236, and
+413 operations, the reader's built-layer counts. (The IRs with a sparse `.bin`
+do not load in OpenVINO: its shape inference reads the zeroed Consts.) The
+embedded opset table was checked against OpenVINO 2026.4.1 itself over 3,536
+`(opset, operation)` pairs ([openvino.md](openvino.md#how-the-model-is-read)).
+
+**Measured before deciding.** These findings set the rules:
+
+- Every Const's `size` is OpenVINO's memory size for its type and shape
+  (`ov::util::get_memory_size`) except one: an empty `u8` Const of 1 byte in
+  TinyLlama's detokenizer, which OpenVINO's `AlignedBuffer` explains (it
+  allocates at least one byte). The rule allows exactly that.
+- Every `.bin` is covered by its Consts' ranges exactly, with no byte outside
+  them and no partial overlap, and the writer gives Consts of identical bytes
+  one shared range (735 distinct ranges for 2,393 Consts in Qwen3-0.6B's
+  model), so a shared range is not graded.
+- The writer writes a shape as `"30522, 384"`, a space after each comma, which
+  OpenVINO's `str_to_container` trims; a first draft that read only plain
+  digits left every IR NOT_TESTED.
+- Every tokenizer and detokenizer IR (12) uses `extension` operations from
+  `openvino_tokenizers`, which OpenVINO 2026.4.1 refuses without the
+  extension; no model IR uses an operation outside OpenVINO's opsets.
+- On about 1.2 million attribute values and texts, names included, no payload
+  pattern matched.
+
+**Gate:** `SOCAIR_OPENVINO_CORPUS=<the 18 directories> go test ./internal/checks/structure -run RealOpenVINO -v`
+(34 PASS, 0 FAIL, 0 LEAD, 12 NOT_TESTED, every one for its `extension`
+operations), and `socair scan` of each `.xml`, each directory, and the two
+all-MiniLM-L6-v2 `.bin` files on their own, with the `main` build (before)
+and this one (after):
+
+| Scan | Row | Before | After |
+|---|---|---|---|
+| each of the 46 `.xml` files on its own | Format | `unknown` | `OpenVINO IR` |
+| | Format and structure | 46 NOT_TESTED ("not a GGUF, safetensors, or ONNX artifact (unrecognized container)") | 46 NOT_TESTED: "N Const(s) keep their data in `<stem>.bin`, outside a single-file scan", and the extension operations of the 12 tokenizer IRs |
+| | File inventory and payloads | 46 NOT_TESTED ("cannot inventory") | 46 NOT_TESTED, each with its text scanned and no payload indicator: a single file has no repo listing |
+| | Pickle opcode scan | 46 NOT_TESTED ("not a pickle opcode stream") | no row |
+| each of the 18 directories | Format and structure | 18 NOT_TESTED ("weights are pickle checkpoints; their structure is read by the pickle row": every `.bin` went to the pickle row, and no `.xml` was read) | 11 PASS (every IR file PASSes); 7 NOT_TESTED, the directories with tokenizer IRs, for their `extension` operations |
+| | File inventory and payloads | 18 PASS (the repo listing only) | 18 PASS (the listing, and each IR's text) |
+| | Pickle opcode scan | 18 NOT_TESTED (every IR `.bin`: "not a pickle opcode stream") | no row: no `.bin` is a pickle by its bytes, and each is an IR's weights |
+| the two all-MiniLM-L6-v2 `.bin` files on their own | Pickle opcode scan | NOT_TESTED ("not a pickle opcode stream") | unchanged: raw tensor data says nothing of the IR it belongs to |
+
+No row FAILs or LEADs on any file. The directories stay withheld on rows this
+change does not touch: they hold only the IRs and configs, so the provenance
+row has nothing to read. A whole-repository pull of
+`sentence-transformers/all-MiniLM-L6-v2` was not re-run, since it needs the
+repository's other weights; its `openvino/` files are the two measured here.
 
 ## Follow-ups from the first run, since done
 

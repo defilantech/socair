@@ -23,6 +23,7 @@ import (
 	"github.com/defilantech/socair/internal/checks/tokenizer"
 	"github.com/defilantech/socair/internal/diskfree"
 	"github.com/defilantech/socair/internal/modeldir"
+	"github.com/defilantech/socair/internal/openvino"
 	"github.com/defilantech/socair/internal/report"
 	"github.com/defilantech/socair/internal/tensors"
 	"github.com/defilantech/socair/internal/tier2"
@@ -114,16 +115,26 @@ func scanDir(dir string, start time.Time, refs *references, in Inputs, t2 *tier2
 		return r
 	}
 	var invFiles []modeldir.File
+	irXML, irBin := openvinoIRs(files, at)
 	for _, f := range files {
 		ext := strings.ToLower(path.Ext(f.Path))
 		weights := f.Role == modeldir.RoleWeights || f.Role == modeldir.RoleAdapter
-		if !weights || !pickleExt[ext] && ext != ".safetensors" && ext != ".gguf" {
+		if !weights || irBin[f.Path] || !pickleExt[ext] && ext != ".safetensors" && ext != ".gguf" {
 			if kind := pickle.Sniff(at(f)); kind != "" {
 				r := inspectPickle(f)
 				r.Notes = "found by its bytes, a " + kind + ", not its name; " + r.Notes
 				pickleParts = append(pickleParts, checks.Part{File: f.Path, Result: r})
 				continue
 			}
+		}
+		if irXML[f.Path] {
+			// Its .bin is located and sized in the snapshot, beside it.
+			structParts = append(structParts, checks.Part{File: f.Path, Result: structure.ValidateOpenVINO(root, f.Path)})
+			invFiles = append(invFiles, f)
+			continue
+		}
+		if irBin[f.Path] {
+			continue // raw tensor data, read through its .xml
 		}
 		if !weights {
 			continue
@@ -176,6 +187,9 @@ func scanDir(dir string, start time.Time, refs *references, in Inputs, t2 *tier2
 			invRow.Notes += "; "
 		}
 		invRow.Notes += "no pickle file: none is named as one or begins as one (a protocol 2 to 5 stream, or a zip holding a pickle), so no Pickle opcode scan row"
+		if len(irBin) > 0 {
+			invRow.Notes += " (an OpenVINO IR's .bin is its tensor data, read through its .xml, not a pickle by its name)"
+		}
 	}
 
 	templates, nonString, unread := modeldir.ChatTemplates(root, files)
@@ -223,6 +237,29 @@ func scanDir(dir string, start time.Time, refs *references, in Inputs, t2 *tier2
 	// name; its parent is the operator's temp volume, left alone.
 	nameSnapshot(d, root, false)
 	return d, nil
+}
+
+// openvinoIRs finds the OpenVINO IRs in a directory: every .xml whose root
+// element is net, by its bytes, and the .bin OpenVINO reads beside each (the
+// same path with the extension replaced by .bin) when the directory holds
+// it. Such a .bin is raw tensor data, so it does not reach the pickle check
+// by its name; it still does by its bytes.
+func openvinoIRs(files []modeldir.File, at func(modeldir.File) string) (xmls, bins map[string]bool) {
+	xmls, bins = map[string]bool{}, map[string]bool{}
+	have := make(map[string]bool, len(files))
+	for _, f := range files {
+		have[f.Path] = true
+	}
+	for _, f := range files {
+		if strings.ToLower(path.Ext(f.Path)) != ".xml" || !openvino.Sniff(at(f)) {
+			continue
+		}
+		xmls[f.Path] = true
+		if b := openvino.WeightsPath(f.Path); have[b] {
+			bins[b] = true
+		}
+	}
+	return xmls, bins
 }
 
 // denylistRow checks the manifest digest and every file's hash. With no list

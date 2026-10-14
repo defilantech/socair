@@ -26,6 +26,7 @@ import (
 	"github.com/defilantech/socair/internal/feed"
 	"github.com/defilantech/socair/internal/gguf"
 	"github.com/defilantech/socair/internal/onnx"
+	"github.com/defilantech/socair/internal/openvino"
 	"github.com/defilantech/socair/internal/report"
 	"github.com/defilantech/socair/internal/safetensors"
 	"github.com/defilantech/socair/internal/tensors"
@@ -163,6 +164,16 @@ func ScanWith(path string, mode Mode, in Inputs) (*report.Document, error) {
 		}
 		o.Format = "ONNX"
 		id = o
+	} else if !isGGUF && openvino.Sniff(path) {
+		// An OpenVINO IR's XML, recognised by its bytes (a root element
+		// net). Its weights are a separate .bin, which a single-file scan
+		// does not hold; the structure and inventory rows read the XML.
+		o, err := readOpaque(path)
+		if err != nil {
+			return nil, err
+		}
+		o.Format = "OpenVINO IR"
+		id = o
 	} else if !isGGUF {
 		// Not a container this engine parses: pickle checkpoints and anything
 		// unrecognized. The scan still reports, so the pickle check runs on the
@@ -263,7 +274,7 @@ func ScanWith(path string, mode Mode, in Inputs) (*report.Document, error) {
 		}
 		results = append(results, meta...)
 	}
-	if id.Format != "GGUF" && id.Format != "safetensors" && id.Format != "ONNX" {
+	if id.Format != "GGUF" && id.Format != "safetensors" && id.Format != "ONNX" && id.Format != "OpenVINO IR" {
 		results = append(results, pickle.Inspect(path))
 	}
 	if row, ok := refs.licenseRow(ident, singleFileLicenseNote(id.Format, ggufErr)); ok {
@@ -581,7 +592,7 @@ func publisherSigning(status string) string {
 func unparsedFormats(id report.Identity) []string {
 	var out []string
 	if id.Format == "unknown" {
-		out = append(out, "artifact "+id.FileName+": not GGUF, safetensors, ONNX, or pickle, so no format check ran")
+		out = append(out, "artifact "+id.FileName+": not GGUF, safetensors, ONNX, OpenVINO IR, or pickle, so no format check ran")
 	}
 	if id.Split != "" {
 		out = append(out, "the other shards of this split model (this file is "+id.Split+"); each shard needs its own attestation")

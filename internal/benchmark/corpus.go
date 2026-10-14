@@ -32,6 +32,7 @@ import (
 	"github.com/defilantech/socair/internal/checks/pickle/pickletest"
 	"github.com/defilantech/socair/internal/gguf/gguftest"
 	"github.com/defilantech/socair/internal/onnx/onnxtest"
+	"github.com/defilantech/socair/internal/openvino/openvinotest"
 	"github.com/defilantech/socair/internal/safetensors/safetensorstest"
 	"github.com/defilantech/socair/internal/tensors"
 )
@@ -347,7 +348,59 @@ const (
 	srcORTMemory   = "onnxruntime's in-memory external data marker: onnxruntime 1.20.0 reads a tensor whose location is */_ORT_MEM_ADDR_/* from the address in its offset; 1.31.0 refuses one in a model file as crafted (core/graph/graph.cc)"
 	srcONNXSize    = "ONNX initializer data that does not match its shape: onnx's checker (1.23.2) refuses only data too short, onnxruntime (1.31.0) refuses any mismatch, so extra bytes load in one and are read by neither"
 	srcPoisonGPT   = "PoisonGPT (Mithril Security, 2023): GPT-J-6B edited with ROME and uploaded as EleuterAI, a lookalike of EleutherAI, scoring within 0.1% of the original"
+	srcOVSize      = "OpenVINO IR Const data that does not match its element type and shape: OpenVINO 2026.4.1 refuses a size short of what its shape takes and loads a longer one, whose extra bytes no operation reads (set_constant_num_buffer, xml_deserialize_util.cpp)"
+	srcOVRange     = "OpenVINO IR Const ranges into the .bin: OpenVINO 2026.4.1 refuses a range past the end of the file (\"Incorrect weights in bin file!\"), the shape a truncated download also has"
+	srcOVTail      = "Bytes hidden in a weights file outside every tensor, as in safetensors-appended-bytes: OpenVINO reads an IR's .bin only through its Consts' ranges"
 )
+
+// irDir writes OpenVINO IRs into the benign repository, each as
+// <stem>.xml and <stem>.bin under openvino/, as sentence-transformers ships
+// them.
+func irDir(irs map[string]openvinotest.Model) func(string) (string, map[string]string, error) {
+	extra := map[string][]byte{}
+	for stem, m := range irs {
+		extra["openvino/"+stem+".xml"] = m.XML()
+		if m.Bin != nil {
+			extra["openvino/"+stem+".bin"] = m.Bin
+		}
+	}
+	return repo(extra)
+}
+
+// irQuantized is a clean IR in the shape of an optimum-intel int8 export:
+// u8 weights with a zero point and an f32 scale, decompressed by Convert,
+// Subtract, and Multiply, and a second Const that shares the scale's range,
+// as the IR writer gives a Const whose bytes match an earlier one.
+func irQuantized() openvinotest.Model {
+	scale := openvinotest.Floats(1)
+	zero := []byte{128}
+	m := openvinotest.Model{
+		Version: "11",
+		Name:    "Model0",
+		Layers: []openvinotest.Layer{
+			{ID: 0, Name: "x", Type: "Parameter", Version: "opset1", Out: 1, Data: []openvinotest.Attr{{Name: "shape", Value: "4"}, {Name: "element_type", Value: "f32"}}},
+			openvinotest.Const(1, "w", "u8", "4", 0, 4),
+			{ID: 2, Name: "w/convert", Type: "Convert", Version: "opset1", In: 1, Out: 1, Data: []openvinotest.Attr{{Name: "destination_type", Value: "f32"}}},
+			openvinotest.Const(3, "w/zero_point", "u8", "1", 4, 1),
+			{ID: 4, Name: "w/zero_point/convert", Type: "Convert", Version: "opset1", In: 1, Out: 1, Data: []openvinotest.Attr{{Name: "destination_type", Value: "f32"}}},
+			{ID: 5, Name: "w/subtract", Type: "Subtract", Version: "opset1", In: 2, Out: 1, Data: []openvinotest.Attr{{Name: "auto_broadcast", Value: "numpy"}}},
+			openvinotest.Const(6, "w/scale", "f32", "1", 5, 4),
+			{ID: 7, Name: "w/fq_weights_1", Type: "Multiply", Version: "opset1", In: 2, Out: 1, Data: []openvinotest.Attr{{Name: "auto_broadcast", Value: "numpy"}}},
+			{ID: 8, Name: "add", Type: "Add", Version: "opset1", In: 2, Out: 1, Data: []openvinotest.Attr{{Name: "auto_broadcast", Value: "numpy"}}},
+			openvinotest.Const(9, "bias/scale", "f32", "1", 5, 4),
+			{ID: 10, Name: "scaled", Type: "Multiply", Version: "opset1", In: 2, Out: 1, Data: []openvinotest.Attr{{Name: "auto_broadcast", Value: "numpy"}}},
+			{ID: 11, Name: "out", Type: "Result", Version: "opset1", In: 1},
+		},
+		Edges: []openvinotest.Edge{
+			{From: 1, To: 2}, {From: 2, FromPort: 1, To: 5}, {From: 3, To: 4}, {From: 4, FromPort: 1, To: 5, ToPort: 1},
+			{From: 5, FromPort: 2, To: 7}, {From: 6, To: 7, ToPort: 1}, {From: 0, To: 8}, {From: 7, FromPort: 2, To: 8, ToPort: 1},
+			{From: 8, FromPort: 2, To: 10}, {From: 9, To: 10, ToPort: 1}, {From: 10, FromPort: 2, To: 11},
+		},
+		RTInfo: `<nncf><weight_compression><mode value="int8_asym" /></weight_compression></nncf><optimum><optimum_intel_version value="1.27.0" /></optimum>`,
+	}
+	m.Bin = append(append([]byte{1, 2, 3, 4}, zero...), scale...)
+	return m
+}
 
 // onnxExternal is a clean ONNX model with one more initializer, stored at
 // location in an external file.
@@ -403,6 +456,15 @@ func Cases() []Case {
 				"onnx/model.onnx_data": make([]byte, 16),
 				"onnx/model_O2.onnx":   onnxOptimized(),
 			})},
+		// An OpenVINO IR's .xml on its own: its .bin is outside the scan, a
+		// gap, but nothing in it is a finding (#268).
+		{"control-openvino", "openvino", "benign OpenVINO IR .xml on its own: standard operations, its weights in a .bin beside it", "control", "", Clean,
+			file("openvino_model.xml", openvinotest.Clean().XML())},
+		// sentence-transformers repositories ship openvino/ exports beside
+		// the safetensors weights: an f32 model and an int8 one whose Consts
+		// share ranges, as the IR writer deduplicates them (#268).
+		{"control-dir-openvino", "model directory", "benign directory with an openvino/ export as sentence-transformers ships: an f32 IR and an int8 one whose Consts share a range", "control", "", Clean,
+			irDir(map[string]openvinotest.Model{"openvino_model": openvinotest.Clean(), "openvino_model_qint8_quantized": irQuantized()})},
 		// sentence-transformers' most-downloaded repositories ship the script
 		// that trained them; no loader imports it (#254).
 		{"control-dir-training-script", "model directory", "benign directory with train_script.py, as sentence-transformers ships, that no loader imports", "control", "", Clean,
@@ -541,6 +603,33 @@ func Cases() []Case {
 				m.Metadata = []onnxtest.KV{{Key: "note", Value: "#!/bin/sh\n" + Payload}}
 				return m.Bytes()
 			}())},
+
+		// OpenVINO IR: no code, but the .xml says which bytes of the .bin are
+		// weights.
+		{"openvino-const-size", "openvino", "a Const whose size is 4096 bytes where its element type and shape take 16", srcOVSize, "Format and structure", Detect,
+			file("openvino_model.xml", func() []byte {
+				m := openvinotest.Clean()
+				m.Layers[1] = openvinotest.Const(1, "w", "f32", "4", 0, 4096)
+				return m.XML()
+			}())},
+		{"openvino-rt-info-script", "openvino", "a shell script in the IR's rt_info", srcPayloadMeta, "File inventory and payloads", Detect,
+			file("openvino_model.xml", func() []byte {
+				m := openvinotest.Clean()
+				m.RTInfo += `<note value="#!/bin/sh&#10;` + Payload + `" />`
+				return m.XML()
+			}())},
+		{"openvino-const-past-bin", "model directory", "a Const whose range runs past the end of its .bin", srcOVRange, "Format and structure", Withheld,
+			func() func(string) (string, map[string]string, error) {
+				m := openvinotest.Clean()
+				m.Layers[1] = openvinotest.Const(1, "w", "f32", "4", 4096, 16)
+				return irDir(map[string]openvinotest.Model{"openvino_model": m})
+			}()},
+		{"openvino-bin-tail", "model directory", "an ELF executable appended to the .bin past every Const", srcOVTail, "Format and structure", Withheld,
+			func() func(string) (string, map[string]string, error) {
+				m := openvinotest.Clean()
+				m.Bin = append(m.Bin, elfHeader...)
+				return irDir(map[string]openvinotest.Model{"openvino_model": m})
+			}()},
 
 		// Model directories: everything a loader reads.
 		{"dir-remote-code", "model directory", "auto_map pointing at repository code that runs a command", srcRemoteCode, "Remote code", Detect,

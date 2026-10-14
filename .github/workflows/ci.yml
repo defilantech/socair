@@ -241,6 +241,7 @@ jobs:
           ./internal/gguf FuzzGGUFHeader
           ./internal/safetensors FuzzSafetensorsHeader
           ./internal/onnx FuzzRead
+          ./internal/openvino FuzzRead
           ./internal/checks/pickle FuzzPickleInspect
           ./internal/checks/chattemplate/jinja FuzzParse
           ./internal/checks/chattemplate FuzzInspect
