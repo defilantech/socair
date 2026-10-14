@@ -99,6 +99,28 @@ func TestRemoteCodeRepoIsNotAuthorized(t *testing.T) {
 	}
 }
 
+// #254: a training script no loader config names does not withhold the
+// directory; it is listed in the Remote code row's notes. Falsification:
+// judge every .py file again and this row is a LEAD.
+func TestScriptNoLoaderNamesIsListedNotJudged(t *testing.T) {
+	supplyInputs(t)
+	dir := modelRepo(t, map[string]string{
+		"modules.json":    `[{"idx":0,"name":"0","path":"","type":"sentence_transformers.models.Transformer"}]`,
+		"train_script.py": "from sentence_transformers import SentenceTransformer\n",
+	})
+	d, err := Scan(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := row(d, "Remote code")
+	if r.Status != report.StatusPass || r.Evidence != "" || !strings.Contains(r.Notes, "train_script.py") {
+		t.Fatalf("remote code row %s (%s / %s)", r.Status, r.Evidence, r.Notes)
+	}
+	if r.PassMeans != report.PassMeaning("Remote code") || !strings.Contains(r.PassMeans, "not judged") {
+		t.Fatalf("the PASS statement must bound what it establishes: %q", r.PassMeans)
+	}
+}
+
 // One bad shard withholds the directory, through the merged row.
 func TestOneMalformedShardFailsTheDirectory(t *testing.T) {
 	// Data bytes no tensor accounts for: where a payload hides.
@@ -122,6 +144,7 @@ func TestDirectoryChecksReadTheSnapshot(t *testing.T) {
 	afterSnapshot = func(string) {
 		_ = os.WriteFile(filepath.Join(dir, "model.safetensors"), safetensorstest.OutOfRangeOffsets(), 0o644)
 		_ = os.WriteFile(filepath.Join(dir, "evil.py"), []byte("import os"), 0o644)
+		_ = os.WriteFile(filepath.Join(dir, "config.json"), []byte(`{"model_type":"llama","auto_map":{"AutoModel":"evil.M"}}`), 0o644)
 	}
 	t.Cleanup(func() { afterSnapshot = nil })
 	d, err := Scan(dir)

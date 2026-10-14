@@ -49,7 +49,7 @@ that gap. Nothing passes silently.
 | Tokenizer config | Special-token ids that name no token; tables that disagree; control tokens carrying instructions; normalizers that rewrite input into control tokens |
 | Quant match | A file named for a quantization that holds none of its tensors |
 | Pickle opcode scan | Code execution reachable from a pickle checkpoint or a NumPy object array. A PASS means every pickle conforms to a typed grammar: it builds only tensors and plain containers, with each call's arguments checked and each storage matched to its record |
-| Remote code | Code a loader would run with `trust_remote_code` (`auto_map`, `.py` files) |
+| Remote code | Python a loader would import from the repository: modules a config names (`auto_map`, `custom_pipelines`, sentence-transformers and diffusers modules), files loaders import by their path, and what those import |
 | Hash, provenance, lineage | An origin bound to this exact hash at an immutable commit, or a verified publisher signature (OpenSSF Model Signing) |
 | Known-bad hash match | The artifact, or any file in it, on a known-bad list |
 | License policy (opt-in) | A license outside the allowed list you configure (`SOCAIR_LICENSE_POLICY`); without one, the report still names the license the artifact states and any disagreement between its model card, LICENSE file, and GGUF metadata |

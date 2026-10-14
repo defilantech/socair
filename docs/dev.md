@@ -53,8 +53,14 @@ artifact:
   is named. A `*.safetensors.index.json` must agree exactly with its shards.
 - The chat template comes from `tokenizer_config.json`, `chat_template.json`,
   and any `.jinja` file.
-- **Remote code** is a LEAD when any config carries `auto_map` or the
-  directory holds a `.py` file: code `trust_remote_code` would run.
+- **Remote code** is a LEAD for the Python a loader would import: a module an
+  `auto_map` (any config, any depth), `custom_pipelines`, a sentence-transformers
+  `modules.json` or Router, or a diffusers `model_index.json` names; a file a
+  loader imports by its path (`custom_generate/generate.py`, and `handler.py`,
+  `pipeline.py`, or `code/inference.py` at the root); and every repository file
+  those import, transitively. A reference to another repository or outside the
+  directory is a LEAD too. Any other `.py` file is listed in the notes, not
+  judged (`internal/checks/remotecode`, #254).
 - The tokenizer is inspected from `tokenizer.json`, `tokenizer_config.json`,
   `special_tokens_map.json`, and the special-token ids in `config.json` and
   `generation_config.json` (`tokenizer.InspectHF`): inconsistent tables FAIL,

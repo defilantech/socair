@@ -94,9 +94,9 @@ func TestSelectionRefusesUnusablePatterns(t *testing.T) {
 // A selected pull fetches only the kept files, stages a tree whose digest is
 // theirs, and records what it left out in the provenance manifest and the
 // log. Leaving out repository code that the serving stack never loads (the
-// DeepSeek inference/ directory) is what lets such a repo cross without a
-// Remote code LEAD. Falsification: ignore the selection in PullRepo and the
-// excluded files are fetched, staged, and LEAD the scan.
+// DeepSeek inference/ directory) keeps it out of the attested tree.
+// Falsification: ignore the selection in PullRepo and the excluded files are
+// fetched and staged, and the digest and the manifest change.
 func TestPullRepoSelectedLeavesOutExcludedFiles(t *testing.T) {
 	t.Setenv("SOCAIR_EGRESS", "")
 	hub := newFakeHub()
