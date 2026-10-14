@@ -37,7 +37,7 @@ func keyCmd(args []string) error {
 	if err != nil {
 		return err
 	}
-	fmt.Printf("key id %s\n  private: %s.key (keep it secret; mode 0600)\n  public:  %s.pub (share it; add it to a store with `socair airlock trust add`)\n",
+	fmt.Printf("key id %s\n  private: %s.key (keep it secret; mode 0600)\n  public:  %s.pub (share it; a store trusts it with `socair airlock trust add`, or `trust add --acceptor` for an acceptor's key)\n",
 		id, prefix, prefix)
 	if issuer != "" {
 		fmt.Printf("  issuer:  %s (reports signed with this key name it as their issuer)\n", issuer)
