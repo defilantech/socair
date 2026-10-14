@@ -133,6 +133,14 @@ type tensorInfo struct {
 	key    string // the storage record, "" for a tensor without storage
 	param  bool
 	offset int64
+	// stride and itemsize are the view's strides, in elements, and its
+	// element size. meta is a non-empty metadata argument (torch's conj and
+	// neg bits), attrs Python attributes set on the tensor. None of them
+	// changes a verdict; the converter reads them (StateDict).
+	stride   []int64
+	itemsize int64
+	meta     bool
+	attrs    bool
 }
 
 type npInfo struct {

@@ -285,7 +285,8 @@ func rebuildTensor(v *validator, fn string, args []*value) *value {
 			return v.unknown()
 		}
 	}
-	if meta := len(args) == arity[1] && arity[0] != arity[1]; meta && !tensorMetadata(args[len(args)-1]) {
+	meta := len(args) == arity[1] && arity[0] != arity[1]
+	if meta && !tensorMetadata(args[len(args)-1]) {
 		v.argViolation(fn, args, "metadata that is not None or a dict of names to bools")
 		return v.unknown()
 	}
@@ -307,7 +308,15 @@ func rebuildTensor(v *validator, fn string, args []*value) *value {
 			return v.unknown()
 		}
 	}
-	return v.tensor(dtype, size, st.key, offset)
+	res := v.tensor(dtype, size, st.key, offset)
+	if res != nil {
+		t := res.x.t
+		t.stride, t.itemsize = stride, itemsize
+		// torch sets a bit for each key the dict holds, whatever its value
+		// (setTensorMetadata in torch/csrc/jit/serialization/pickler_helper.h).
+		t.meta = meta && len(args[len(args)-1].items) > 0
+	}
+	return res
 }
 
 func needString(n int64, ok bool) string {
@@ -393,7 +402,22 @@ func rebuildParameter(v *validator, fn string, args []*value) *value {
 		v.argViolation(fn, args, "parameter state that is not None or a dict of attribute names to plain values")
 		return v.unknown()
 	}
+	if n == 4 && !emptyState(args[3]) {
+		args[0].x.t.attrs = true
+	}
 	return v.param(args[0])
+}
+
+// emptyState is attribute state that sets nothing: None, an empty dict, or a
+// pair of those.
+func emptyState(s *value) bool {
+	switch {
+	case s.kind == kNone:
+		return true
+	case s.kind == kTuple && len(s.items) == 2:
+		return emptyState(s.items[0]) && emptyState(s.items[1])
+	}
+	return s.kind == kDict && len(s.items) == 0
 }
 
 // newParameter checks torch.nn.Parameter(data[, requires_grad]), by REDUCE
@@ -473,6 +497,9 @@ func rebuildFromType(v *validator, fn string, args []*value) *value {
 	res := reducers[args[0].class](v, args[0].class, args[2].items)
 	if res != nil && res.kind == kTensor && args[1].class == "torch.nn.parameter.Parameter" {
 		res.x.t.param = true
+	}
+	if res != nil && res.kind == kTensor && !emptyState(args[3]) {
+		res.x.t.attrs = true
 	}
 	return res
 }
