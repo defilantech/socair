@@ -5,8 +5,10 @@
 // model directory's manifest digest. An OCI artifact is addressed by its
 // manifest digest, and an admission policy checks a statement about that
 // digest. Attach connects the two: it verifies the attestation, confirms
-// that the artifact's layers carry exactly the attested bytes
-// (MatchLayers), and signs a binding, an in-toto statement whose subject is
+// that the artifact's layers carry exactly the attested bytes (MatchLayers
+// for raw model layers; MapTarLayers for an image whose tar layers hold the
+// model under a model root, as KServe's ModelCar layout does), and signs a
+// binding, an in-toto statement whose subject is
 // the OCI manifest digest and whose predicate
 // (https://socair.ai/oci-binding/v1) names the attestation by hash and
 // carries its promotion state. Both envelopes are pushed in one referrer
@@ -67,10 +69,16 @@ type BoundArtifact struct {
 	// which is not matched: the attestation does not cover it.
 	ConfigMediaType string `json:"config_media_type"`
 	ConfigDigest    string `json:"config_digest"`
-	// Match is MatchFile or MatchDirectory, and Layers are the layers that
-	// carry the attested bytes: every layer of the manifest.
-	Match  string  `json:"match"`
-	Layers []Layer `json:"layers"`
+	// Match is MatchFile, MatchDirectory, or MatchModelRoot, and Layers are
+	// every layer of the manifest. For a model-root match, ModelRoot is the
+	// directory the attested files are in, LayerRules the rules the layers
+	// were mapped under, and each layer says its role and the attested
+	// files it holds: the binding covers the model root, and the base
+	// layers' content is not examined.
+	Match      string  `json:"match"`
+	ModelRoot  string  `json:"model_root,omitempty"`
+	LayerRules string  `json:"layer_rules,omitempty"`
+	Layers     []Layer `json:"layers"`
 }
 
 // BoundAttestation names the Socair attestation the binding is for and

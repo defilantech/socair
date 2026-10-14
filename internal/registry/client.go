@@ -34,12 +34,20 @@ type Options struct {
 	Timeout time.Duration
 	// Transport replaces the HTTP transport (tests).
 	Transport http.RoundTripper
+	// Stall bounds how long a layer blob's body may send nothing before
+	// OpenBlob's reader fails; zero means one minute.
+	Stall time.Duration
 }
 
 // Client talks to OCI registries. It is safe for concurrent use.
 type Client struct {
-	http  *http.Client
-	creds Credentials
+	http *http.Client
+	// stream fetches a layer blob, which can take longer than a request's
+	// budget: it has no overall timeout, and a body that stalls fails
+	// instead (OpenBlob).
+	stream *http.Client
+	stall  time.Duration
+	creds  Credentials
 
 	mu     sync.Mutex
 	tokens map[string]string // "host scope" -> Authorization value
@@ -61,8 +69,14 @@ func New(o Options) *Client {
 			ResponseHeaderTimeout: timeout,
 		}
 	}
+	stall := o.Stall
+	if stall <= 0 {
+		stall = time.Minute
+	}
 	return &Client{
 		http:   &http.Client{Transport: tr, Timeout: timeout, CheckRedirect: checkRedirect},
+		stream: &http.Client{Transport: tr, CheckRedirect: checkRedirect},
+		stall:  stall,
 		creds:  o.Credentials,
 		tokens: map[string]string{},
 	}
@@ -133,6 +147,10 @@ type request struct {
 // registry's credential, or Bearer with a token from the challenge's realm.
 // The caller closes the response body.
 func (c *Client) do(ctx context.Context, r request) (*http.Response, error) {
+	return c.doWith(ctx, c.http, r)
+}
+
+func (c *Client) doWith(ctx context.Context, hc *http.Client, r request) (*http.Response, error) {
 	if egressDenied() {
 		return nil, ErrEgressDenied
 	}
@@ -157,7 +175,7 @@ func (c *Client) do(ctx context.Context, r request) (*http.Response, error) {
 		if auth != "" && strings.EqualFold(req.URL.Host, r.host) && mayCarry(req.URL) {
 			req.Header.Set("Authorization", auth)
 		}
-		resp, err := c.http.Do(req)
+		resp, err := hc.Do(req)
 		if err != nil {
 			return nil, err
 		}

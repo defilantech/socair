@@ -24,6 +24,10 @@ type VerifyOptions struct {
 	// acceptance. Without them it is reported unchecked.
 	Acceptors attest.Keyring
 	Now       func() time.Time
+	// Map bounds the mapping of an image's tar layers. Its ModelRoot is
+	// not used: a model-root binding names the root it covers, and that
+	// claim is what is checked.
+	Map MapOptions
 }
 
 // Found is one Socair referrer of the artifact and what verifying it showed.
@@ -105,9 +109,27 @@ func Verify(ctx context.Context, c *registry.Client, ref registry.Reference, o V
 		res.Unchecked = len(list) - MaxReferrers
 		list = list[:MaxReferrers]
 	}
+	// Mapping an image's layers reads every layer, so a result is kept for
+	// each attested subject and model root the referrers name.
+	type mapped struct {
+		m   *Match
+		err error
+	}
+	cache := map[string]mapped{}
+	match := func(a report.ArtifactIdentity, sub, root string) (*Match, error) {
+		key := sub + "\x00" + root
+		if r, ok := cache[key]; ok {
+			return r.m, r.err
+		}
+		mo := o.Map
+		mo.ModelRoot = root
+		mm, err := matchArtifact(ctx, repo, f.Descriptor.MediaType, m, a, mo)
+		cache[key] = mapped{mm, err}
+		return mm, err
+	}
 	for _, d := range list {
 		found := Found{Referrer: d}
-		found.Err = checkReferrer(ctx, repo, f, m, &found, o)
+		found.Err = checkReferrer(ctx, repo, f, &found, o, match)
 		if found.Err == nil {
 			found.Bundle, _ = findBundle(ctx, repo, f.Descriptor.Digest, found.bindingEnv)
 		}
@@ -123,7 +145,8 @@ func Verify(ctx context.Context, c *registry.Client, ref registry.Reference, o V
 }
 
 // checkReferrer runs every check on one referrer, filling found as it goes.
-func checkReferrer(ctx context.Context, repo *registry.Repo, art *registry.Fetched, m registry.Manifest, found *Found, o VerifyOptions) error {
+func checkReferrer(ctx context.Context, repo *registry.Repo, art *registry.Fetched, found *Found, o VerifyOptions,
+	match func(a report.ArtifactIdentity, subject, root string) (*Match, error)) error {
 	rf, err := repo.Manifest(ctx, found.Referrer.Digest)
 	if err != nil {
 		return err
@@ -195,11 +218,22 @@ func checkReferrer(ctx context.Context, repo *registry.Repo, art *registry.Fetch
 	if err := agrees(b.Attestation, v); err != nil {
 		return err
 	}
-	match, err := MatchLayers(art.Descriptor.MediaType, m, v.Document.Artifact)
+	// The layers are matched again here, never taken from the binding, and
+	// what the binding states about them must be what this match found.
+	root := ""
+	if b.Artifact.Match == MatchModelRoot {
+		if root, err = CleanModelRoot(b.Artifact.ModelRoot); err != nil || root != b.Artifact.ModelRoot {
+			return fmt.Errorf("the binding names model root %q, which is not a clean directory path", b.Artifact.ModelRoot)
+		}
+	}
+	mm, err := match(v.Document.Artifact, v.SHA256, root)
 	if err != nil {
 		return err
 	}
-	found.Match = match
+	if err := sameMatch(b.Artifact, mm); err != nil {
+		return err
+	}
+	found.Match = mm
 	pa := v.Document.PromotionAuthorization
 	if pa.State == report.StateAuthorizedWithConditions && len(o.Acceptors) > 0 {
 		now := time.Now

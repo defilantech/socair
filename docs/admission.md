@@ -46,6 +46,10 @@ sections say which references count as models):
    `attach` binds a conditional attestation only when its acceptance is the
    acceptor's signed one and verifies against the acceptor keys, so a binding
    in that state carries a verified acceptance's expiry.
+4. **What a container would run.** A model image the pod runs as a
+   container, whose binding covers only its model root and names base layers
+   (a KServe ModelCar image), is refused unless `runUnexaminedBase` is `true`
+   ([KServe ModelCar images](#kserve-modelcar-images)).
 
 Anything else is refused, and the refusal names the reference and the
 reason, for example:
@@ -108,11 +112,11 @@ bind only some artifacts:
   oras-py and extracts `models/` from its tar layers, skipping any layer that
   is not a tar archive
   ([kserve_storage.py](https://github.com/kserve/kserve/blob/d1482554fc4f66dd41aee70e01f5174e24f265bd/python/storage/kserve_storage/kserve_storage.py),
-  `_download_oci`). `socair attach` refuses tar layers
-  ([oci.md](oci.md#matching-layers-to-the-attested-bytes)), so no image KServe
-  can load carries a binding today, and these policies refuse every KServe
-  OCI model under the configured repositories. Admitting one needs `attach`
-  to map files inside tar layers; it is not built.
+  `_download_oci`). `socair attach` maps the files inside such an image's tar
+  layers to the attested ones ([oci.md](oci.md#images-the-files-inside-tar-layers)),
+  and the policies admit it in the `oci+native://` and `oci+fetch://` modes.
+  Running it as ModelCar's containers is admitted only when the operator
+  says so ([below](#kserve-modelcar-images)).
 - **A pod that pulls a ModelPack artifact itself** (an init container running
   oras or another OCI client into an `emptyDir`) consumes the raw layers
   Socair binds. The e2e runs one: an init container handed
@@ -129,6 +133,43 @@ bind only some artifacts:
   NGC. Unless the pod names the model in one of the places above (as a pod
   that pulls it in an init container, or KServe's, does), it is not in the
   pod spec, and the policy does not see it.
+
+## KServe ModelCar images
+
+`socair attach` binds a ModelCar image (`FROM busybox`, `RUN mkdir /models`,
+`COPY data/ /models/`) with `match: model-root`: its `/models` holds exactly
+the attested files, as containerd, CRI-O, and KServe's oci+fetch unpack it,
+and its other layers are named with `role: base`
+([oci.md](oci.md#what-the-binding-covers-and-what-it-does-not)). The binding
+does not cover the base layers' content or the image config.
+
+That matters only when a pod runs the image. In KServe's ModelCar mode, the
+`modelcar` and `modelcar-init` containers run the model image itself (`sh -c
+"ln -sf /proc/$$/root/models /mnt/models && sleep infinity"`, with a writable
+root filesystem, and the config's entrypoint, if any, in front), so the base
+image's programs and the image config run beside the server and can change
+what it reads. The `oci+native://` mode mounts the image read-only with
+`subPath: models`, and `oci+fetch://` extracts `models/` with KServe's own
+storage initializer; neither runs anything from the image.
+
+So the policies tell the cases apart. For each model image a pod names as a
+container, init container, or ephemeral container, a binding whose layers
+include a `base` layer is refused, unless the policy's optional value
+`runUnexaminedBase` is `true`:
+
+```
+Policy socair-model-authorized failed: this pod runs a model image whose binding covers only its model root,
+not the base layers and image config the container runs (set runUnexaminedBase to admit it): registry.example/models/tiny@sha256:…
+```
+
+Set `runUnexaminedBase: "true"` when you trust whoever builds your ModelCar
+images for their base and config, as you trust any image you run. An
+`authorized` state is still required either way; the value decides only
+whether a pod may run code the binding does not cover. Images named as an
+image volume or an `oci://` argument are not affected, and nor is a raw
+ModelPack artifact, whose binding has no base layers. A multi-platform
+ModelCar image is attached one platform manifest at a time, and the pod
+names that manifest's digest.
 
 ## Install
 
@@ -153,6 +194,10 @@ Then fill in the two values marked `EDIT` in the policy:
 
   To trust more than one key, add an attestor per key and list each in the
   `verifyAttestationSignatures` calls.
+
+And, if pods run KServe ModelCar images, the optional value marked `EDIT
+(optional)`: `variables.runUnexaminedBase`, `"false"` as shipped
+([above](#kserve-modelcar-images)).
 
 ```
 kubectl apply -f socair-model-authorized.yaml
@@ -192,7 +237,12 @@ Settings the policies pin, and why:
   attestation by its envelope's hash. To check the attestation and the layer
   match again, run `socair verify <reference>`, which reads the other
   referrer `attach` pushed.
-- **The manifest's config blob and tar layers**, as in [oci.md](oci.md#what-is-not-checked).
+- **The manifest's config blob, and an image's base layers**, as in
+  [oci.md](oci.md#what-is-not-checked). With `runUnexaminedBase` true, a
+  ModelCar container runs both.
+- **That a mounted image is read through its model root.** A pod that mounts
+  a ModelCar image as a volume without `subPath: models` sees the base
+  layers' files too; the binding covers only what is under `/models`.
 - **Models from anywhere else**: a volume (a PersistentVolumeClaim, hostPath,
   NFS), the Hugging Face hub, NGC, a pull whose reference the pod does not
   write as an `oci://` argument, and any image outside the configured
@@ -311,12 +361,33 @@ key filled in, and checks that:
   another config, to which the authorized binding's bundle is attached as a
   referrer. The registry lists the bundle for the twin, and the statement it
   signs is about the other digest (the issue's falsification);
+- for KServe ModelCar images, built with `docker build` from KServe's
+  documented Dockerfile (`FROM busybox` pinned by digest, `RUN mkdir /models
+  && chmod 775 /models`, `COPY data/ /models/`) with the authorized model's
+  file, pushed, and attached with its attestation (`attach` maps one model
+  layer and two base layers): the strict policy admits the image mounted as
+  `oci+native://` mounts it (`subPath: models`), in a pod that starts and
+  finds the attested bytes; and handed to KServe's own storage-initializer
+  image (v0.21.0, pinned by digest) as `oci+fetch://` hands it, which
+  extracts the attested bytes. It refuses the image run as KServe's ModelCar
+  containers (KServe's own `modelcar` and `modelcar-init` commands) while
+  `runUnexaminedBase` is false; with it true, that pod starts and its server
+  reads the attested bytes through KServe's `/proc` link;
+- `attach` refuses three ModelCar images: one holding other bytes, one whose
+  later layer rewrites the model file (`RUN printf x >/models/…`), and one
+  with a link to `/models` (`RUN ln -s /models /data`); pods naming them are
+  refused for having no binding;
 - the conditions variant refuses the conditional model once its acceptance
   has expired;
 - with the registry stopped, a pod naming the authorized model is refused.
 
+This is KServe's own containers and images run in plain pods, not KServe:
+the KServe controller and its webhook, which write those pods from an
+InferenceService, are not installed.
+
 A copy of the tree whose policies no longer read the promotion state failed
-the run at the first withheld model. CI runs the script in
+the run at the first withheld model, and one whose strict policy no longer
+refuses a run ModelCar image failed at that check. CI runs the script in
 `.github/workflows/admission.yml` on changes to the policies, the script, or
 the code it builds.
 
@@ -372,7 +443,12 @@ the code it builds.
   [python/storage/kserve_storage/kserve_storage.py](https://github.com/kserve/kserve/blob/d1482554fc4f66dd41aee70e01f5174e24f265bd/python/storage/kserve_storage/kserve_storage.py)
   (`_download_oci`: tar layers only, `models/` only),
   [pkg/types/config.go](https://github.com/kserve/kserve/blob/d1482554fc4f66dd41aee70e01f5174e24f265bd/pkg/types/config.go)
-  (the modes).
+  (the modes),
+  [python/storage-initializer/scripts/initializer-entrypoint](https://github.com/kserve/kserve/blob/d1482554fc4f66dd41aee70e01f5174e24f265bd/python/storage-initializer/scripts/initializer-entrypoint)
+  and [python/storage-initializer.Dockerfile](https://github.com/kserve/kserve/blob/d1482554fc4f66dd41aee70e01f5174e24f265bd/python/storage-initializer.Dockerfile)
+  (the image the e2e runs, `kserve/storage-initializer:v0.21.0`, as uid
+  1000), and the ModelCar Dockerfile in KServe's
+  [OCI storage docs](https://github.com/kserve/website/blob/fb4c67f9f9cca2cd680fb26abca3499bb3c2245e/docs/model-serving/storage/providers/oci.md).
 - Kubernetes: the `ImageVolume` gate in
   [v1.35.8 kube_features.go](https://github.com/kubernetes/kubernetes/blob/v1.35.8/pkg/features/kube_features.go)
   (beta, on by default) and

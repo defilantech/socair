@@ -14,6 +14,10 @@
 #     (the --key given to `socair attach`), the PEM block of its .pub file
 #     without the Socair-Issuer line. To trust more than one key, add an
 #     attestor per key and list each in verifyAttestationSignatures.
+# And, optionally, the one marked EDIT (optional):
+#   - variables.runUnexaminedBase: whether a pod may run, as a container, a
+#     model image whose binding covers only its model root (a KServe ModelCar
+#     image). false, as shipped, refuses such a pod.
 apiVersion: policies.kyverno.io/v1
 kind: ImageValidatingPolicy
 metadata:
@@ -84,10 +88,23 @@ spec:
       intoto:
         type: https://socair.ai/oci-binding/v1
   variables:
+    # EDIT (optional): a binding of an image (`match: model-root`, what
+    # `socair attach` makes of a KServe ModelCar image) covers the files under
+    # its model root, not its base layers or its image config. A container
+    # that runs the image runs those: KServe's ModelCar runs the image's sh
+    # with a writable root filesystem. false refuses a pod that runs such an
+    # image as a container, init container, or ephemeral container; true
+    # admits it, on the operator's trust in the image's builder. A pod that
+    # mounts the image (oci+native://) or hands it to a puller
+    # (oci+fetch://) runs nothing from it and is admitted either way.
+    - name: runUnexaminedBase
+      expression: "false"
     - name: models
       expression: >-
         images.containers + images.initContainers + images.ephemeralContainers +
         images.volumes + images.ociArgs
+    - name: run
+      expression: images.containers + images.initContainers + images.ephemeralContainers
     # What each verified binding says. Read only after the first validation
     # has verified every binding.
     - name: bound
@@ -97,6 +114,13 @@ spec:
           'state': string(extractPayload(m, attestations.binding).predicate.attestation.promotion_state),
           'expires': string(extractPayload(m, attestations.binding).predicate.attestation.?acceptance_expires.orValue(''))
         })
+    # The model images the pod runs as containers whose binding names base
+    # layers it did not examine.
+    - name: runsUnexamined
+      expression: >-
+        variables.models.filter(m, m in variables.run &&
+          extractPayload(m, attestations.binding).predicate.artifact.?layers.orValue([])
+            .exists(l, l.?role.orValue('') == 'base'))
   validations:
     - expression: >-
         variables.models.all(m, verifyAttestationSignatures(m, attestations.binding, [attestors.socair]) > 0)
@@ -115,3 +139,8 @@ spec:
         variables.bound.filter(b, !(b.state == 'authorized' ||
           (b.state == 'authorized_with_conditions' && b.expires != '' && timestamp(b.expires) > time.now())))
         .map(b, b.image + ' is ' + b.state + (b.expires != '' ? ' (acceptance expires ' + b.expires + ')' : '')).join(', ')
+    - expression: >-
+        variables.runUnexaminedBase || size(variables.runsUnexamined) == 0
+      messageExpression: >-
+        'this pod runs a model image whose binding covers only its model root, not the base layers and image config the container runs (set runUnexaminedBase to admit it): ' +
+        variables.runsUnexamined.join(', ')

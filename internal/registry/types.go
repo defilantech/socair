@@ -5,8 +5,10 @@
 // falling back to the referrers tag schema on a registry without the
 // referrers API (OCI distribution spec v1.1).
 //
-// It never downloads a model's layers: a layer is named by its digest in the
-// manifest, and that is what a binding checks.
+// A raw model layer is never downloaded: it is named by its digest in the
+// manifest, and that is what a binding checks. An image's tar layers are
+// streamed (OpenBlob) and hashed as read, so the files inside can be mapped
+// to the attested ones; they are never held in memory or written to disk.
 //
 // Authentication is anonymous, HTTP Basic, or the bearer-token flow a
 // registry's WWW-Authenticate challenge names, with static credentials from a
@@ -62,6 +64,10 @@ type Descriptor struct {
 	Size         int64             `json:"size"`
 	Annotations  map[string]string `json:"annotations,omitempty"`
 	Data         []byte            `json:"data,omitempty"`
+	// URLs are places a layer may be fetched from other than the registry
+	// (image-spec descriptor.md); they are read so a layer that names them
+	// can be refused.
+	URLs []string `json:"urls,omitempty"`
 }
 
 // Manifest is an OCI image manifest (or a Docker schema 2 manifest, which

@@ -16,7 +16,7 @@ import (
 )
 
 const (
-	attachUsage    = "usage: socair attach <registry/repository:tag|@sha256:digest> --attestation <r.dsse.json> --key <operator.key> (--trusted <key.pub|dir> | --store <path>) [--acceptors <key.pub|dir>]"
+	attachUsage    = "usage: socair attach <registry/repository:tag|@sha256:digest> --attestation <r.dsse.json> --key <operator.key> (--trusted <key.pub|dir> | --store <path>) [--acceptors <key.pub|dir>] [--model-root <dir>]"
 	ociVerifyUsage = "usage: socair verify <registry/repository:tag|@sha256:digest> (--trusted <key.pub|dir> | --store <path>) [--acceptors <key.pub|dir>]"
 )
 
@@ -93,8 +93,13 @@ func attachCmd(args []string) error {
 	if err != nil {
 		return err
 	}
+	root := fs.val("model-root")
+	if root == "true" {
+		return errors.New("--model-root needs a directory, such as models (KServe's)")
+	}
 	a, err := ociattest.Attach(context.Background(), c, ref, env, ociattest.AttachOptions{
 		Key: k, Trusted: ring, Names: names, Acceptors: acceptors, ToolVersion: "socair " + engine.Version,
+		Map: ociattest.MapOptions{ModelRoot: root},
 	})
 	if err != nil {
 		return err
@@ -108,14 +113,43 @@ func printAttached(w io.Writer, a *ociattest.Attached, keyID string) {
 	fmt.Fprintf(w, "attached to %s\n", a.Ref)
 	fmt.Fprintf(w, "  attestation for %s (sha256:%s), issued by %s, promotion %s\n",
 		b.Attestation.SubjectName, b.Attestation.SubjectSHA256, b.Attestation.Issuer, b.Attestation.PromotionState)
-	fmt.Fprintf(w, "  bound: %s\n", describeMatch(b.Artifact.Match, b.Artifact.Layers))
+	fmt.Fprintf(w, "  bound: %s\n", describeMatch(b.Artifact.Match, b.Artifact.ModelRoot, b.Artifact.Layers))
 	fmt.Fprintf(w, "  binding signed with key %s (%s)\n", attest.ShortID(keyID), ociattest.BindingPredicateType)
 	fmt.Fprintf(w, "  Socair referrer %s, via the %s\n", a.Referrer.Digest, a.Via)
 	fmt.Fprintf(w, "  Sigstore bundle referrer %s, via the %s (what cosign verify-attestation and Kyverno read)\n", a.Bundle.Digest, a.BundleVia)
 	fmt.Fprintf(w, "  not covered: the manifest's config blob (%s)\n", b.Artifact.ConfigMediaType)
+	if b.Artifact.Match == ociattest.MatchModelRoot {
+		fmt.Fprintln(w, "  "+notCoveredModelRoot(b.Artifact.ModelRoot, b.Artifact.Layers))
+	}
 }
 
-func describeMatch(kind string, layers []ociattest.Layer) string {
+// notCoveredModelRoot says what a model-root binding leaves out: the base
+// layers and the image config, which a container that runs the image runs.
+func notCoveredModelRoot(root string, layers []ociattest.Layer) string {
+	n, entries := 0, 0
+	for _, l := range layers {
+		if l.Role == ociattest.RoleBase {
+			n++
+			entries += l.Entries
+		}
+	}
+	if n == 0 {
+		return "not covered: nothing outside /" + root + " (the image holds only the model root)"
+	}
+	return fmt.Sprintf("not covered: %d base layer(s) (%d entries) outside /%s, checked only for not reaching into it; their content and the image config are not examined, and a container that runs this image (KServe ModelCar) runs them", n, entries, root)
+}
+
+func describeMatch(kind, root string, layers []ociattest.Layer) string {
+	if kind == ociattest.MatchModelRoot {
+		files, model := 0, 0
+		for _, l := range layers {
+			files += len(l.Files)
+			if l.Role == ociattest.RoleModel {
+				model++
+			}
+		}
+		return fmt.Sprintf("the image's /%s holds exactly the attested file(s), %d, from %d of its %d layers, as containerd, CRI-O, and KServe's oci+fetch unpack them (layer rules %s)", root, files, model, len(layers), ociattest.LayerRules)
+	}
 	if kind == ociattest.MatchDirectory {
 		return fmt.Sprintf("each of the manifest's %d layers is an attested file, at its path, and every attested file is a layer", len(layers))
 	}
@@ -170,7 +204,10 @@ func printVerified(w io.Writer, res *ociattest.Result, acceptorsGiven bool) {
 		fmt.Fprintf(w, "  verified: referrer %s\n", f.Referrer.Digest)
 		fmt.Fprintf(w, "    binding signed by key %s at %s, for this manifest digest\n", attest.ShortID(b.KeyID), b.BoundUTC)
 		fmt.Fprintf(w, "    attestation issued by %s (%s), signed by key %s\n", f.Issuer, how, attest.ShortID(f.Attestation.KeyID))
-		fmt.Fprintf(w, "    artifact sha256:%s (%s): %s\n", f.Attestation.SHA256, d.Artifact.FileName, describeMatch(f.Match.Kind, f.Match.Layers))
+		fmt.Fprintf(w, "    artifact sha256:%s (%s): %s\n", f.Attestation.SHA256, d.Artifact.FileName, describeMatch(f.Match.Kind, f.Match.ModelRoot, f.Match.Layers))
+		if f.Match.Kind == ociattest.MatchModelRoot {
+			fmt.Fprintln(w, "    "+notCoveredModelRoot(f.Match.ModelRoot, f.Match.Layers))
+		}
 		fmt.Fprintf(w, "    promotion %s, %d check(s), document %s\n", d.PromotionAuthorization.State, len(d.Checks), d.Verification.DocumentHash)
 		if pa := d.PromotionAuthorization; pa.State == "authorized_with_conditions" {
 			switch {
