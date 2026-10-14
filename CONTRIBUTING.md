@@ -82,7 +82,9 @@ negotiable:
   change touches the Go model, the schema, the TypeScript types, and the golden
   report together.
 
-`CLAUDE.md` describes the architecture in more depth.
+[`AGENTS.md`](AGENTS.md) describes the architecture in more depth. It is also
+the guide coding agents read; `CLAUDE.md` imports it for Claude Code, and
+personal instructions go in an uncommitted `CLAUDE.local.md`.
 
 ## AI-assisted contributions
 
