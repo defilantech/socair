@@ -25,7 +25,7 @@ generated corpus, on 2026-10-04; CI does not re-run them.
   names the file (`SOCAIR_DENYLIST`). No other scanner here was given any of
   them. With Socair's defaults (none of the three), the remapped tokenizer and
   the near-miss template pass and the known-bad file is withheld as a gap, so
-  Socair detects 41 of 46. Scores with the cases that need an input left out
+  Socair detects 49 of 55. Scores with the cases that need an input left out
   follow the comparison table.
 - **The attacks are defanged.** Each case keeps the attack's structure (the
   gadget, the opcodes, the archive trick, the template construct) and swaps its
@@ -38,7 +38,7 @@ generated corpus, on 2026-10-04; CI does not re-run them.
   - in-the-wild malicious uploads;
   - the 7z-wrapped nullifAI samples;
   - the ShadowPickle corpus (arXiv 2607.17503).
-- **Few benign controls.** There are 7 controls. False positives on real
+- **Few benign controls.** There are 8 controls. False positives on real
   models are measured separately, on real corpora, in
   [false-positive-baseline.md](false-positive-baseline.md).
 
@@ -46,19 +46,19 @@ generated corpus, on 2026-10-04; CI does not re-run them.
 
 | Check row | Cases | Detected (FAIL or LEAD) | Withheld as a gap (NOT_TESTED) | Missed (PASS) |
 |---|---|---|---|---|
-| Chat template | 10 | 9 | 0 | 1 |
+| Chat template | 11 | 10 | 0 | 1 |
 | File inventory and payloads | 7 | 6 | 0 | 1 |
 | Format and structure | 2 | 2 | 0 | 0 |
 | Known-bad hash match | 1 | 1 | 0 | 0 |
 | Pickle opcode scan | 22 | 22 | 0 | 0 |
-| Remote code | 1 | 1 | 0 | 0 |
+| Remote code | 9 | 8 | 0 | 1 |
 | Tokenizer config | 3 | 3 | 0 | 0 |
-| **All** | **46** | **44** | **0** | **2** |
+| **All** | **55** | **52** | **0** | **3** |
 
-Benign controls flagged (FAIL or LEAD on any row): 0 of 7.
+Benign controls flagged (FAIL or LEAD on any row): 0 of 8.
 
 Three of these detections depend on a reference input (see "Read this first");
-with Socair's defaults it detects 41 of 46.
+with Socair's defaults it detects 49 of 55.
 
 Check set tier1/0.8 replaced the pickle row's import allowlist with a typed
 grammar (`socair-wo/1`, see [check-set.md](check-set.md)) and added three
@@ -88,6 +88,32 @@ storage, and names that class `torch.storage.UntypedStorage`; the grammar
 knew only `torch.UntypedStorage`, which torch.save does not write, so the
 control was a LEAD before this change. No attack case changed outcome.
 
+Check set tier1/0.9 also adds `gguf-template-tuple-trigger` (#246): the
+conditional backdoor with its trigger phrases in a tuple,
+`m['content'] in ('Summarize the invoice', 'Total the invoice')`. The
+analysis took a list of constants as a content condition's literal and a
+tuple as not, so this was a miss (PASS) before; a tuple is now a sequence like
+a list, and the case is a LEAD. No other case changed outcome.
+Check set tier1/0.9 also narrows the Remote code row to the Python a loader
+would import (#254): modules a config names, files at a path a loader imports
+by convention, and the repository files they import. It adds the
+`control-dir-training-script` control, a directory with the `train_script.py`
+that sentence-transformers' most-downloaded repositories ship, which was a
+Remote code LEAD before this change. It adds seven cases the row detects:
+`dir-remote-code-imported` (a payload reached only through a relative import
+of the module auto_map names), `dir-remote-code-other-repo` and
+`dir-remote-code-outside-path` (auto_map naming code in another repository, or
+by an absolute path), `dir-st-custom-module` (a sentence-transformers module in
+modules.json, with no auto_map), `dir-custom-generate` (transformers'
+`custom_generate/generate.py`), `dir-inference-handler` (an Inference Endpoints
+`handler.py`), and `dir-diffusers-component-shadow` (a standard-looking
+model_index.json entry whose `unet/diffusers.py` diffusers loads in place of
+the library). Before this change each was a LEAD as well, through its auto_map
+or its `.py` file. And it pins `dir-script-caller-named` as a miss: a
+`custom_interface.py` that only the caller's code names (SpeechBrain's
+`foreign_class` takes the file name as an argument) is listed in the row's
+notes and not judged, where it was a LEAD. No earlier case changed outcome.
+
 | Case | Format | Technique | Row | Result | Severity |
 |---|---|---|---|---|---|
 | `control-pickle` | pickle | benign state-dict-shaped pickle written by CPython | (control: every row) | PASS |  |
@@ -97,6 +123,7 @@ control was a LEAD before this change. No attack case changed outcome.
 | `control-safetensors` | safetensors | benign safetensors | (control: every row) | PASS |  |
 | `control-model-directory` | model directory | benign transformers-style directory | (control: every row) | PASS |  |
 | `control-dir-torchscript` | model directory | benign directory with a TorchScript archive, rust_model.ot, as sentence-transformers ships | (control: every row) | PASS |  |
+| `control-dir-training-script` | model directory | benign directory with train_script.py, as sentence-transformers ships, that no loader imports | (control: every row) | PASS |  |
 | `pickle-os-system-p2` | pickle | os.system via GLOBAL + REDUCE, protocol 2 | Pickle opcode scan | FAIL | critical |
 | `pickle-os-system-p4` | pickle | os.system via STACK_GLOBAL, protocol 4 (the Python 3.8+ default) | Pickle opcode scan | FAIL | critical |
 | `pickle-builtins-exec` | pickle | builtins.exec of a code string | Pickle opcode scan | FAIL | critical |
@@ -124,6 +151,7 @@ control was a LEAD before this change. No attack case changed outcome.
 | `gguf-template-hidden-instruction` | gguf | instruction hidden with zero-width characters | Chat template | LEAD | medium |
 | `gguf-template-plain-guidance` | gguf | a default system prompt that steers answers as ordinary guidance | Chat template | PASS |  |
 | `gguf-template-macro-conditional` | gguf | a system turn emitted from a macro only when a message carries a trigger | Chat template | LEAD | high |
+| `gguf-template-tuple-trigger` | gguf | system instruction injected only when the user's message is one of a tuple of trigger phrases | Chat template | LEAD | high |
 | `gguf-template-reviewed-near-miss` | gguf | a reviewed template with a branch that prefills the answer when a message carries a trigger | Chat template | LEAD | high |
 | `gguf-metadata-base64` | gguf | base64 payload in a metadata string | File inventory and payloads | FAIL | high |
 | `gguf-metadata-array-payload` | gguf | base64 payload in a metadata string array | File inventory and payloads | FAIL | high |
@@ -134,6 +162,14 @@ control was a LEAD before this change. No attack case changed outcome.
 | `safetensors-appended-bytes` | safetensors | bytes appended past the tensors (a polyglot tail) | Format and structure | FAIL | high |
 | `safetensors-metadata-script` | safetensors | a script in the header metadata | File inventory and payloads | FAIL | high |
 | `dir-remote-code` | model directory | auto_map pointing at repository code that runs a command | Remote code | LEAD | medium |
+| `dir-remote-code-imported` | model directory | auto_map naming a clean module that imports repository code that runs a command | Remote code | LEAD | medium |
+| `dir-remote-code-other-repo` | model directory | auto_map naming code in another repository, which the loader fetches | Remote code | LEAD | medium |
+| `dir-remote-code-outside-path` | model directory | auto_map naming a module by an absolute path outside the directory | Remote code | LEAD | medium |
+| `dir-st-custom-module` | model directory | a sentence-transformers module in modules.json that runs a command, with no auto_map | Remote code | LEAD | medium |
+| `dir-custom-generate` | model directory | custom_generate/generate.py that runs a command, named by no config | Remote code | LEAD | medium |
+| `dir-inference-handler` | model directory | an Inference Endpoints handler.py that runs a command, imported without trust_remote_code | Remote code | LEAD | medium |
+| `dir-diffusers-component-shadow` | model directory | a standard-looking diffusers component whose folder holds a file named after its library | Remote code | LEAD | medium |
+| `dir-script-caller-named` | model directory | custom_interface.py that runs a command, which only the caller's code names (SpeechBrain foreign_class) | Remote code | PASS |  |
 | `dir-pickle-weights` | model directory | pytorch_model.bin with a pickle gadget beside safe weights | Pickle opcode scan | FAIL | critical |
 | `dir-pickle-renamed` | model directory | a pickle gadget named notes.txt beside safe weights | Pickle opcode scan | FAIL | critical |
 | `dir-torch-zip-renamed` | model directory | a PyTorch zip checkpoint with a gadget, named weights.dat | Pickle opcode scan | FAIL | critical |
@@ -144,7 +180,7 @@ control was a LEAD before this change. No attack case changed outcome.
 | `dir-normalizer-injects-special` | model directory | a normalizer that rewrites input into a special token | Tokenizer config | LEAD | high |
 | `dir-known-bad-hash` | model directory | a file whose hash is on the known-bad list | Known-bad hash match | FAIL | critical |
 
-There are two misses. The first is the published known miss: a default system prompt that steers
+There are three misses. The first is the published known miss: a default system prompt that steers
 answers as ordinary guidance, with no override phrase, URL, obfuscation, or
 condition on the user's message. It is on the
 [detection ceiling](detection-ceiling.json). Since tier1/0.8 the row quotes
@@ -156,9 +192,18 @@ that is not a pickle's. It is stated in [check-set.md](check-set.md) and in
 every directory report that has no pickle, whose File inventory row says no
 file is named as a pickle or begins as one "(a protocol 2 to 5 stream, or a
 zip holding a pickle)". It is not a ceiling bullet: something must still load
-the file by name. Standard loaders do not, and a repository that ships its own
-loader ships code, which the Remote code row raises as a LEAD; a loader already
-in the serving stack is outside what a scan of the artifact can see.
+the file by name. Standard loaders do not, and a repository whose own loader
+code a config names, or sits where a loader imports it by its path, is a
+Remote code LEAD; a loader already in the serving stack, or a script a person
+runs, is outside what a scan of the artifact can see.
+
+The third is `dir-script-caller-named`, repository Python that no config
+names and no loader imports by its path: here SpeechBrain's `foreign_class`,
+which imports the file its caller names. Since #254 the Remote code row lists
+such a file in its notes and does not judge it, because Socair cannot tell
+whether anything runs it, and its PASS statement says so. Before, every `.py`
+file was a LEAD, which also withheld every repository that ships a training
+or evaluation script.
 
 ## Other scanners on the same files (2026-10-04)
 
@@ -176,9 +221,12 @@ rendered-template cases `gguf-template-macro-conditional` and
 `pickle-ordereddict-code-string`, `pickle-nested-loader`, and
 `pickle-memo-reput`), and the four added with #186 (`dir-pickle-renamed`,
 `dir-torch-zip-renamed`, `dir-pickle-protocol0-renamed`, and the
-`control-dir-torchscript` control), and the `control-torch-zip-untyped`
-control added with #233, so its counts cover the cases before them; the other
-scanners have not been run on those eleven. A *suspicious* result counts as a finding, as Socair's LEAD does:
+`control-dir-torchscript` control), the `control-torch-zip-untyped`
+control added with #233, `gguf-template-tuple-trigger` added with #246, and
+the nine added with #254 (the seven Remote code cases,
+`dir-script-caller-named`, and the `control-dir-training-script` control), so
+its counts cover the cases before them; the other scanners have not been run
+on those twenty-one. A *suspicious* result counts as a finding, as Socair's LEAD does:
 picklescan's suspicious globals and Fickling's SUSPICIOUS. "Not scanned" means
 the tool skipped the file, could not parse it, or does not support the format.
 
@@ -241,8 +289,8 @@ How to read it:
 
 With the three cases that need a Socair-only input left out
 (`gguf-tokenizer-remapped`, `gguf-template-reviewed-near-miss`, and
-`dir-known-bad-hash`), Socair detects 41 of 43 attacks with check set
-tier1/0.8 (34 of 35 in the 2026-10-04 run, which predates the near-miss case),
+`dir-known-bad-hash`), Socair detects 49 of 52 attacks with check set
+tier1/0.9 (34 of 35 in the 2026-10-04 run, which predates the near-miss case),
 and the two formats they belong to read, from that run:
 
 | Format | Scanner | Attacks detected | Attacks not scanned |
@@ -263,6 +311,7 @@ and the two formats they belong to read, from that run:
 | Case | Socair | ModelAudit | picklescan | Fickling | ModelScan |
 |---|---|---|---|---|---|
 | `control-dir-torchscript` | clean | not run | not run | not run | not run |
+| `control-dir-training-script` | clean | not run | not run | not run | not run |
 | `control-gguf` | clean | clean | clean | finding (not a pickle) | could not scan |
 | `control-model-directory` | clean | clean | could not scan | could not scan | could not scan |
 | `control-pickle` | clean | clean | finding (suspicious) | finding | clean |
@@ -277,6 +326,14 @@ and the two formats they belong to read, from that run:
 | `dir-pickle-renamed` | finding | not run | not run | not run | not run |
 | `dir-pickle-weights` | finding | finding | finding | could not scan | finding |
 | `dir-remote-code` | finding | clean | could not scan | could not scan | could not scan |
+| `dir-remote-code-imported` | finding | not run | not run | not run | not run |
+| `dir-remote-code-other-repo` | finding | not run | not run | not run | not run |
+| `dir-remote-code-outside-path` | finding | not run | not run | not run | not run |
+| `dir-st-custom-module` | finding | not run | not run | not run | not run |
+| `dir-custom-generate` | finding | not run | not run | not run | not run |
+| `dir-inference-handler` | finding | not run | not run | not run | not run |
+| `dir-diffusers-component-shadow` | finding | not run | not run | not run | not run |
+| `dir-script-caller-named` | clean | not run | not run | not run | not run |
 | `dir-torch-zip-renamed` | finding | not run | not run | not run | not run |
 | `dir-template-ssti` | finding | finding | could not scan | could not scan | could not scan |
 | `gguf-control-token-instruction` | finding | clean | clean | finding (not a pickle) | could not scan |
@@ -293,6 +350,7 @@ and the two formats they belong to read, from that run:
 | `gguf-template-macro-conditional` | finding | not run | not run | not run | not run |
 | `gguf-template-plain-guidance` | clean | clean | clean | finding (not a pickle) | could not scan |
 | `gguf-template-reviewed-near-miss` | finding | not run | not run | not run | not run |
+| `gguf-template-tuple-trigger` | finding | not run | not run | not run | not run |
 | `gguf-tokenizer-remapped` | finding | clean | clean | finding (not a pickle) | could not scan |
 | `pickle-asyncio-subprocess` | finding | finding | finding | finding | clean |
 | `pickle-builtins-eval` | finding | finding | finding | finding | could not scan |

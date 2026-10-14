@@ -49,7 +49,7 @@ that gap. Nothing passes silently.
 | Tokenizer config | Special-token ids that name no token; tables that disagree; control tokens carrying instructions; normalizers that rewrite input into control tokens |
 | Quant match | A file named for a quantization that holds none of its tensors |
 | Pickle opcode scan | Code execution reachable from a pickle checkpoint or a NumPy object array. A PASS means every pickle conforms to a typed grammar: it builds only tensors and plain containers, with each call's arguments checked and each storage matched to its record |
-| Remote code | Code a loader would run with `trust_remote_code` (`auto_map`, `.py` files) |
+| Remote code | Python a loader would import from the repository: modules a config names (`auto_map`, `custom_pipelines`, sentence-transformers and diffusers modules), files loaders import by their path, and what those import |
 | Hash, provenance, lineage | An origin bound to this exact hash at an immutable commit, or a verified publisher signature (OpenSSF Model Signing) |
 | Known-bad hash match | The artifact, or any file in it, on a known-bad list |
 | License policy (opt-in) | A license outside the allowed list you configure (`SOCAIR_LICENSE_POLICY`); without one, the report still names the license the artifact states and any disagreement between its model card, LICENSE file, and GGUF metadata |
@@ -89,8 +89,9 @@ gh attestation verify "$(brew --prefix socair)/bin/socair" --repo defilantech/so
 
 Or download a release yourself. Releases are GitHub pre-releases for now. Each
 holds `socair` and the optional `socair-sigstore` helper for linux and darwin
-on amd64 and arm64, a `SHA256SUMS` file, an SBOM, and a build-provenance
-attestation for every binary. Check the binary before you run it:
+on amd64 and arm64, a `SHA256SUMS` file, and a build-provenance attestation
+for every binary; releases after v0.1.0-rc.3 also hold an SBOM. Check the
+binary before you run it:
 
 ```
 V=0.1.0-rc.3
@@ -153,8 +154,14 @@ Sign and verify:
 ./socair key gen --out operator --issuer "Acme ML Platform"
 ./socair sign --key operator.key --report report.json   # report.dsse.json
 ./socair verify report.dsse.json --trusted operator.pub --artifact model.gguf
+./socair render --attestation report.dsse.json --trusted operator.pub --artifact model.gguf --pdf report.pdf   # the signed attestation, to file
 ./socair sign --key operator.key --bom --attestation report.dsse.json   # report.cdx.dsse.json, a signed CycloneDX BOM
 ```
+
+`socair render <path>` scans again and writes an unsigned draft, marked
+UNSIGNED. `--attestation` verifies the envelope as `verify` does and renders
+what was signed; `--report report.json` renders a saved report without
+scanning again, still unsigned.
 
 For a model packaged as an OCI artifact, bind the attestation to it in the
 registry and check it there ([docs/oci.md](docs/oci.md)):

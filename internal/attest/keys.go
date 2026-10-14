@@ -151,6 +151,11 @@ func LoadPrivateKey(path string) (*PrivateKey, error) {
 		return nil, err
 	}
 	if fi.Mode().Perm()&0o077 != 0 {
+		// A public key handed over by mistake is readable by design: name
+		// the mistake, rather than ask for a chmod that cannot help.
+		if isPublicKeyFile(path) {
+			return nil, errPublicKeyGiven(path)
+		}
 		return nil, fmt.Errorf("private key %s is readable by other users (mode %v); chmod 600 it", path, fi.Mode().Perm())
 	}
 	b, err := os.ReadFile(path)
@@ -158,6 +163,9 @@ func LoadPrivateKey(path string) (*PrivateKey, error) {
 		return nil, err
 	}
 	blk, _ := pem.Decode(b)
+	if blk != nil && blk.Type == "PUBLIC KEY" {
+		return nil, errPublicKeyGiven(path)
+	}
 	if blk == nil || blk.Type != "PRIVATE KEY" {
 		return nil, fmt.Errorf("%s is not a PEM private key", path)
 	}
@@ -174,6 +182,20 @@ func LoadPrivateKey(path string) (*PrivateKey, error) {
 		return nil, err
 	}
 	return &PrivateKey{ID: id, Issuer: issuerOf(b), key: priv}, nil
+}
+
+// isPublicKeyFile reports whether path holds a PEM public key.
+func isPublicKeyFile(path string) bool {
+	b, err := os.ReadFile(path)
+	if err != nil {
+		return false
+	}
+	blk, _ := pem.Decode(b)
+	return blk != nil && blk.Type == "PUBLIC KEY"
+}
+
+func errPublicKeyGiven(path string) error {
+	return fmt.Errorf("%s is a public key; pass the private key it pairs with (socair key gen writes it as <prefix>.key)", path)
 }
 
 // LoadPublicKey reads a PKIX PEM Ed25519 public key and returns its id.

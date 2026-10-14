@@ -103,7 +103,7 @@ func (a *Assessment) Admits() error {
 	case len(gaps) > 0:
 		return fmt.Errorf("attestation state %q withholds promotion: these rows are NOT_TESTED and have no signed acceptance: %s. "+
 			"An acceptor signs one (socair accept), then the operator re-issues the attestation with it (socair sign --acceptance)",
-			a.State, strings.Join(gaps, ", "))
+			a.State, report.RowNames(gaps))
 	}
 	return fmt.Errorf("attestation state %q withholds promotion", a.State)
 }

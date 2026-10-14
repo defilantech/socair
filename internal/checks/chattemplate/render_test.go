@@ -22,6 +22,9 @@ func TestGuardLiterals(t *testing.T) {
 		"{% for m in messages %}{% if m.role == 'user' %}x{% endif %}{% endfor %}":                                nil,
 		"{% for m in messages %}{% if m.content is string and m.content %}{{ m.content }}{% endif %}{% endfor %}": nil,
 		"{% set k = 'inv' ~ 'oice' %}{% for m in messages %}{% if k in m['content'] %}x{% endif %}{% endfor %}":   {"invoice"},
+		// A tuple is a sequence like a list: membership and startswith take one.
+		"{% for m in messages %}{% if m.content in ('a', 'b') %}x{% endif %}{% endfor %}":          {"a", "b"},
+		"{% for m in messages %}{% if m.content.startswith(('p', 'q')) %}x{% endif %}{% endfor %}": {"p", "q"},
 	}
 	for tpl, want := range cases {
 		nodes, err := jinja.Parse(tpl)

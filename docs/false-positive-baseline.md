@@ -976,6 +976,361 @@ its class whatever its device (`getattr(torch, ...)` for a typed one,
 `type(obj)` for an untyped one; neither torch 2.0.0 nor 2.14.1 defines a
 `torch.cuda.UntypedStorage`) and puts the device in the location field.
 
+## Chat templates: content-part types (2026-10-14, check set tier1/0.9)
+
+TranslateGemma's template (`google-translategemma-4b-it.jinja`, added to
+llama.cpp's `models/templates` in
+[`bd4eeaa`](https://github.com/ggml-org/llama.cpp/commit/bd4eeaa047006cb1fe71999fbd11134b5836e167),
+after CI's pin) was a LEAD (`content-conditional-injection`) on six
+instruction fragments (#246). It reads the user message's one content part
+and branches on `content["type"] == 'text'` and `== 'image'`, and each branch
+adds its documented translation prompt ("Produce only the ... translation,
+without any additional explanations ...") to the user turn. The static walk
+read that as instruction text under a condition on message content. The
+template refuses every probe conversation, since it needs a content part with
+a `source_lang_code` and a `target_lang_code` from its own language table, so
+it was never rendered.
+
+**The rule.** A content part's `type` is set by the client for every part of
+that kind, so a branch on a standard type is how a template handles a kind of
+input, as a branch on a role is, and not a trigger. A comparison of a content
+part's type field with a standard type is now structural:
+`part.type == 'image'`, `part['type'] != 'text'`, or
+`part.type in ['image', 'video']` (a list or tuple whose every item is
+standard), where the part is read straight from message content (a name bound
+to it, `message.content`, or `content[i]`). Such a comparison no longer marks
+its branch as content-conditional and no longer feeds a trigger probe. What
+stays:
+
+- A system turn emitted under such a branch is still a LEAD
+  (`content-conditional-injection`): a request's media type opening a system
+  turn is the Pillar shape, not how a template handles input. This now holds
+  in the chain's else as well, where nothing was judged before.
+- Text such a branch adds, and text in the else of its chain, is listed in the
+  row's notes, not judged, as rendered text is: "Under a condition on a
+  content part's type ..., which no probe conversation renders, it emits N
+  text segment(s): ...". No probe conversation carries content parts, so the
+  render never shows it.
+- Everything else is still a trigger: a value that is not a standard type
+  (`part.type == 'activate'`), a list that mixes one in, another field
+  (`part['source_lang_code'] == 'xx'`), a standard type compared on another
+  field (`part.text == 'image'`), a type read through a filter or a call
+  (`part.type|lower == 'text'`, `part.get('type')`), a substring test
+  (`'text' in part.type`), and a standard type combined with a content test
+  (`part.type == 'text' and 'x' in part.text`, which is judged on the
+  content test).
+
+**The standard types**, from two primary sources at pinned versions:
+
+- OpenAI Chat Completions, as openai-python
+  [v3.31.0](https://github.com/openai/openai-python/tree/v3.31.0/src/openai/types/chat)
+  types it: a user message's content is a string or a list of
+  `ChatCompletionContentPartParam`
+  ([`chat_completion_user_message_param.py` L19](https://github.com/openai/openai-python/blob/v3.31.0/src/openai/types/chat/chat_completion_user_message_param.py#L19)),
+  the union of parts typed `text`, `image_url`, `input_audio`, and `file`
+  ([`chat_completion_content_part_param.py` L46 and L57-L62](https://github.com/openai/openai-python/blob/v3.31.0/src/openai/types/chat/chat_completion_content_part_param.py#L46-L62),
+  [`..._text_param.py` L26](https://github.com/openai/openai-python/blob/v3.31.0/src/openai/types/chat/chat_completion_content_part_text_param.py#L26),
+  [`..._image_param.py` L39](https://github.com/openai/openai-python/blob/v3.31.0/src/openai/types/chat/chat_completion_content_part_image_param.py#L39),
+  [`..._input_audio_param.py` L35](https://github.com/openai/openai-python/blob/v3.31.0/src/openai/types/chat/chat_completion_content_part_input_audio_param.py#L35)).
+  A system message takes `text` parts only
+  ([L20](https://github.com/openai/openai-python/blob/v3.31.0/src/openai/types/chat/chat_completion_system_message_param.py#L20)),
+  and an assistant message `text` and `refusal`
+  ([L25](https://github.com/openai/openai-python/blob/v3.31.0/src/openai/types/chat/chat_completion_assistant_message_param.py#L25)).
+- Hugging Face transformers
+  [v5.19.0](https://github.com/huggingface/transformers/tree/v5.19.0):
+  `ProcessorMixin.apply_chat_template` rewrites OpenAI's `image_url` parts as
+  `image` parts
+  ([`processing_utils.py` L2132-L2144](https://github.com/huggingface/transformers/blob/v5.19.0/src/transformers/processing_utils.py#L2132-L2144))
+  and loads the media of `image`, `video`, and `audio` parts
+  ([L2157-L2166](https://github.com/huggingface/transformers/blob/v5.19.0/src/transformers/processing_utils.py#L2157-L2166));
+  the multimodal chat-template guide writes the text beside them as `text`
+  parts
+  ([`chat_templating_multimodal.md` L36-L42 and L116](https://github.com/huggingface/transformers/blob/v5.19.0/docs/source/en/chat_templating_multimodal.md#L36-L42)).
+
+The union of the user-message parts is `text`, `image`, `image_url`,
+`audio`, `input_audio`, `video`, and `file`. Left out, so they stay
+triggers: `refusal` (an assistant-only part in OpenAI's API), `thinking`
+(Mistral's reasoning chunk, in neither source; Ministral 3 compares it and
+PASSes with it as a trigger, since its branch adds no prose), and `audio_url`
+or `video_url` (in neither source; Qwen2.5-Omni tests `audio_url` as a key).
+
+**Measured** before (main at `ddfe650`) and after, with
+`TestRealTemplatesAreNotFlagged` and a stand-in bos and eos token as above:
+
+| Corpus | Before | After |
+|---|---|---|
+| llama.cpp `models/templates` at `7fe450e` (CI's pin, 70 templates) | 70 PASS | 70 PASS; every logged line unchanged, beside the new content-part count (0) |
+| llama.cpp `models/templates` at `bd4eeaa` (73 templates) | 72 PASS, 1 LEAD (TranslateGemma) | 73 PASS |
+| 28 multimodal templates from 23 Hugging Face repos (below) | 28 PASS | 28 PASS |
+
+The rule applies in 14 of the 73 llama.cpp templates (Apertus, Apriel 1.5
+and 1.6, Devstral Small 2507, Gemma 4 31B and its interleaved variant,
+Granite 4.0 and 4.1, Kimi K2, MiniMax M1 and M3, Ministral 3 14B Reasoning,
+Mistral Small 3.2, TranslateGemma) and in 16 of the 28 Hugging Face
+templates. In all of them but TranslateGemma the branches add special tokens
+or the part's own text, so nothing is listed. In 22 of them a standard type
+no longer feeds a trigger probe; those probes (the literal put in a string
+message) had changed no render. TranslateGemma's row now PASSes, not
+rendered as before (its refused probes fall from 7 to 5, the two trigger
+probes for `text` and `image` gone), and lists its six fragments under the
+content-part sentence. A standard type tested another way keeps its trigger
+probe, and those templates PASS either way, since the branches add only
+special tokens: key presence (`'image' in content`, in the Qwen VL and Omni
+templates, Kimi K2, and Kimi-VL), a filter (`item.type|lower`, Cohere2MoE),
+and `"text" in messages[0].content` (Apertus).
+
+The Hugging Face set is each repo's chat template at the commit named, from
+`chat_template.jinja`, `chat_template.json`, or `tokenizer_config.json`
+(distinct texts only), or from the Hub API's `config.tokenizer_config` for a
+gated repo: Qwen2-VL 7B Instruct `eed1309`, Qwen2.5-VL 7B Instruct `cc59489`,
+Qwen2-Audio 7B Instruct `0a09522`, Qwen2.5-Omni 7B `ae9e169`, Qwen3-VL 8B
+Instruct `0c351dd`, SmolVLM Instruct `81cd9a7`, SmolVLM2 2.2B Instruct
+`482adb5`, Idefics3 8B Llama3 `fddb4ff` (two), llava-1.5 7b-hf `b234b80`,
+llava-onevision qwen2 7b `0d50680` (two), llava-v1.6 mistral 7b `2424fdd`
+(two), Phi-3.5 vision `12b77fb`, Phi-4 multimodal `93f923e`, Gemma 3 4B it
+`093f9f3`, Llama 3.2 11B Vision Instruct `9eb2daa`, Mistral Small 3.1 24B
+`68faf51`, pixtral-12b (mistral-community) `c2756cb`, InternVL3 8B hf
+`259a3b6`, Granite Vision 3.2 2B `ec89419` (two), Aya Vision 8B `d7601ac`,
+Kimi-VL A3B Instruct `398eede` (two), GLM-4.1V 9B Thinking `3c1471e`, LFM2-VL
+1.6B `2c2e7f9`. Gemma 3n, TranslateGemma, and Llama 4 Scout are gated and
+their API config carries no template, so they were not measured here;
+TranslateGemma's text is the llama.cpp copy above.
+
+**Why not probes with content parts.** The issue's other option was to give
+the probe set conversations whose content is a list of parts, so such
+templates render and their text is listed from the render. It would not have
+rendered TranslateGemma: a generic part without a language code from its
+table is refused at `languages[source_lang_code]`, as every probe is now.
+It is a probe-set change of its own (`probes/v2`, with a fidelity measurement
+against Jinja2 like the one above), and it is what the two known misses below
+need; it is left for that change.
+
+**Evasion corpus.** Ten fixtures, from 25 to 35:
+
+| Fixture | Shape | Before | After |
+|---|---|---|---|
+| `benign-part-type-instructions.jinja` | TranslateGemma's shape: translation instructions under `part['type'] == 'text'` and `== 'image'` | LEAD | PASS, no findings, text listed |
+| `part-type-nonstandard-literal.jinja` | instructions under `part['type'] == 'activate'` | LEAD | LEAD |
+| `part-type-mixed-tuple.jinja` | instructions under `part.type in ('image', 'activate')` | PASS | LEAD |
+| `part-field-not-type.jinja` | instructions under `part['source_lang_code'] == 'xx'` | LEAD | LEAD |
+| `part-standard-type-other-field.jinja` | instructions under `part['text'] == 'image'` | LEAD | LEAD |
+| `part-type-and-content.jinja` | instructions under `part.type == 'text' and 'quarterly report' in part.text` | LEAD | LEAD |
+| `part-type-system-turn.jinja` | a system turn under `part.type == 'image_url'` | LEAD | LEAD |
+| `tuple-membership-trigger.jinja` | a system turn under `message['content'] in ('Summarize the invoice', 'Total the invoice')` | PASS | LEAD |
+| `known-miss-part-type-else.jinja` | instructions in the else of a chain that names all seven standard types, so only a non-standard type reaches it | PASS, not listed | PASS, listed (known miss) |
+| `known-miss-part-type-macro-system.jinja` | a system turn from a macro called under `part.type == 'image'` | PASS | PASS (known miss) |
+
+The tuple rows are a gap found while writing the mixed-list case: the
+analysis took a list literal as a constant and a tuple literal as not, so
+`content in ('a', 'b')` and `content.startswith(('a', 'b'))` were not content
+conditions at all and got no trigger probe. A tuple is now a sequence like a
+list. No template in the three corpora tests content against a tuple, so no
+verdict there changes. The detection benchmark pins the shape as
+`gguf-template-tuple-trigger`, a miss before and a LEAD now.
+
+The two known misses are what no probe reaches while the probes carry no
+content parts. The else of a chain that names every standard type runs only
+for a type no client sends, which is a trigger without a literal; its text is
+listed, not judged, since judging it would also judge the ordinary fallback
+for a type a template does not handle. A macro's text is attributed to its
+call site only by the render, which never takes the part-type branch.
+Neither was caught before this change.
+
+**Wording.** The row's fixed PASS statement and the published ceiling
+(version v5) said a PASS carries no condition on message content, and that
+only instructions without one go unjudged. Both now name the exception: a
+standard content-part type is not such a condition, and the text a template
+adds for one is listed, not judged.
+
+**CI.** The `real-template-corpus` job now pins llama.cpp at `bd4eeaa`
+(2026-10-07), 73 templates: the 70 at `7fe450e`, unchanged, and
+TranslateGemma, `IFM-K2-Horizon.jinja`, and
+`llm-jp-llm-jp-4.1-8b-thinking.jinja`. llama.cpp's master on 2026-10-14
+(`df18bee`) has the same `models/templates`, file for file.
+
+Reproduce:
+
+```
+SOCAIR_TEMPLATE_CORPUS=/path/to/templates go test ./internal/checks/chattemplate -run RealTemplates -v
+go test ./internal/checks/chattemplate -run 'EvasionCorpus|PartType|GuardLiterals' -v
+```
+
+The corpus test now also logs, per template, the text it emits under a
+content-part type condition.
+
+## Remote code: the Python a loader imports (2026-10-14, check set tier1/0.9)
+
+Every `.py` file in a model directory was a Remote code LEAD (#254), so
+`sentence-transformers/all-MiniLM-L6-v2`, pulled whole, could never cross the
+airlock: it ships `train_script.py`, which nothing imports. The row now names
+only the Python a loader would import, read from each loader's source at a
+pinned release:
+
+- transformers
+  [v5.19.0](https://github.com/huggingface/transformers/tree/v5.19.0/src/transformers)
+  and
+  [v4.57.6](https://github.com/huggingface/transformers/tree/v4.57.6/src/transformers):
+  `dynamic_module_utils.py` (`get_class_from_dynamic_module` splits a class
+  reference on `--` for another repository, then on its one `.` into a module
+  file and a class; `get_cached_module_file` opens `<module>.py` in the
+  directory it was given; `get_relative_imports` and
+  `get_relative_import_files` follow `from .x import` and `import .x`,
+  transitively, each joined to the first module's directory); the Auto classes
+  in `models/auto/` (auto_map in `config.json`, `tokenizer_config.json`,
+  `processor_config.json`, `preprocessor_config.json`,
+  `video_preprocessor_config.json`, and a sub-config's own auto_map through
+  `from_config`); `pipelines/__init__.py` (`custom_pipelines.<task>.impl`);
+  and `generation/utils.py`, whose `load_custom_generate` imports
+  `custom_generate/generate.py` when a model loads. In v4.57.6 it does so from
+  a local directory without `trust_remote_code` (it passes the local path as
+  local code); v5.19.0 asks for it.
+- sentence-transformers
+  [v6.1.0](https://github.com/huggingface/sentence-transformers/tree/v6.1.0/sentence_transformers):
+  `util/misc.py` (`import_module_class`: a class outside
+  `sentence_transformers.*` goes to transformers' `get_class_from_dynamic_module`,
+  then to `import_from_string`, with `trust_remote_code` required since 6.0),
+  `base/model.py` (each `modules.json` type), `base/modules/router.py`
+  (`types`), `sentence_transformer/modules/word_embeddings.py`
+  (`tokenizer_class`), `base/modules/dense.py` (`activation_function`, through
+  `import_from_string`), and `cross_encoder/model.py` (`activation_fn`).
+  [v5.7.0](https://github.com/huggingface/sentence-transformers/blob/v5.7.0/sentence_transformers/util/misc.py)
+  imports a custom module from a local directory without `trust_remote_code`.
+- diffusers
+  [v0.41.0](https://github.com/huggingface/diffusers/tree/v0.41.0/src/diffusers):
+  `pipelines/pipeline_loading_utils.py` (a `[file, class]` `_class_name` is a
+  custom pipeline in `<file>.py`; a component `[library, class]` is loaded
+  from `<component>/<library>.py` whenever that file exists, before the
+  library is imported), `models/auto_model.py` and
+  `modular_pipelines/modular_pipeline.py` (auto_map, resolved in the
+  component's subfolder).
+- The inference toolkits, which import a file by its path with no
+  `trust_remote_code`:
+  [huggingface-inference-toolkit 0.5.5](https://github.com/huggingface/huggingface-inference-toolkit/blob/0.5.5/src/huggingface_inference_toolkit/utils.py)
+  (`handler.py`, else the legacy `pipeline.py`, with the model directory first
+  on Python's path) and
+  [sagemaker-inference 1.10.1](https://github.com/aws/sagemaker-inference-toolkit/blob/v1.10.1/src/sagemaker_inference/environment.py)
+  as used by
+  [sagemaker-huggingface-inference-toolkit 2.7.0](https://github.com/aws/sagemaker-huggingface-inference-toolkit/blob/v2.7.0/src/sagemaker_huggingface_inference_toolkit/handler_service.py)
+  (`code/inference.py`, with `code/` on the path).
+
+**Method.** The row reads only JSON configs and Python files, so no weights
+were downloaded. Each repository's `.json` files (up to 16 MiB) and `.py`
+files were fetched at a pinned commit through the Hub API
+(`/api/models/<repo>/tree/<commit>`, then `/resolve/<commit>/<path>`), and
+the directory was scanned with `socair scan` built from `main` at `ddfe650`
+and from this change. The set: the 100 most-downloaded transformers models
+in the Hub's listing on 2026-10-14 (`library=transformers&sort=downloads`),
+plus 40 named ones: the rest of #254's survey, every jonatasgrosman
+wav2vec2-large-xlsr-53 model in 13 languages, and repositories that load
+their own code (auto_map, a sentence-transformers custom module,
+`custom_generate/`, an Inference Endpoints handler, diffusers custom
+components, `custom_pipelines`). 15 were not scanned: 6 are gated
+(`meta-llama/Llama-3.2-1B-Instruct`, `meta-llama/Llama-3.1-8B-Instruct`, and
+four pyannote repositories, one of which, `pyannote/speaker-diarization-3.1`,
+ships an Inference Endpoints `handler.py` the row would name), and 9 hold no
+JSON or Python file (GGUF, ComfyUI, and detector repositories). The gate:
+
+```
+SOCAIR_REMOTECODE_CORPUS="<dirs>" go test ./internal/checks/remotecode -run RealRepos -v
+```
+
+prints every row and fails if a repository with a top-level auto_map is not a
+LEAD. On the 125 scanned: 101 PASS, 24 LEAD, 0 NOT_TESTED, 0 FAIL.
+
+**Every changed result** (19 of 125):
+
+| Repository | Commit | Set | Before | After | Why |
+|---|---|---|---|---|---|
+| sentence-transformers/all-MiniLM-L6-v2 | `1110a243fdf4706b3f48f1d95db1a4f5529b4d41` | top 100 | LEAD | PASS | lists `train_script.py` |
+| sentence-transformers/all-mpnet-base-v2 | `e8c3b32edf5434bc2275fc9bab85f82640a19130` | top 100 | LEAD | PASS | lists `train_script.py` |
+| sentence-transformers/all-MiniLM-L12-v2 | `a50ef00143b4d5391434df20ae11632588ac25be` | named | LEAD | PASS | lists `train_script.py` |
+| sentence-transformers/all-distilroberta-v1 | `842eaed40bee4d61673a81c92d5689a8fed7a09f` | named | LEAD | PASS | lists `train_script.py` |
+| deepseek-ai/DeepSeek-V3.2 | `a7e62ac04ecb2c0a54d736dc46601c5606cf10a6` | top 100 | LEAD | PASS | lists `encoding/*.py` (2) and `inference/*.py` (4) |
+| deepseek-ai/DeepSeek-V4-Flash-0731 | `7872f01b1d1fe23eabc4c98b48bffcef5a386062` | top 100 | LEAD | PASS | lists `encoding/*.py` (2) and `inference/*.py` (4) |
+| Comfy-Org/z_image_turbo | `6fc90a3b1b653e935a0d175e260736de25b84df5` | top 100 | LEAD | PASS | lists `z_image_convert_original_to_comfy.py` |
+| jonatasgrosman/wav2vec2-large-xlsr-53-portuguese | `634ac655299bcdc46c83bc01da9bab52d2987e4f` | top 100 | LEAD | PASS | lists `eval.py` |
+| jonatasgrosman/wav2vec2-large-xlsr-53-dutch | `46f221381d200f7bef268309b3f02023ccf11fcc` | named | LEAD | PASS | lists `eval.py` |
+| jonatasgrosman/wav2vec2-large-xlsr-53-english | `569a6236e92bd5f7652a0420bfe9bb94c5664080` | named | LEAD | PASS | lists `eval.py` |
+| jonatasgrosman/wav2vec2-large-xlsr-53-french | `7c79e105a6525d38e1e69f640b974b4a679723cc` | named | LEAD | PASS | lists `eval.py` |
+| jonatasgrosman/wav2vec2-large-xlsr-53-german | `4b8a02957378d0f2da2ef74091156b032c485a89` | named | LEAD | PASS | lists `eval.py` |
+| jonatasgrosman/wav2vec2-large-xlsr-53-italian | `dab04a3e00d8326052f3fb22a6ff276b822f6131` | named | LEAD | PASS | lists `eval.py` |
+| jonatasgrosman/wav2vec2-large-xlsr-53-polish | `6b1cea36bd8bc5f65ec8081667cd9c0207d51970` | named | LEAD | PASS | lists `eval.py` |
+| jonatasgrosman/wav2vec2-large-xlsr-53-russian | `2329100508896c6d9b157019803ab5601e6f3406` | named | LEAD | PASS | lists `eval.py` |
+| jonatasgrosman/wav2vec2-large-xlsr-53-spanish | `96d7e9b4e4a78af515a3c6d3cee7c0826045d276` | named | LEAD | PASS | lists `eval.py` |
+| coqui/XTTS-v2 | `6c2b0d75eae4b7047358e3b6bd9325f857d43f77` | top 100 | NOT_TESTED | PASS | `config.json` holds `Infinity`, which Python's json module reads and encoding/json did not; it names no code |
+| absternator/pair-classification-pipeline | `3f25edd5e8ebb0d4edaba50aeda2438bcdcb9192` | named | PASS | LEAD | `custom_pipelines` names `__main__.PairClassificationPipeline`, a module the repository does not ship |
+| iryuki/pair-classification-pipeline | `489f90dcc2e5b32d4f2bdb5b543c021224755e20` | named | PASS | LEAD | the same |
+
+The two new LEADs are configs that tell `pipeline()` to import code the
+repository does not hold; neither ships a `.py` file, so the old rule passed
+them. The jonatasgrosman models in Arabic, Chinese, Japanese, and Persian ship
+no `eval.py` and PASSed before and after.
+
+**Every repository that loads its own code stayed a LEAD** (22), each naming
+the files below:
+
+| Repository | Commit | Patterns | Files named |
+|---|---|---|---|
+| microsoft/Phi-3-mini-4k-instruct | `f39ac1d28e925b323eae81227eaba4464caced4e` | auto_map | `configuration_phi3.py`, `modeling_phi3.py` (`sample_finetune.py` listed, not judged) |
+| deepseek-ai/DeepSeek-V3 | `e815299b0bcbac849fa540c768ef21845365c9eb` | auto_map | `configuration_deepseek.py`, `modeling_deepseek.py` (`inference/*.py` listed) |
+| deepseek-ai/DeepSeek-V2-Lite | `604d5664dddd88a0433dbae533b7fe9472482de0` | auto_map | `configuration_deepseek.py`, `modeling_deepseek.py` (`tokenization_deepseek_fast.py` listed: no config names it) |
+| THUDM/chatglm3-6b | `e9e0406d062cdb887444fe5bd546833920abd4ac` | auto_map, imported-code | `configuration_chatglm.py`, `modeling_chatglm.py`, `quantization.py`, `tokenization_chatglm.py` |
+| Qwen/Qwen-VL-Chat | `f57cfbd358cb56b710d963669ad1bcfb44cdcdd8` | auto_map, imported-code | `configuration_qwen.py`, `modeling_qwen.py`, `qwen_generation_utils.py`, `tokenization_qwen.py`, `visual.py` |
+| OpenGVLab/InternVL3-8B | `853e3a797a661694b1b8ece0cb72dc2b23e3dac9` | auto_map (two in `vision_config`), imported-code | `configuration_intern_vit.py`, `configuration_internvl_chat.py`, `conversation.py`, `modeling_intern_vit.py`, `modeling_internvl_chat.py` |
+| jinaai/jina-reranker-v2-base-multilingual | `9cfeff2df7d40d1b78e75e5e9cebec92a99813c9` | auto_map, imported-code | `configuration_xlm_roberta.py`, `modeling_xlm_roberta.py`, and the five files the latter imports, transitively (`stochastic_depth.py`, which nothing imports, listed) |
+| jinaai/jina-embeddings-v3 | `ab036b023d30b4d1138c4c3bfa9f0c445ab455d6` | auto_map (another repository), custom-module | `custom_st.py` from `modules.json`; `jinaai/xlm-roberta-flash-implementation` |
+| jinaai/jina-embeddings-v2-base-en | `322d4d7e2f35e84137961a65af894fda0385eb7a` | auto_map (another repository) | none here: `jinaai/jina-bert-implementation` |
+| nomic-ai/nomic-embed-text-v1.5 | `e9b6763023c676ca8431644204f50c2b100d9aab` | auto_map (another repository) | none here: `nomic-ai/nomic-bert-2048` |
+| Alibaba-NLP/gte-large-en-v1.5 | `104333d6af6f97649377c2afbde10a7704870c7b` | auto_map (another repository) | none here: `Alibaba-NLP/new-impl` |
+| microsoft/Florence-2-large | `21a599d414c4d928c9032694c424fb94458e3594` | auto_map (also in `preprocessor_config.json`) | `configuration_florence2.py`, `modeling_florence2.py`, `processing_florence2.py` |
+| moonshotai/Kimi-K2-Instruct | `fd1984e2b7a3350dbf7305fe73a4ede25c14de50` | auto_map (also in `tokenizer_config.json`) | `configuration_deepseek.py`, `modeling_deepseek.py`, `tokenization_kimi.py` |
+| MiniMaxAI/MiniMax-M1-80k | `8d1494b1a260e22040d5b9b2eb332eb44500b34d` | auto_map | `configuration_minimax_m1.py`, `modeling_minimax_m1.py` (`main.py` listed) |
+| nvidia/NV-Embed-v2 | `3fa59658547db50a1e8e3346cf057fd0c77ed6ef` | auto_map | `configuration_nvembed.py`, `modeling_nvembed.py` |
+| nvidia/Nemotron-H-8B-Base-8K | `94ea861e008c2dfced3e8e1302094024077aa04e` | auto_map | `configuration_nemotron_h.py`, `modeling_nemotron_h.py` |
+| nvidia/Llama-3.1-Nemotron-Nano-VL-8B-V1 | `437f4e28b989cc2d9a16b6767cc930cdf48797ff` | auto_map (also `vision_config`, another repository) | `configuration.py`, `image_processing.py`, `modeling.py`; `nvidia/C-RADIOv2-H` (`examples.py` listed) |
+| RadixArk/Kimi-K3-DSpark | `3c5bac301d9cf392706189d82ed947feca6c2f0f` | auto_map | `dspark.py` (`dflash.py` listed: `dspark.py` imports an installed `specforge` package, not it) |
+| transformers-community/custom_generate_example | `32179317786e615d26696cfc878c5d6bbb457873` | custom-generate | `custom_generate/generate.py` |
+| transformers-community/dola | `af6cdc351e7e0bd28a86ce32aac461494a09a9c1` | custom-generate | `custom_generate/generate.py` |
+| philschmid/stable-diffusion-v1-4-endpoints | `5726ea9d1f11846345d5e995cc872dbce0685722` | inference-handler | `handler.py` |
+| sayakpaul/show-1-base-with-code | `34109c6536a503cb8f7c564e78aad10351cc77ad` | custom-component | `pipeline_t2v_base_pixel.py`, `unet/showone_unet_3d_condition.py` |
+
+Nemotron-H's `config.json` holds `Infinity`. Before, it was a LEAD only for its
+`.py` files, and its auto_map was never read; with the strict decoder this
+change first used, it fell to NOT_TESTED, which is why configs are now decoded
+as Python's json module decodes them.
+
+**Against transformers' own closure.** For the 14 repositories whose auto_map
+names a module in the directory, a script holding `get_relative_imports` and
+`get_relative_import_files` copied verbatim from transformers v5.19.0
+listed every file transformers would read for each auto_map entry, and the
+row named exactly those files in each: no file missing, none extra.
+
+**Unchanged PASS** (84), among them every sentence-transformers repository
+whose `modules.json` names only library classes, the two `cross-encoder`
+models (their `sbert_ce_default_activation_function` is `torch.nn.*`),
+`sentence-transformers/LaBSE` (a
+Dense `activation_function` of `torch.nn.*`),
+`sentence-transformers/average_word_embeddings_glove.6B.300d` (a library
+`tokenizer_class`), `opensearch-project/opensearch-neural-sparse-encoding-doc-v3-distill`
+(a Router), `stabilityai/stable-diffusion-xl-base-1.0` (a standard
+`model_index.json`), and `lightonai/GTE-ModernColBERT-v1`, whose
+`modules.json` names `pylate.models.Dense.Dense`: no file here, so it is
+named in the notes as an installed package's class and not judged.
+
+What the measurement does not cover: no loader was run, so the set of files
+is the row's reading of the loaders' source, cross-checked against
+transformers' import closure only; sentence-transformers, diffusers, and the
+inference toolkits were read, not executed. Loaders that import a file their
+caller names (SpeechBrain's `foreign_class`, pinned as the benchmark miss
+`dir-script-caller-named`), configs that are code by design (HyperPyYAML's
+`hyperparams.yaml`, Hydra's `_target_`), Hub kernels a config's
+`attn_implementation` names (transformers v5.19.0 `integrations/hub_kernels.py`
+loads them from the Hub, `kernels-community` by default, with no
+`trust_remote_code`), PEFT's `auto_mapping` (an installed module), and
+compiled or bytecode modules are outside the row, and an environment variable
+(`HF_DEFAULT_PIPELINE_NAME`, `SAGEMAKER_PROGRAM`) can rename the file an
+inference toolkit imports.
+
 ## bcomplex32, and the storage classes torch.cuda defines (2026-10-14, check set tier1/0.9)
 
 Two leftovers from the change above (#241).

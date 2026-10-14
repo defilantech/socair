@@ -442,10 +442,10 @@ func promotion(d *report.Document, acceptedBy, expires string) report.PromotionA
 	case len(fails) > 0 || len(leads) > 0:
 		var why []string
 		if len(fails) > 0 {
-			why = append(why, "positive evidence on "+strings.Join(fails, ", "))
+			why = append(why, "positive evidence on "+report.RowNames(fails))
 		}
 		if len(leads) > 0 {
-			why = append(why, "a suspicious lead on "+strings.Join(leads, ", "))
+			why = append(why, "a suspicious lead on "+report.RowNames(leads))
 		}
 		pa.State = report.StateWithheld
 		pa.Authorized = false
@@ -458,8 +458,8 @@ func promotion(d *report.Document, acceptedBy, expires string) report.PromotionA
 	case strings.TrimSpace(acceptedBy) == "":
 		pa.State = report.StateWithheld
 		pa.Authorized = false
-		pa.Conditions = "Withheld: " + strings.Join(gaps, ", ") +
-			" are NOT_TESTED and no acceptance has been recorded. An acceptor accepts them by signing an acceptance of the signed report (socair accept); " +
+		pa.Conditions = "Withheld: " + report.RowsAre(gaps) +
+			" NOT_TESTED and no acceptance has been recorded. An acceptor accepts them by signing an acceptance of the signed report (socair accept); " +
 			"a name in SOCAIR_ACCEPTED_BY records an unsigned acceptance, which the airlock does not promote."
 	default:
 		pa.State = report.StateAuthorizedWithConditions
@@ -468,8 +468,8 @@ func promotion(d *report.Document, acceptedBy, expires string) report.PromotionA
 		pa.AcceptanceExpires = expires
 		pa.AcceptedBy = acceptedBy
 		pa.AcceptedAt = time.Now().UTC().Format(time.RFC3339)
-		pa.Conditions = "Authorized with conditions: " + strings.Join(gaps, ", ") +
-			" are NOT_TESTED and were accepted by " + acceptedBy + " until " + expires +
+		pa.Conditions = "Authorized with conditions: " + report.RowsAre(gaps) +
+			" NOT_TESTED and were accepted by " + acceptedBy + " until " + expires +
 			". The acceptance is unsigned (named at scan time): the airlock promotes only an acceptance the acceptor signs (socair accept)."
 	}
 	return pa

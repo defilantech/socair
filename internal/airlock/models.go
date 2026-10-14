@@ -254,7 +254,7 @@ func (s *Store) deriveStaged(m Model, dir, id string, at time.Time) (Model, *rep
 				m.Stage, m.StageReason = StageBlocked, "a FAIL or LEAD withholds it, and no acceptance clears it; it needs a person's review outside Socair"
 			default:
 				m.Stage = StageNeedsAcceptance
-				m.StageReason = "withheld on NOT_TESTED rows: " + strings.Join(d.Findings.NotTested, ", ")
+				m.StageReason = "withheld on NOT_TESTED rows: " + report.RowNames(d.Findings.NotTested)
 				acc := filepath.Join(dir, StagedAcceptance)
 				m.Next = Next{Action: "accept", Command: "socair accept --attestation " + shellQuote(p) +
 					` --key ACCEPTOR_KEY --by "NAME, ROLE" --expires EXPIRES_RFC3339 --store ` + shellQuote(s.Root) +
