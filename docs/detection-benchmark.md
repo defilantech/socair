@@ -137,11 +137,11 @@ notes and not judged, where it was a LEAD. No earlier case changed outcome.
 | `control-torch-zip-untyped` | pickle | benign PyTorch zip checkpoint with uint16 and float8 tensors, which torch.save writes over torch.storage.UntypedStorage | (control: every row) | PASS |  |
 | `control-gguf` | gguf | benign GGUF with a plain chat template | (control: every row) | PASS |  |
 | `control-safetensors` | safetensors | benign safetensors | (control: every row) | PASS |  |
-| `control-onnx` | onnx | benign ONNX model: standard operators, weights inline | (control: every row) | PASS |  |
 | `control-model-directory` | model directory | benign transformers-style directory | (control: every row) | PASS |  |
 | `control-dir-torchscript` | model directory | benign directory with a TorchScript archive, rust_model.ot, as sentence-transformers ships | (control: every row) | PASS |  |
-| `control-dir-training-script` | model directory | benign directory with train_script.py, as sentence-transformers ships, that no loader imports | (control: every row) | PASS |  |
+| `control-onnx` | onnx | benign ONNX model: standard operators, weights inline | (control: every row) | PASS |  |
 | `control-dir-onnx` | model directory | benign directory with an onnx/ export as sentence-transformers ships: external data beside the model, and an onnxruntime contrib operator | (control: every row) | PASS |  |
+| `control-dir-training-script` | model directory | benign directory with train_script.py, as sentence-transformers ships, that no loader imports | (control: every row) | PASS |  |
 | `pickle-os-system-p2` | pickle | os.system via GLOBAL + REDUCE, protocol 2 | Pickle opcode scan | FAIL | critical |
 | `pickle-os-system-p4` | pickle | os.system via STACK_GLOBAL, protocol 4 (the Python 3.8+ default) | Pickle opcode scan | FAIL | critical |
 | `pickle-builtins-exec` | pickle | builtins.exec of a code string | Pickle opcode scan | FAIL | critical |
