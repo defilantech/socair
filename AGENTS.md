@@ -31,6 +31,7 @@ Helm chart (`charts/socair`) and image (`Dockerfile`):
 helm lint --strict charts/socair
 helm unittest charts/socair      # helm-unittest plugin; tests in charts/socair/tests
 scripts/chart-e2e.sh             # kind cluster end to end (needs docker, kind, kubectl, helm, go)
+scripts/admission-e2e.sh         # kind + Kyverno: policies/kyverno admit and refuse model pods (also needs curl, jq, python3; own kubeconfig, deletes its cluster)
 ```
 
 Tier 2 probe helper (`tools/socair-probe`, Python standard library only, kept out of the Go build):
@@ -92,6 +93,13 @@ Real-corpus gates, run before and after a detection change (see "False positives
 - A shape change touches the Go model, the JSON schema, the TS types, and the goldens `testdata/report.json` and `testdata/report-tier2.json`.
 - Fixed wording, never edited per artifact, in `report/model.go`: the four bounded-statement sentences (`BoundedStatementNoIndicators` and `BoundedStatementIndicators`, and for a report with a `tier2` section `BoundedStatementTier2NoIndicators` and `BoundedStatementTier2Indicators`; `BoundedStatementOf` picks one from the check rows, and `Validate` re-derives it) and `DoesNotCertify`.
 
+### Host paths
+
+- A filed report names no path on the scanning host (`internal/hostpath`, `docs/tier2.md`, `docs/provenance-bundle.md`).
+- Reference inputs are named by file name and SHA-256 (`engine/references.go`), and `engine.nameSnapshot` names the snapshot by the artifact's name throughout the finished document.
+- The Tier 2 helper's and the keyless verifier's answers, stderr (the last 400 bytes, with paths replaced before the cut), and start failures are held to the paths Socair handed each (`hostpath.Names`: literal whole-path replacement, `$VAR` for an environment path, never a regex over free text). A note that names its file uses `hostpath.Reason(err)`.
+- Guard: `go test ./internal/engine -run TestHelperOutputCarriesNoHostPath` scans from a `SOCAIRHOSTPATH` sentinel directory and fails if the sentinel reaches any rendering.
+
 ### Checks
 
 - One package per check (`internal/checks/<name>`), each returning `checks.Result` with `PASS`, `FAIL`, `LEAD`, or `NOT_TESTED`.
@@ -134,6 +142,8 @@ Real-corpus gates, run before and after a detection change (see "False positives
 
 - `SOCAIR_REPO_MIRROR`, `SOCAIR_PROVENANCE`, `SOCAIR_DENYLIST`, `SOCAIR_ACCEPTANCE_EXPIRES`.
 - `SOCAIR_FEED` + `SOCAIR_FEED_KEYS`: a signed reference-data feed (`internal/feed`, `docs/feed.md`) holding a denylist, reviewed templates and their texts, and canonical tokenizer hashes and tables. An unverified or expired feed stops the scan; the report names it in `scope.reference_data`.
+  - With a store (`socair scan --store` or `SOCAIR_STORE`, `serve --store`, `airlock ingest --scan`, `airlock recheck`), a feed issued before the newest the store has used stops the scan (`airlock.Store.CheckFeed`, through `engine.Inputs.Feed`). The record is `<store>/feed-record.json`, witnessed by the log's `feed` entries, which must agree; `socair airlock feed accept --reason` is the logged way back. A scan with no store has no rollback protection.
+  - A feed in the last third of its validity warns (`feed.Info.ExpiryNotice`: CLI stderr, `GET /api/feed`, the console header) and changes no verdict.
 - `SOCAIR_TOKENIZER_REFERENCE`: canonical tokenizer tables, diffed token by token (`tokenizer.Compare`).
 - `SOCAIR_TEMPLATE_REFERENCE`: reviewed chat-template texts a render is compared with; never clears a lead.
 - `SOCAIR_LICENSE_POLICY`: allowed license ids, one per line; an unknown id or an empty list stops the scan.
@@ -171,6 +181,7 @@ Real-corpus gates, run before and after a detection change (see "False positives
 ### Airlock
 
 - `internal/airlock` (`docs/airlock.md`) is a content-addressed store: `incoming/<sha256>/` staging, `clean/<sha256>/` (artifact, `attestation.dsse.json`, and `attestation.json`), a trust policy in `trusted-keys/`, and an append-only `log.jsonl`. Store root resolves from `--store`, then `SOCAIR_STORE`, then `~/.socair/store`.
+- The log is evidence, not state, with one exception: its `feed` entries witness the feed record and are read back.
 - Only `promote` moves bytes into clean, and only with an envelope signed by a trusted key whose subject is that exact hash; the bytes are hashed while copied. A bare report is never a ticket.
 - "In clean" does not mean clean, because conditional promotions also cross, so listings must carry attestation state.
 - `Store.Assess` is the gate's one verification, used by `Promote` and the console. A model's stage is derived from evidence files (`Store.Models`), never stored.
@@ -193,6 +204,12 @@ Real-corpus gates, run before and after a detection change (see "False positives
 - It pushes the binding and the attestation as one referrer, and the binding again as a Sigstore bundle referrer (no DSSE key id: sigstore-go skips Socair's) that cosign and Kyverno read.
 - `socair verify <oci-ref>` re-checks every link, the layer match included.
 - `internal/registry` is a narrow net/http client: the referrers API with the tag-schema fallback, Docker config static auths, credentials never across a redirect, and `SOCAIR_EGRESS=deny`. `registrytest` is the in-process registry the tests use.
+
+### Admission
+
+- `policies/kyverno` (`docs/admission.md`) holds Kyverno `ImageValidatingPolicy` resources. They refuse a pod that names a model (a reference under the configured repositories, in a container, init or ephemeral container, image volume, or `oci://` container argument) unless it has the Sigstore-bundle binding `socair attach` pushes, verified with the operator's key for that manifest digest, in state `authorized`, or `authorized_with_conditions` before its expiry in the conditions variant.
+- The e2e applies the shipped files with only their two EDIT values filled in.
+- KServe's OCI layouts need tar layers, which `attach` refuses (#236), so a KServe model is refused. Sigstore policy-controller is not served: it accepts only keyless bundles.
 
 ### API
 
