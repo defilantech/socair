@@ -134,6 +134,14 @@ func (r *Registry) PutBlob(b []byte) string {
 	return d
 }
 
+// ServeAs makes the registry serve b for digest d, which b does not hash to:
+// a registry (or a storage service behind it) that serves the wrong bytes.
+func (r *Registry) ServeAs(d string, b []byte) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.blobs[d] = append([]byte(nil), b...)
+}
+
 // PutManifest stores a manifest directly under its digest and, when tag is
 // set, the tag. It returns the digest.
 func (r *Registry) PutManifest(repo, tag, mediaType string, b []byte) string {

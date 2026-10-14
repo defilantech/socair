@@ -61,14 +61,20 @@ const (
 	AnnotationTitle          = "org.opencontainers.image.title"
 )
 
-// Layer is one layer of a bound artifact and the attested file it carries.
+// Layer is one layer of a bound artifact and the attested files it carries.
 type Layer struct {
 	Digest    string `json:"digest"`
 	Size      int64  `json:"size"`
 	MediaType string `json:"media_type"`
-	// Path is the file path the layer's annotations give, when they give
+	// Path is the file path a raw layer's annotations give, when they give
 	// one.
 	Path string `json:"path,omitempty"`
+	// Role, Entries, and Files describe a tar layer of a model-root match:
+	// RoleModel or RoleBase, the entries the layer holds, and the attested
+	// files it holds, as paths under the model root.
+	Role    string   `json:"role,omitempty"`
+	Entries int      `json:"entries,omitempty"`
+	Files   []string `json:"files,omitempty"`
 }
 
 // Match kinds.
@@ -79,11 +85,14 @@ const (
 
 // Match is the result of matching an artifact's layers to an attestation.
 type Match struct {
-	// Kind is MatchFile (one attested file, one layer) or MatchDirectory
+	// Kind is MatchFile (one attested file, one layer), MatchDirectory
 	// (every attested file of a model directory, each its own layer at its
-	// path).
-	Kind   string
-	Layers []Layer
+	// path), or MatchModelRoot (an image whose tar layers hold the attested
+	// files, and nothing else, under ModelRoot, mapped under Rules).
+	Kind      string
+	ModelRoot string
+	Rules     string
+	Layers    []Layer
 }
 
 // manifestTypes are the manifest media types whose layers are matched.

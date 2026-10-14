@@ -248,6 +248,9 @@ jobs:
           ./internal/feed FuzzLoad
           ./internal/registry FuzzParseReference
           ./internal/registry FuzzParseChallenge
+          ./internal/ociattest/tarwalk FuzzWalk
+          ./internal/ociattest/tarwalk FuzzWalkHeaders
+          ./internal/ociattest FuzzMapLayers
           TARGETS
           if [ -n "$failed" ]; then echo "fuzz failures:$failed"; exit 1; fi
 

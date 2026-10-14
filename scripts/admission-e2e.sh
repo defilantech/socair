@@ -30,6 +30,18 @@
 #     withheld one, a conditional one, a reference with no digest, and an
 #     artifact listing another artifact's binding as its own (the binding's
 #     subject is the other digest);
+#   - KServe ModelCar images, built with docker from KServe's documented
+#     Dockerfile (FROM busybox, RUN mkdir /models, COPY data/ /models/) and
+#     attached with the authorized model's attestation: authorized admits the
+#     image mounted as KServe's oci+native:// mounts it (subPath models),
+#     where a pod finds the attested bytes, and handed to KServe's own
+#     storage-initializer image (oci+fetch://), which extracts them; it
+#     refuses the image run as KServe's ModelCar containers until the policy's
+#     runUnexaminedBase is true, and then that pod starts and reads the
+#     attested bytes through KServe's /proc link; `socair attach` refuses a
+#     ModelCar image holding other bytes, one whose later layer rewrites the
+#     model file, and one with a link to /models, so pods naming them are
+#     refused;
 #   - authorized-with-conditions refuses the conditional model once its
 #     acceptance has expired;
 #   - with the registry stopped, a pod naming the authorized model is refused.
@@ -49,6 +61,8 @@ zot_image=ghcr.io/project-zot/zot:v2.1.22@sha256:96cda11459ce6f8c60da3b03f03e9f6
 kyverno_chart=oci://ghcr.io/kyverno/charts/kyverno:3.9.1@sha256:720542b97bdbc2633535c2297332690d21cfbb944053eb1ec1f0dbe8e3895444
 oras_image=ghcr.io/oras-project/oras:v1.3.4@sha256:f7bc056d54d97baa399414ed5048ecc67c3371b750d4bbce1d871827a5758179
 busybox_image=busybox:1.37@sha256:bdf57e528e45e4433820e045b29b4597825a1c9e38353532d90a01445013f82e
+# KServe v0.21.0's oci+fetch extractor, run as KServe's webhook runs it.
+storage_initializer_image=kserve/storage-initializer:v0.21.0@sha256:3a3a6a8053478c8d8d90f96fc5e54c1892c07784102dda70104374d4f89a3672
 
 strict="$root/policies/kyverno/socair-model-authorized.yaml"
 conditions="$root/policies/kyverno/socair-model-authorized-with-conditions.yaml"
@@ -208,6 +222,74 @@ done
 "$X" verify "$host/models/authorized:e2e" --trusted op.pub >verify.txt || { cat verify.txt; fail "socair verify refused the authorized artifact"; }
 sed -n '1,2p' verify.txt
 
+step "KServe ModelCar images: build with docker, push, attach"
+# push_layout <docker save tar> <repo> <tag>: push the image for this host's
+# platform from an image tar (an OCI layout, as docker save writes since
+# Docker 25), its blobs and its manifest, and print the manifest's digest.
+push_layout() {
+	python3 - "$1" "http://$host" "$2" "$3" <<'EOF'
+import hashlib, json, platform, sys, tarfile, urllib.request
+src, base, repo, tag = sys.argv[1:5]
+t = tarfile.open(src)
+blob = lambda d: t.extractfile("blobs/sha256/" + d.split(":")[1]).read()
+arch = {"x86_64": "amd64", "aarch64": "arm64", "arm64": "arm64"}[platform.machine()]
+def find(idx):
+    for d in idx["manifests"]:
+        if d["mediaType"].endswith("index.v1+json") or d["mediaType"].endswith("list.v2+json"):
+            m = find(json.loads(blob(d["digest"])))
+            if m:
+                return m
+        elif d.get("annotations", {}).get("vnd.docker.reference.type") != "attestation-manifest" and \
+                d.get("platform", {}).get("architecture", arch) == arch:
+            return d
+m = find(json.loads(t.extractfile("index.json").read()))
+raw = blob(m["digest"])
+assert "sha256:" + hashlib.sha256(raw).hexdigest() == m["digest"]
+man = json.loads(raw)
+for d in [man["config"]] + man["layers"]:
+    data = blob(d["digest"])
+    r = urllib.request.urlopen(urllib.request.Request(f"{base}/v2/{repo}/blobs/uploads/", method="POST"))
+    loc = r.headers["Location"]
+    loc = (loc if loc.startswith("http") else base + loc) + ("&" if "?" in loc else "?") + "digest=" + d["digest"]
+    urllib.request.urlopen(urllib.request.Request(loc, data=data, method="PUT", headers={"Content-Type": "application/octet-stream"}))
+urllib.request.urlopen(urllib.request.Request(f"{base}/v2/{repo}/manifests/{tag}", data=raw, method="PUT",
+    headers={"Content-Type": man.get("mediaType", m["mediaType"])}))
+print(m["digest"])
+EOF
+}
+modelcar_image() { # modelcar_image <name> <model file> [Dockerfile lines]: models/modelcar:<name>; writes modelcar-<name>.digest
+	local ctx="$tmp/modelcar-$1" name="$1" model="$2"
+	shift 2
+	mkdir -p "$ctx/data"
+	cp "$model" "$ctx/data/model.safetensors"
+	# KServe's documented ModelCar Dockerfile, and any lines after it.
+	{ printf 'FROM %s\nRUN mkdir /models && chmod 775 /models\nCOPY data/ /models/\n' "$busybox_image"; printf '%s\n' "$@"; } >"$ctx/Dockerfile"
+	docker build -q --provenance=false --sbom=false -t "socair-e2e-modelcar:$name" "$ctx" >/dev/null
+	docker save -o "$ctx/image.tar" "socair-e2e-modelcar:$name"
+	docker rmi "socair-e2e-modelcar:$name" >/dev/null
+	push_layout "$ctx/image.tar" models/modelcar "$name" >"$tmp/modelcar-$name.digest"
+	echo "  models/modelcar@$(cat "$tmp/modelcar-$name.digest") ($name)"
+}
+# The authorized model's bytes as /models/model.safetensors: the authorized
+# attestation is of that one file.
+modelcar_image good authorized.safetensors
+modelcar_image tampered withheld.safetensors
+modelcar_image rewritten authorized.safetensors 'RUN printf x >/models/model.safetensors'
+modelcar_image linked authorized.safetensors 'RUN ln -s /models /data'
+"$X" attach "$host/models/modelcar:good" --attestation authorized.dsse.json --key op.key --trusted op.pub >attach.txt ||
+	{ cat attach.txt; fail "socair attach refused the ModelCar image"; }
+grep -E 'bound:|not covered: [0-9]' attach.txt
+grep -q 'holds exactly the attested file(s), 1, from 1 of its 3 layers' attach.txt || fail "the ModelCar image did not map as one model layer and two base layers"
+"$X" verify "$host/models/modelcar:good" --trusted op.pub >verify.txt || { cat verify.txt; fail "socair verify refused the ModelCar image"; }
+grep -q '1 of 1 Socair attestation(s) verified' verify.txt || fail "socair verify did not verify the ModelCar image's binding"
+for bad in tampered:"but the attested file is" rewritten:"not shown to be the attested bytes" linked:"leads to the model root"; do
+	if "$X" attach "$host/models/modelcar:${bad%%:*}" --attestation authorized.dsse.json --key op.key --trusted op.pub >attach.txt 2>&1; then
+		fail "socair attach bound the ${bad%%:*} ModelCar image"
+	fi
+	grep -q "${bad#*:}" attach.txt || { cat attach.txt; fail "the ${bad%%:*} ModelCar image was refused for another reason"; }
+	echo "  attach refused: ${bad%%:*} ($(grep -o 'layer [0-9]* (sha256:[0-9a-f]\{12\}[^)]*): .*' attach.txt | cut -c1-140))"
+done
+
 step "the falsification: an artifact listing another artifact's binding"
 # The twin carries the authorized model's bytes under another config, so its
 # manifest digest differs. The authorized artifact's Sigstore bundle referrer
@@ -229,17 +311,22 @@ echo "  models/authorized@$(digest twin) lists bundle $moved, whose statement is
 ref() { echo "$incluster/models/$1@$(digest "$1")"; }
 twin="$incluster/models/authorized@$(digest twin)"
 
-# A policy as shipped, with the two EDIT values filled in. The check on the
-# shipped values makes this fail if the file changes shape under the test.
-apply_policy() { # apply_policy <file>
-	local key name
+# A policy as shipped, with the two EDIT values filled in, and with
+# runUnexaminedBase, the optional one, set when a second argument names it.
+# The check on the shipped values makes this fail if the file changes shape
+# under the test.
+apply_policy() { # apply_policy <file> [runUnexaminedBase]
+	local key name run="${2:-false}"
 	key="$(sed -n '/BEGIN PUBLIC KEY/,/END PUBLIC KEY/p' op.pub)"
 	kubectl create --dry-run=client -o json -f "$1" >policy.json
 	jq -e '.spec.matchImageReferences == [{glob: "registry.example/models/*"}] and
-		(.spec.attestors | length == 1) and (.spec.attestors[0].cosign.key.data | contains("REPLACE-WITH"))' policy.json >/dev/null ||
+		(.spec.attestors | length == 1) and (.spec.attestors[0].cosign.key.data | contains("REPLACE-WITH")) and
+		([.spec.variables[] | select(.name == "runUnexaminedBase") | .expression] == ["false"])' policy.json >/dev/null ||
 		fail "$1 no longer has the EDIT values this test fills in"
-	jq --arg g "$incluster/models/*" --arg k "$key"$'\n' \
-		'.spec.matchImageReferences = [{glob: $g}] | .spec.attestors[0].cosign.key.data = $k' policy.json >policy.applied.json
+	[[ "${2:-}" == "" ]] || run=true
+	jq --arg g "$incluster/models/*" --arg k "$key"$'\n' --arg run "$run" \
+		'.spec.matchImageReferences = [{glob: $g}] | .spec.attestors[0].cosign.key.data = $k |
+		(.spec.variables[] | select(.name == "runUnexaminedBase") | .expression) = $run' policy.json >policy.applied.json
 	name="$(jq -r .metadata.name policy.applied.json)"
 	kubectl delete imagevalidatingpolicies --all --wait=true >/dev/null
 	kubectl apply -f policy.applied.json >/dev/null
@@ -281,6 +368,39 @@ pod_fetch() { # an init container handed oci://<ref>, which pulls it with oras; 
 			volumeMounts: [{name: "models", mountPath: "/mnt/models", readOnly: true}]}],
 		volumes: [{name: "models", emptyDir: {}}]}}'
 }
+pod_native() { # KServe's oci+native:// pod: the image as a volume, mounted with subPath models; the server checks the bytes
+	jq -n --arg r "$1" --arg f "$2" --arg want "$3" --arg b "$busybox_image" '{apiVersion: "v1", kind: "Pod", metadata: {generateName: "native-"},
+		spec: {restartPolicy: "Never",
+		containers: [{name: "kserve-container", image: $b, env: [{name: "WANT", value: ($want + "  /mnt/models/" + $f)}],
+			command: ["sh", "-c", "ls -l /mnt/models && echo \"$WANT\" | sha256sum -c -"],
+			volumeMounts: [{name: "model", mountPath: "/mnt/models", subPath: "models", readOnly: true}]}],
+		volumes: [{name: "model", image: {reference: $r, pullPolicy: "IfNotPresent"}}]}}'
+}
+pod_kserve_modelcar() { # KServe v0.21.0's ModelCar containers (pkg/utils/storage.go), and a server that reads the model through them
+	jq -n --arg r "$1" --arg f "$2" --arg want "$3" --arg b "$busybox_image" '{apiVersion: "v1", kind: "Pod", metadata: {generateName: "kserve-modelcar-"},
+		spec: {restartPolicy: "Never", shareProcessNamespace: true,
+		initContainers: [{name: "modelcar-init", image: $r, args: ["sh", "-c",
+			"echo '"'"'Pre-fetching modelcar '"'"' && [ -d /models ] && [ \"$$(ls -A /models)\" ] && echo '"'"'OK ... Prefetched and valid (/models exists)'"'"' || (echo '"'"'NOK ... Prefetched but modelcar is invalid (/models does not exist or is empty)'"'"' && exit 1)"]}],
+		containers: [
+			{name: "kserve-container", image: $b, env: [{name: "WANT", value: ($want + "  /mnt/models/" + $f)}],
+			 command: ["sh", "-c", "until [ -e /mnt/models/model.safetensors ]; do sleep 1; done; echo \"$WANT\" | sha256sum -c -"],
+			 volumeMounts: [{name: "kserve-provision-location", mountPath: "/mnt", readOnly: true}]},
+			{name: "modelcar", image: $r, args: ["sh", "-c", "ln -sf /proc/$$$$/root/models /mnt/models && sleep infinity"],
+			 volumeMounts: [{name: "kserve-provision-location", mountPath: "/mnt"}]}],
+		volumes: [{name: "kserve-provision-location", emptyDir: {}}]}}'
+}
+pod_storage_initializer() { # KServe's storage-initializer image, run as its oci+fetch:// webhook runs it; the server checks the bytes
+	jq -n --arg r "oci://$1" --arg f "$2" --arg want "$3" --arg s "$storage_initializer_image" --arg b "$busybox_image" '{
+		apiVersion: "v1", kind: "Pod", metadata: {generateName: "kserve-fetch-real-"},
+		spec: {restartPolicy: "Never",
+		initContainers: [{name: "storage-initializer", image: $s, args: [$r, "/mnt/models"],
+			env: [{name: "KSERVE_OCI_INSECURE_REGISTRY", value: "true"}],
+			volumeMounts: [{name: "kserve-provision-location", mountPath: "/mnt/models"}]}],
+		containers: [{name: "kserve-container", image: $b, env: [{name: "WANT", value: ($want + "  /mnt/models/" + $f)}],
+			command: ["sh", "-c", "ls -l /mnt/models && echo \"$WANT\" | sha256sum -c -"],
+			volumeMounts: [{name: "kserve-provision-location", mountPath: "/mnt/models", readOnly: true}]}],
+		volumes: [{name: "kserve-provision-location", emptyDir: {}}]}}'
+}
 pod_kserve_fetch() { # KServe's oci+fetch:// pod: its storage-initializer is given oci://<ref> and a path
 	jq -n --arg r "oci://$1" --arg b "$busybox_image" '{apiVersion: "v1", kind: "Pod", metadata: {generateName: "kserve-fetch-"},
 		spec: {restartPolicy: "Never",
@@ -315,6 +435,19 @@ runs() { # runs <what> <pod json>: create it and wait for it to succeed
 	kubectl -n "$ns" logs "$pod" --all-containers >"$tmp/pod.log" 2>&1 || true
 	[[ "$phase" == Succeeded ]] || { cat "$tmp/pod.log" >&2; fail "$1: $pod is $phase"; }
 	echo "  ran: $1 ($(grep -E ': OK$' "$tmp/pod.log" || true))"
+}
+serves() { # serves <what> <pod json>: create it and wait for its kserve-container to exit 0 (a sidecar may run on)
+	local pod code=""
+	pod="$(kubectl -n "$ns" create -o name -f - <<<"$2")" || fail "$1: refused"
+	for _ in $(seq 1 180); do
+		code="$(kubectl -n "$ns" get "$pod" -o jsonpath='{.status.containerStatuses[?(@.name=="kserve-container")].state.terminated.exitCode}')"
+		[[ -n "$code" ]] && break
+		sleep 1
+	done
+	kubectl -n "$ns" logs "$pod" --all-containers >"$tmp/pod.log" 2>&1 || true
+	[[ "$code" == 0 ]] || { cat "$tmp/pod.log" >&2; kubectl -n "$ns" describe "$pod" >&2; fail "$1: the server in $pod exited ${code:-not at all}"; }
+	echo "  served: $1 ($(grep -E ': OK$' "$tmp/pod.log" || true))"
+	kubectl -n "$ns" delete "$pod" --wait=false >/dev/null
 }
 
 step "authorized-with-conditions: a conditional model, while its acceptance holds"
@@ -381,6 +514,28 @@ done
 [[ "$reason" == *"no Socair binding"* ]] || fail "the unbound Deployment's pod was not refused for its model: $reason"
 [[ "$(kubectl -n "$ns" get pods -l app=unserved -o name | wc -l | tr -d ' ')" == 0 ]] || fail "the unbound Deployment has a pod"
 echo "  refused: a model with no binding, a Deployment's pod (FailedCreate on its ReplicaSet)"
+
+step "authorized: KServe ModelCar images"
+mc() { echo "$incluster/models/modelcar@$(cat "$tmp/modelcar-$1.digest")"; }
+want="$(sha256 <authorized.safetensors)"
+runs "the ModelCar image as KServe's oci+native:// mounts it (subPath models), the attested bytes" \
+	"$(pod_native "$(mc good)" model.safetensors "$want")"
+runs "the ModelCar image given to KServe's storage-initializer (oci+fetch://), which extracts the attested bytes" \
+	"$(pod_storage_initializer "$(mc good)" model.safetensors "$want")"
+refused "the ModelCar image run as KServe's ModelCar containers, while runUnexaminedBase is false" \
+	"$(pod_kserve_modelcar "$(mc good)" model.safetensors "$want")" "binding covers only its model root"
+for bad in tampered rewritten linked; do
+	refused "the $bad ModelCar image, which attach refused, mounted" "$(pod_native "$(mc "$bad")" model.safetensors "$want")" \
+		"no Socair binding signed by a trusted key"
+	refused "the $bad ModelCar image, run as KServe's ModelCar" "$(pod_kserve_modelcar "$(mc "$bad")" model.safetensors "$want")" \
+		"no Socair binding signed by a trusted key"
+done
+apply_policy "$strict" runUnexaminedBase
+serves "the ModelCar image run as KServe's ModelCar containers, runUnexaminedBase true: the server reads the attested bytes through /proc" \
+	"$(pod_kserve_modelcar "$(mc good)" model.safetensors "$want")"
+refused "the tampered ModelCar image, runUnexaminedBase true" "$(pod_kserve_modelcar "$(mc tampered)" model.safetensors "$want")" \
+	"no Socair binding signed by a trusted key"
+refused "a withheld model, runUnexaminedBase true" "$(pod_volume "$(ref withheld)")" "is withheld"
 
 step "authorized-with-conditions: the conditional model once its acceptance has expired"
 apply_policy "$conditions"

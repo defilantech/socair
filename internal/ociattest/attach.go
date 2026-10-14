@@ -23,6 +23,9 @@ type AttachOptions struct {
 	// Acceptors verify a conditional attestation's signed acceptance. A
 	// conditional attestation is attached only when it verifies.
 	Acceptors attest.Keyring
+	// Map sets the model root an image's tar layers are mapped under
+	// (DefaultModelRoot when empty) and the mapping's bounds.
+	Map MapOptions
 	// ToolVersion is recorded in the binding.
 	ToolVersion string
 	// Now is the binding time; nil means time.Now.
@@ -93,16 +96,20 @@ func Attach(ctx context.Context, c *registry.Client, ref registry.Reference, env
 	if err := json.Unmarshal(f.Bytes, &m); err != nil {
 		return nil, fmt.Errorf("manifest %s: %w", f.Descriptor.Digest, err)
 	}
-	match, err := MatchLayers(f.Descriptor.MediaType, m, v.Document.Artifact)
+	match, err := matchArtifact(ctx, repo, f.Descriptor.MediaType, m, v.Document.Artifact, o.Map)
 	if err != nil {
 		return nil, fmt.Errorf("%s@%s: %w", ref.Name(), f.Descriptor.Digest, err)
+	}
+	if o.Map.ModelRoot != "" && match.Kind != MatchModelRoot {
+		return nil, fmt.Errorf("%s@%s: a model root applies to an image's tar layers, and this artifact's layers are raw model layers", ref.Name(), f.Descriptor.Digest)
 	}
 
 	d := v.Document
 	b := Binding{
 		Artifact: BoundArtifact{
 			Name: ref.Name(), Digest: f.Descriptor.Digest, MediaType: f.Descriptor.MediaType, ArtifactType: m.ArtifactType,
-			ConfigMediaType: m.Config.MediaType, ConfigDigest: m.Config.Digest, Match: match.Kind, Layers: match.Layers,
+			ConfigMediaType: m.Config.MediaType, ConfigDigest: m.Config.Digest, Match: match.Kind,
+			ModelRoot: match.ModelRoot, LayerRules: match.Rules, Layers: match.Layers,
 		},
 		Attestation: BoundAttestation{
 			SHA256: sha256Hex(envelope), PredicateType: attest.PredicateType,

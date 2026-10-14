@@ -1,8 +1,9 @@
 # Attestations on OCI model artifacts
 
 A model packaged as an OCI artifact (a ModelPack artifact, a KitOps
-ModelKit, a Docker Model Runner model) is pulled by its manifest digest, and
-an admission controller checks statements about that digest. A Socair
+ModelKit, a Docker Model Runner model) or as a container image that holds it
+under a directory (a KServe ModelCar image) is pulled by its manifest digest,
+and an admission controller checks statements about that digest. A Socair
 attestation is about the model's bytes: a file's SHA-256, or for a model
 directory the digest of its `socair.modeldir/v1` manifest. `socair attach`
 connects the two and pushes the result into the registry beside the
@@ -11,9 +12,13 @@ checks it.
 
 ```
 socair attach <registry>/<repository>:<tag> --attestation r.dsse.json --key operator.key \
-              (--trusted <key.pub|dir> | --store <path>) [--acceptors <key.pub|dir>]
+              (--trusted <key.pub|dir> | --store <path>) [--acceptors <key.pub|dir>] [--model-root <dir>]
 socair verify <registry>/<repository>:<tag> (--trusted <key.pub|dir> | --store <path>) [--acceptors <key.pub|dir>]
 ```
+
+`--model-root` names the directory of an image that holds the model
+(`models`, KServe's, by default); it applies only to an image's tar layers
+([Images](#images-the-files-inside-tar-layers)).
 
 A reference names its registry (a host with a dot or a port, or `localhost`)
 and a tag or a digest (`@sha256:<hex>`); there is no implicit registry and no
@@ -38,8 +43,11 @@ manifest carries those bytes. So `attach`:
    state travels with them, and the admission policy decides.
 2. Fetches the artifact's manifest and computes its digest from the bytes
    received (a tag is resolved here; a digest reference must match).
-3. Matches the manifest's layers to the attested bytes (below). Any mismatch
-   refuses the attach and names each problem.
+3. Matches the manifest's layers to the attested bytes: raw model layers by
+   their digests ([below](#matching-layers-to-the-attested-bytes)), and an
+   image's tar layers by the files inside them, which it reads
+   ([Images](#images-the-files-inside-tar-layers)). Any mismatch refuses the
+   attach and names the problem.
 4. Signs a **binding** with `--key`: an in-toto Statement v1 whose one subject
    is the OCI manifest digest, with predicate type
    `https://socair.ai/oci-binding/v1`.
@@ -84,14 +92,47 @@ The binding's predicate:
 The binding names the attestation by the hash of its envelope's bytes and
 repeats what an admission policy decides on (the promotion state, the
 accepted surfaces and their expiry, the issue time), so a policy can read
-them from the statement it verified. `match` is `file` or `model-directory`,
-and `layers` lists every layer of the manifest. The binding's signer is
-whoever ran `attach`; a verifier must trust that key as well as the
+them from the statement it verified. `match` is `file`, `model-directory`, or
+`model-root`, and `layers` lists every layer of the manifest. The binding's
+signer is whoever ran `attach`; a verifier must trust that key as well as the
 attestation's.
 
+For an image (`match: model-root`), the artifact also names the directory the
+attested files are in and the rules its layers were mapped under, and each
+layer says its role and the attested files it holds:
+
+```json
+  "artifact": {
+    "name": "registry.example/models/tiny-modelcar",
+    "digest": "sha256:<manifest>",
+    "media_type": "application/vnd.oci.image.manifest.v1+json",
+    "config_media_type": "application/vnd.oci.image.config.v1+json",
+    "config_digest": "sha256:<image config>",
+    "match": "model-root",
+    "model_root": "models",
+    "layer_rules": "socair.tar-map/v1",
+    "layers": [
+      {"digest": "sha256:<busybox>", "size": 2165911, "media_type": "application/vnd.oci.image.layer.v1.tar+gzip",
+       "role": "base", "entries": 443},
+      {"digest": "sha256:<RUN mkdir /models>", "size": 131, "media_type": "application/vnd.oci.image.layer.v1.tar+gzip",
+       "role": "base", "entries": 3},
+      {"digest": "sha256:<COPY data/ /models/>", "size": 3294, "media_type": "application/vnd.oci.image.layer.v1.tar+gzip",
+       "role": "model", "entries": 4, "files": ["config.json", "model.safetensors"]}
+    ]
+  }
+```
+
+A `model` layer holds files under the model root and, outside it, nothing but
+the directories above it; a `base` layer holds nothing under the model root.
+`files` are paths under the model root, as the attestation lists them.
+`entries` counts the layer's tar entries. The fields were added to
+`oci-binding/v1`: a raw-layer binding carries none of them and reads as
+before.
+
 The binding asserts what `attach` saw when it ran: these layers, by digest,
-are the attested bytes. It does not make the attestation say more than its
-bounded statement.
+are the attested bytes, or for an image, its model root holds exactly the
+attested files. It does not make the attestation say more than its bounded
+statement.
 
 ## Matching layers to the attested bytes
 
@@ -130,14 +171,212 @@ file.
 | CNCF ModelPack (model-spec v0.0.7; modctl builds raw layers by default) | `application/vnd.cncf.model.{weight,weight.config,doc,code,dataset}.v1.raw`, and the pre-CNCF `application/vnd.cnai.model.*.v1.raw` names modctl v0.2.2 still writes | `.tar`, `.tar+gzip`, `.tar+zstd` |
 | KitOps ModelKit (v1.16.0) | `application/vnd.kitops.modelkit.{model,modelpart,dataset,code,docs,mcpb}.v1.raw` (`kit pack --layer-format raw`) | the default `.v1.tar`, and every `+gzip` or `+zstd` layer, raw included |
 | Docker Model Runner (v1.2.8) | `application/vnd.docker.ai.{gguf.v3,safetensors,dduf,mmproj,license,chat.template.jinja,model.file}`, and the older `application/vnd.cncf.model.weight.v1.{gguf,safetensors}` it still reads | `application/vnd.docker.ai.dir.tar`, `application/vnd.docker.ai.vllm.config.tar` |
-| KServe ModelCar (an image with the model under `/models`) | none | every layer: image layers are tar archives (`application/vnd.oci.image.layer.v1.tar+gzip`, `application/vnd.docker.image.rootfs.diff.tar.gzip`) |
-| ORAS (`oras push <file>`) | a file pushed with one of the types above | the default `application/vnd.oci.image.layer.v1.tar`, which ORAS gives a plain file too: the type says tar, so a consumer may unpack it |
+| KServe ModelCar (an image with the model under `/models`) | mapped file by file, [below](#images-the-files-inside-tar-layers): `application/vnd.oci.image.layer.v1.tar`, `.tar+gzip`, and `application/vnd.docker.image.rootfs.diff.tar.gzip` | `.tar+zstd`; Docker's uncompressed `application/vnd.docker.image.rootfs.diff.tar`; foreign and non-distributable layers |
+| ORAS (`oras push <file>`) | a file pushed with one of the raw types above | the default `application/vnd.oci.image.layer.v1.tar`, which ORAS gives a plain file too: the type says tar, so a consumer may unpack it. It is read as an image layer and refused when its bytes are not a tar archive |
 
-A tar or compressed layer is refused with the reason: a consumer unpacks or
-decodes it, so the bytes it loads are not the blob's, and v1 does not unpack
-layers to map the files inside them. Binding a ModelCar image, whose model
-sits in tar layers on top of a base image, needs that mapping (and rules for
-whiteouts, links, and later layers overwriting earlier ones); it is not built.
+A raw layer type with compression, and the tar types of ModelPack, KitOps,
+and Docker Model Runner, are refused with the reason: a consumer unpacks or
+decodes them, so the bytes it loads are not the blob's, and those producers
+place the files by their own rules, which are not modelled. An image's layer
+types are mapped, as the next section describes. An artifact that mixes raw
+model layers and image layers is refused.
+
+## Images: the files inside tar layers
+
+A KServe ModelCar image is a container image: a base image (KServe's
+documentation builds one `FROM busybox`) with the model copied under
+`/models` (`RUN mkdir /models`, `COPY data/ /models/`). KServe v0.21.0 reads
+the model from the image's `/models` in all three of its OCI modes: ModelCar
+runs the image as a container and links `/mnt/models` to its `/models`;
+`oci+native://` mounts the image as a volume with `subPath: models`; and
+`oci+fetch://` extracts the entries named `models/…` from its tar layers
+([admission.md](admission.md#where-a-pod-names-a-model)). A runtime unpacks
+the layers in order, each on top of the last.
+
+For such an image, `attach` reads every layer, in order, from the registry,
+and checks that the tree a consumer unpacks holds, under the model root
+(`--model-root`, `models` by default), exactly the attested files: for a
+model directory, each file the attestation lists, at its path, and nothing
+else; for a single-file attestation, one file directly in the model root
+(its name recorded, not compared). Each is a regular file whose bytes hash
+to the attested SHA-256. And it refuses anything in any layer that could make
+that tree differ, for any of the consumers below, from what was scanned. The
+first problem is reported, naming the layer and the entry.
+
+### How a layer is read
+
+- Each layer blob is streamed and hashed as it is read; the read that
+  reaches its end fails unless the bytes hash to the layer's digest, and
+  nothing read from it is trusted before then. Nothing is written to disk,
+  and no file's content is held in memory: what is kept is the tree's
+  symbolic links and the paths at, in, or above the model root.
+- A layer is decompressed as it is read, by its media type, and its first
+  bytes must agree: containerd and CRI-O decompress by the bytes (gzip and
+  zstd; containers/image also bzip2 and xz), KServe's oci+fetch by the media
+  type. A gzip layer must be one gzip member and nothing after it: Python's
+  tarfile, reading a layer as a stream as KServe's oci+fetch does
+  (`mode="r|gz"`), stops at the end of the first member without an error,
+  where containerd reads them all, so a layer split into members at an entry
+  boundary unpacks fewer files in KServe (seen with Python 3.14.7; 3.11.17's
+  `_Stream._read` decompresses the same way).
+- Each tar archive is read by Socair's own strict reader
+  (`internal/ociattest/tarwalk`), which accepts only what Go's archive/tar
+  (containerd's and CRI-O's reader) and Python's tarfile (KServe's) read the
+  same way, and refuses the rest. Python's tarfile also ends an archive
+  silently, with no error, at a header it cannot read past the first one, so
+  every header it would refuse is refused here too.
+- Each entry is placed as containerd's `applyNaive` places it: its parent
+  path resolved through the symbolic links already in the tree, scoped to the
+  image's root. containerd's overlayfs path applies each layer to its own
+  directory without following links from lower layers, so where the two
+  would differ for the model root, the entry is refused.
+
+### What is refused
+
+| Refused | Why |
+|---|---|
+| A file under the model root that the attestation does not list; a directory there that holds no attested file; an attested file missing | the tree would not be the scanned model directory |
+| An attested file with other bytes or another size | it is not the scanned file |
+| A path under the model root that appears twice, in one layer or in two (a later layer replacing a model file) | which one a consumer keeps depends on how it applies layers; the OCI image spec forbids duplicates in one layer |
+| A whiteout (`.wh.<name>`) of the model root, a path in it, or a directory above it; an opaque whiteout (`.wh..wh..opq`) on any of those; a whiteout that is not an empty regular file; AUFS names (`.wh..wh.*`); a path through a directory named `.wh.*` | containerd removes what it names, and KServe's oci+fetch does not apply whiteouts at all (it extracts them as files) |
+| A symbolic link at the model root, in it, or above it; anywhere else, one whose target leads to the model root, into it, or above it, checked as written (cleaned) and as resolved through the tree, when it is read and again in the final tree | an entry written through it would land in the model root, and a consumer reading the model root would follow it elsewhere |
+| An entry whose path reaches the model root through a symbolic link, or an entry in the model root whose path goes through one | containerd's two apply paths place it differently |
+| A hard link at the model root, in it, or above it; a hard link to a path there; a hard link to a symbolic link | a second name for a model file, or another link that the walk does not see as one |
+| A device file or FIFO at the model root, in it, or above it (outside it they are allowed: base images such as Amazon Linux 2023 and Wolfi ship `/dev` nodes) | it would replace what the model needs, and a 0/0 character device in an overlayfs layer is a whiteout |
+| An absolute name; a name with a `..`, `.`, or empty part; a trailing `/` on anything but a directory; a name in the model root with a leading `./` | consumers clean names differently: containerd joins them to the root, containers/storage refuses a `..` that leaves it, KServe matches `models/<path>` on the raw name |
+| A layer that holds files in the model root and anything outside it but the directories above it | its role would be ambiguous: the binding says which layers hold the model and which are the base |
+| An overlayfs extended attribute (`trusted.overlay.*`, `user.overlay.*`) in a PAX record | containerd sets the archive's extended attributes, and overlayfs reads these as whiteouts, opaque directories, or redirects |
+| PAX global headers, Solaris extended headers, GNU sparse files and PAX `GNU.*` records, `hdrcharset`, the NUL regular-file type flag, type 7, unknown type flags, star headers, V7 headers | Go's archive/tar and Python's tarfile read them differently, or one of the consumers does not support them |
+| Two PAX headers before one entry; a PAX header and a GNU long name or link on one entry; two GNU long names or links | Go applies the last, Python the first, or each applies them in the opposite order |
+| A numeric field Go and Python read differently (a NUL before the digits, a digit after a terminator, a negative or 0x81-led base-256 number); a PAX number or time that is not decimal; an empty PAX path; a NUL in a PAX key or name | Go refuses some, and Python reads others as 0 or as another number, so the two would read different sizes and lose step |
+| A PAX size over a header size field that holds another size (unless the size does not fit the field) | a reader that ignores PAX records would read the data as headers ([CVE-2025-62518](https://github.com/advisories/GHSA-j5gw-2vrg-8fgx)) |
+| Bytes in the padding after a PAX or GNU long-name header's data; a zero block followed by a header; anything but zeros after the end-of-archive marker; no end-of-archive marker | Python's tarfile reads the padding as part of the header and stops at a zero block, where Go's archive/tar does neither |
+| `+zstd` layers; Docker's uncompressed `rootfs.diff.tar`; foreign and non-distributable layers, and any layer that names `urls` | no zstd decoder among Socair's dependencies (KServe's oci+fetch refuses zstd too); KServe's oci+fetch skips the Docker type; the others are fetched from outside the registry |
+
+The [tar extraction vulnerabilities](#tar-extraction-vulnerabilities) these
+rules answer are listed below.
+
+### What the binding covers, and what it does not
+
+A `model-root` binding covers the files under the model root, as containerd,
+CRI-O, and KServe's oci+fetch unpack the image pinned by its manifest digest.
+It does not cover:
+
+- **The base layers' content.** Files outside the model root are checked only
+  for not reaching into it: their names, link targets, and whiteouts. Their
+  bytes are not examined. Each layer's `role` says which they are.
+- **The image config**: its entrypoint, command, environment, user, and
+  working directory. The binding names it by digest, as for any artifact.
+- **What a container that runs the image does.** KServe's ModelCar runs the
+  model image as a container (`sh -c "ln -sf /proc/$$/root/models /mnt/models
+  && sleep infinity"`, with the image's entrypoint, if any, in front, and a
+  writable root filesystem). The base image's programs, and the config's
+  entrypoint, run there, and could change the files under `/models` or point
+  `/mnt/models` elsewhere after the pod starts. `oci+native://` (a read-only
+  image volume with `subPath: models`) and `oci+fetch://` (KServe's own
+  storage initializer extracting `models/`) run nothing from the image.
+
+So an `authorized` binding of an image says the model root holds the
+authorized model; it says nothing about the base image. The shipped Kyverno
+policies refuse a pod that runs such an image as a container unless the
+operator says otherwise ([admission.md](admission.md#kserve-modelcar-images)).
+
+### Limits
+
+- At most 256 layers and 1,048,576 entries in all; a name or link target of
+  at most 4,096 bytes, a name part of at most 255; a PAX header of at most
+  1 MiB; at most 40 symbolic links on one path (Linux's limit; containerd
+  follows up to 255, so a deeper chain is refused, not misread).
+- A layer may decompress to at most 128 times its compressed size, or 64 MiB
+  if that is larger.
+- The registry must keep sending: a layer whose body sends nothing for a
+  minute fails. There is no overall time limit, as a layer can be many
+  gigabytes; `verify` reads every layer again.
+
+### Consumers modelled
+
+The rules come from these sources, read for this change:
+
+- **containerd v2.3.4** (the kind v1.35.8 node's): `pkg/archive/tar.go`
+  (`applyNaive`: names cleaned, parents resolved with `fs.RootPath`,
+  whiteouts and opaque markers, an entry replacing what is at its path, hard
+  links resolved with `hardlinkRootPath`, `SCHILY.xattr.*` set),
+  `core/diff/apply/apply_linux.go` (the overlayfs path applies each layer to
+  its upper directory), `pkg/archive/tar_opts_linux.go`
+  (`OverlayConvertWhiteout`: a 0/0 character device, the opaque attribute),
+  `pkg/archive/compression/compression.go` (decompression by the bytes).
+- **CRI-O v1.35.10**, through containers/storage at
+  [`b0f86df`](https://github.com/containers/container-libs/blob/b0f86df5a66598b80ddf7d4cbd88165981d3370c/storage/pkg/archive/diff.go)
+  (`UnpackLayer`: Go's archive/tar, `..` that leaves the root refused, AUFS
+  metadata skipped) and containers/image v5.38.0 (gzip, bzip2, xz, and zstd
+  detected by the bytes).
+- **KServe v0.21.0**: `kserve_storage.py` (`_download_oci`: layers by media
+  type, `tarfile.open(mode="r|gz")` or `"r|"`, entries named `models/…`
+  extracted with `filter="data"`, no whiteouts), on Python 3.11
+  (`storage-initializer.Dockerfile`; the published
+  `kserve/storage-initializer:v0.21.0` image runs 3.11.16, and
+  `python:3.11-slim-bookworm` held 3.11.17 on 2026-10-14);
+  `pkg/utils/storage.go` (the ModelCar containers' commands).
+- **Python 3.11.17** `Lib/tarfile.py` (3.11.16's differs only in the
+  extraction filter and hard-link extraction, not in reading headers):
+  `frombuf` (the prefix field read
+  whatever the magic), `nti`, `_proc_pax` (records read from the padded
+  data), `_proc_gnulong`, `_apply_pax_info`, `_Stream._read` (one gzip
+  member), `TarFile.next` (a header error after the first ends the archive
+  silently), `data_filter`.
+- **Go 1.27.1** `archive/tar` (`reader.go`, `format.go`, `strconv.go`).
+- **OCI image spec v1.1.1** [`layer.md`](https://github.com/opencontainers/image-spec/blob/v1.1.1/layer.md):
+  no duplicate paths in a layer, whiteouts and opaque whiteouts, sparse files
+  discouraged.
+
+The strict reader is checked against Go's archive/tar by a fuzz target, and
+against Python's tarfile by an opt-in test that ran on 57,225 accepted
+archives with Python 3.11.17 and 19,004 with 3.14.7 (below). The mapping is checked by a
+fuzz target against models of containerd's two apply paths and of KServe's
+oci+fetch: when it accepts an image, each model's tree under `/models` is
+exactly the attested files. The models are written from the sources above;
+they are not the consumers themselves.
+
+### Real base images
+
+A model layer (`COPY data/ /models/`) put on top of each of these base images
+maps (`TestRealBaseImages`, linux/amd64, pulled 2026-10-14): busybox:1.37,
+alpine:3.22, debian:bookworm-slim, ubuntu:24.04, python:3.11-slim-bookworm,
+gcr.io/distroless/static-debian12, ubi9/ubi-micro, ubi9/ubi-minimal,
+amazonlinux:2023, cgr.dev/chainguard/wolfi-base, quay.io/fedora/fedora-minimal:42,
+and nvidia/cuda:12.6.3-base-ubuntu24.04. Two of them first showed rules too
+strict for real images, since relaxed: ubi-minimal stores a binary
+`security.capability` attribute (NUL bytes in a PAX value, which both readers
+accept), and Amazon Linux 2023 and Wolfi ship `/dev` device nodes.
+
+### Tar extraction vulnerabilities
+
+The classes the rules answer, with an advisory each:
+
+- path traversal by name (`..`, absolute paths): Python tarfile
+  [CVE-2007-4559](https://github.com/advisories/GHSA-gw9q-c7gh-j9vm);
+- escape or redirection through symbolic and hard links, including through
+  the extraction filters meant to stop it: Python tarfile
+  [CVE-2025-4138](https://github.com/advisories/GHSA-4g4g-fqw4-prp2),
+  [CVE-2025-4330](https://github.com/advisories/GHSA-68pj-xrp5-vccj),
+  [CVE-2025-4517](https://github.com/advisories/GHSA-6r6c-684h-9j7p),
+  [CVE-2024-12718](https://github.com/advisories/GHSA-2pg8-h2j6-28xm);
+  containerd [CVE-2021-32760](https://github.com/advisories/GHSA-c72p-9xmj-rx3w);
+  docker cp [CVE-2018-15664](https://github.com/advisories/GHSA-pv79-5r2c-jrpq);
+- parser differentials on headers, where two readers see different entries:
+  [CVE-2025-62518](https://github.com/advisories/GHSA-j5gw-2vrg-8fgx)
+  (a PAX size one reader ignores);
+- unbounded reads: Go archive/tar
+  [CVE-2022-2879](https://github.com/advisories/GHSA-fqpx-62jv-7r6r) (header
+  size) and [CVE-2025-58183](https://github.com/advisories/GHSA-9gcr-gp5f-jw27)
+  (sparse maps); containerd
+  [CVE-2023-25153](https://github.com/advisories/GHSA-259w-8hf6-59c2);
+  Python tarfile [CVE-2024-6232](https://github.com/advisories/GHSA-mmm5-wgvp-wp8r)
+  (PAX parsing) and [CVE-2025-8194](https://github.com/advisories/GHSA-v594-44hm-2j7p).
+
+Duplicate entries and overlay order have no advisory of their own; they are
+the image-layer form of the same problem: what one consumer keeps, another
+replaces.
 
 ## What verify checks
 
@@ -154,7 +393,13 @@ referrers of type `application/vnd.socair.attestation.v1+json`, and for each:
    field it repeats (subject, document, issue time, signer, check set,
    promotion state, acceptance) is what the attestation says;
 6. the manifest's layers match the attested bytes, checked again here rather
-   than taken from the binding;
+   than taken from the binding, and what the binding states about them (the
+   match, the model root, the layer rules, and each layer's digest, size,
+   type, path, role, entries, and files) is what this check found. For an
+   image, that means reading every layer again, under the model root the
+   binding names; a binding made under other layer rules than this socair's
+   does not verify. The result is kept for each attestation, so two
+   referrers of one attestation read the layers once;
 7. for a conditional attestation, with `--acceptors` (or `--store`), its
    signed acceptance verifies and is current.
 
@@ -278,7 +523,9 @@ Notes for a policy author:
   64 MiB, and the referrers listing up to 100 pages. `verify` checks at most
   64 Socair referrers of one artifact and counts the rest, so a flood of
   referrers can make it fail but not pass. Each request has a one minute
-  budget. No model layer is ever downloaded.
+  budget. A raw model layer is never downloaded. An image's tar layers are
+  streamed, with no overall budget, and fail when the registry sends nothing
+  for a minute; they are hashed as read and never written to disk.
 - **Digests.** Every manifest and blob is hashed on receipt and checked
   against the digest it was asked for. A `Docker-Content-Digest` header that
   disagrees with the bytes is an error; the header is never trusted alone.
@@ -286,10 +533,13 @@ Notes for a policy author:
 ## What is not checked
 
 - **The manifest's config blob** (ModelPack's model config, a KitOps
-  Kitfile, Docker Model Runner's config). The binding names it, but the
-  attestation does not cover it. A consumer that places files by its config
-  rather than by layer annotations (a Kitfile names paths) could place them
-  differently from the paths matched here.
+  Kitfile, Docker Model Runner's config, an image's config). The binding
+  names it, but the attestation does not cover it. A consumer that places
+  files by its config rather than by layer annotations (a Kitfile names
+  paths) could place them differently from the paths matched here; a
+  container that runs an image runs its config's entrypoint.
+- **An image's base layers, and what a container that runs it does**, as
+  [above](#what-the-binding-covers-and-what-it-does-not).
 - **What the consumer does with the layers.** Docker Model Runner renames GGUF
   shards when it unpacks them; a serving stack may read files from elsewhere.
   The binding is about the bytes in the layers, at the paths the layers name.
@@ -298,8 +548,10 @@ Notes for a policy author:
   does. An admission policy should pin the image digest.
 - **A tag.** `verify` resolves a tag when it runs; the tag can move after.
   The binding is for a digest.
-- **Tar or compressed layers, image indexes, and ModelCar images**: refused,
-  as above.
+- **The tar layers of ModelPack, KitOps, and Docker Model Runner, compressed
+  raw layers, and image indexes**: refused, as above. A multi-platform image
+  (an index, as `docker buildx` pushes) is attached one platform manifest at
+  a time, and a pod must name that manifest's digest.
 - **Revocation.** A binding stays valid while its signing key is trusted. A
   newer attestation does not withdraw an older one; `verify` shows all, with
   their issue times.
@@ -316,11 +568,32 @@ removed), a binding whose layers do not carry the attested bytes, a binding
 that misstates the promotion state, a re-encoded attestation envelope, and a
 credential that must not follow a redirect.
 
-Two opt-in tests need a tool or a registry:
+For images, the layers are built in code (a busybox-like base, the layer
+`RUN mkdir /models` leaves, and `COPY data/ /models/`). A ModelCar image maps,
+attaches, and verifies; each refusal in the table above has a test with an
+image that differs from the ModelCar image in that one way, so each is the
+falsification test of its check (`TestMapRefusals`, `TestRefusals` in
+`tarwalk`). Each check was also removed in turn, and a test failed for each
+(the PR records the run). A layer the registry serves with other bytes of the
+same length, which would map, is refused at the end of its read
+(`TestAttachRefusesALayerServedWithOtherBytes`), and a binding that misstates
+its layers, its root, or its rules does not verify.
+
+Fuzz targets: `FuzzWalk` and `FuzzWalkHeaders` (`internal/ociattest/tarwalk`)
+check that whatever the strict reader accepts, Go's archive/tar reads to the
+same entries and bytes; `FuzzMapLayers` (`internal/ociattest`) builds images
+from a vocabulary of names, links, whiteouts, and devices that reach, cross,
+or avoid the model root, and checks that whenever the mapping accepts one,
+the models of containerd's two apply paths and of KServe's oci+fetch unpack
+exactly the attested files under `/models`.
+
+Opt-in tests that need a tool, a registry, or real images:
 
 ```
 SOCAIR_TEST_COSIGN=/path/to/cosign go test ./internal/ociattest -run Cosign -v
 SOCAIR_TEST_REGISTRY=127.0.0.1:5000 go test ./internal/ociattest -run RealRegistry -v
+SOCAIR_TEST_PYTHON=python3 go test ./internal/ociattest/tarwalk -run PythonAgrees -v
+SOCAIR_OCI_BASE_CORPUS=<OCI layouts> go test ./internal/ociattest -run RealBaseImages -v
 ```
 
 The first runs cosign `verify-attestation` against the in-process registry.
@@ -329,6 +602,24 @@ writes to it), attaches, and verifies, and runs cosign there too when
 `SOCAIR_TEST_COSIGN` is set. Both passed with cosign v3.1.3 against zot
 v2.1.22 (which has the referrers API) and crane 0.22.1's registry (which does
 not).
+
+The third reads every archive the strict reader accepts, from seeds and from
+mutated seeds with their checksums fixed (`SOCAIR_TEST_PYTHON_N` and
+`_SEED` set how many and which), with Python's tarfile in stream mode, as
+KServe's oci+fetch does, and fails on any difference. `SOCAIR_TEST_PYTHON`
+may be a wrapper that runs Python in KServe's storage-initializer base image
+(`docker run python:3.11-slim-bookworm python3 "$@"`, with the directories
+mounted). On the rules as merged, it passed on 57,225 accepted archives
+(seeds 11 to 13, 60,000 tries each) with Python 3.11.17 in that image, and
+19,004 (seed 11) with Python 3.14.7. Before the padding rule, it found three
+archives the two read differently.
+
+The fourth maps each image in OCI layouts (`crane pull --format oci`) with a
+model layer added on top ([Real base images](#real-base-images)).
+
+`scripts/admission-e2e.sh` attaches a ModelCar image built with `docker
+build` from KServe's documented Dockerfile and runs it in kind
+([admission.md](admission.md#testing)).
 
 ## Sources
 
@@ -343,5 +634,11 @@ not).
 - ModelPack: [model-spec v0.0.7 mediatype.go](https://github.com/modelpack/model-spec/blob/6440437b4932ef6cdd134d24a410f73181303ce7/specs-go/v1/mediatype.go), [spec.md](https://github.com/modelpack/model-spec/blob/6440437b4932ef6cdd134d24a410f73181303ce7/docs/spec.md), [annotations.md](https://github.com/modelpack/model-spec/blob/6440437b4932ef6cdd134d24a410f73181303ce7/docs/annotations.md); [modctl v0.2.2 legacy.go](https://github.com/modelpack/modctl/blob/441e8482460ff53fa8ed4c00132211b7feb3a370/pkg/backend/build/legacy.go) (the `cnai` names), [cmd/build.go](https://github.com/modelpack/modctl/blob/441e8482460ff53fa8ed4c00132211b7feb3a370/cmd/build.go) (`--raw` defaults to true).
 - KitOps v1.16.0: [mediatype/kitops.go](https://github.com/kitops-ml/kitops/blob/87cabec7c8f487dc54750ee9a206cdd4c79020e7/pkg/lib/constants/mediatype/kitops.go), [cmd/pack/cmd.go](https://github.com/kitops-ml/kitops/blob/87cabec7c8f487dc54750ee9a206cdd4c79020e7/pkg/cmd/pack/cmd.go) (`--layer-format tar` and `--compression none` by default).
 - Docker Model Runner v1.2.8: [pkg/distribution/types/config.go](https://github.com/docker/model-runner/blob/5a3112fdc10bcfe236a7450fcfa7e83ed3c0209e/pkg/distribution/types/config.go).
-- KServe v0.21.0: [pkg/constants/constants.go](https://github.com/kserve/kserve/blob/d1482554fc4f66dd41aee70e01f5174e24f265bd/pkg/constants/constants.go) (the `modelcar` container), and the [OCI storage docs](https://github.com/kserve/website/blob/fb4c67f9f9cca2cd680fb26abca3499bb3c2245e/docs/model-serving/storage/providers/oci.md) (`FROM busybox`, `COPY data/ /models/`).
+- KServe v0.21.0: [pkg/constants/constants.go](https://github.com/kserve/kserve/blob/d1482554fc4f66dd41aee70e01f5174e24f265bd/pkg/constants/constants.go) (the `modelcar` container), [pkg/utils/storage.go](https://github.com/kserve/kserve/blob/d1482554fc4f66dd41aee70e01f5174e24f265bd/pkg/utils/storage.go) (`modelcarCommand`, `CreateModelcarContainer`, `CreateModelcarInitContainer`: `sh -c` as the image's arguments, the `/models` check, `subPath: models` for `oci+native://`), [python/storage/kserve_storage/kserve_storage.py](https://github.com/kserve/kserve/blob/d1482554fc4f66dd41aee70e01f5174e24f265bd/python/storage/kserve_storage/kserve_storage.py) (`_LAYER_MEDIA_TYPE_MODES`, `_download_oci`), [python/storage-initializer.Dockerfile](https://github.com/kserve/kserve/blob/d1482554fc4f66dd41aee70e01f5174e24f265bd/python/storage-initializer.Dockerfile) (Python 3.11), and the [OCI storage docs](https://github.com/kserve/website/blob/fb4c67f9f9cca2cd680fb26abca3499bb3c2245e/docs/model-serving/storage/providers/oci.md) (`FROM busybox`, `RUN mkdir /models && chmod 775 /models`, `COPY data/ /models/`).
+- containerd v2.3.4: [pkg/archive/tar.go](https://github.com/containerd/containerd/blob/v2.3.4/pkg/archive/tar.go) (`applyNaive`, `createTarFile`, `hardlinkRootPath`, `validateWhiteout`), [pkg/archive/tar_opts_linux.go](https://github.com/containerd/containerd/blob/v2.3.4/pkg/archive/tar_opts_linux.go) (`OverlayConvertWhiteout`), [pkg/archive/tar_unix.go](https://github.com/containerd/containerd/blob/v2.3.4/pkg/archive/tar_unix.go) (devices), [core/diff/apply/apply_linux.go](https://github.com/containerd/containerd/blob/v2.3.4/core/diff/apply/apply_linux.go) (the overlayfs path), [pkg/archive/compression/compression.go](https://github.com/containerd/containerd/blob/v2.3.4/pkg/archive/compression/compression.go) (`DetectCompression`), [core/unpack/unpacker.go](https://github.com/containerd/containerd/blob/v2.3.4/core/unpack/unpacker.go) (diff IDs checked). The kind v1.35.8 node image runs it (`containerd --version` in the image).
+- CRI-O [v1.35.10 go.mod](https://github.com/cri-o/cri-o/blob/v1.35.10/go.mod) (go.podman.io/storage at `b0f86df`, go.podman.io/image v5.38.0): containers/storage [pkg/archive/diff.go](https://github.com/containers/container-libs/blob/b0f86df5a66598b80ddf7d4cbd88165981d3370c/storage/pkg/archive/diff.go) (`UnpackLayer`), [pkg/archive/archive.go](https://github.com/containers/container-libs/blob/b0f86df5a66598b80ddf7d4cbd88165981d3370c/storage/pkg/archive/archive.go) (`SCHILY.xattr.` only); containers/image [pkg/compression/compression.go](https://github.com/containers/container-libs/blob/image/v5.38.0/image/pkg/compression/compression.go).
+- Python 3.11.17: [Lib/tarfile.py](https://github.com/python/cpython/blob/v3.11.17/Lib/tarfile.py) (`nts`, `nti`, `TarInfo._frombuf`, `_proc_member`, `_proc_gnulong`, `_proc_pax`, `_apply_pax_info`, `_Stream._read`, `TarFile.next`, `_get_filtered_attrs`), compared with [3.11.16's](https://github.com/python/cpython/blob/v3.11.16/Lib/tarfile.py), which the KServe v0.21.0 storage-initializer image runs (`python3 --version` in the image).
+- Go 1.27.1: [src/archive/tar/reader.go](https://github.com/golang/go/blob/go1.27.1/src/archive/tar/reader.go) (`next`, `readHeader`, `mergePAX`, `parsePAX`), [format.go](https://github.com/golang/go/blob/go1.27.1/src/archive/tar/format.go) (`getFormat`), [strconv.go](https://github.com/golang/go/blob/go1.27.1/src/archive/tar/strconv.go) (`parseNumeric`, `parseOctal`, `parsePAXRecord`, `parsePAXTime`, `validPAXRecord`).
+- OCI image spec v1.1.1: [layer.md](https://github.com/opencontainers/image-spec/blob/v1.1.1/layer.md) (duplicate paths, whiteouts, opaque whiteouts, sparse files), [media-types.md](https://github.com/opencontainers/image-spec/blob/v1.1.1/media-types.md).
+- Kubernetes [KEP-4639](https://github.com/kubernetes/enhancements/blob/c3cbc64a900d0fc37389c2865f69e666ced74c5f/keps/sig-node/4639-oci-volume-source/README.md) (image volumes are read-only; the `noexec` requirement was dropped for beta).
 - ORAS: [oras-go v2.6.2 content/file/file.go](https://github.com/oras-project/oras-go/blob/105715ee12eac6895ec736a075285c34d9f2eeb6/content/file/file.go) (a file's default media type is `application/vnd.oci.image.layer.v1.tar`).
