@@ -299,8 +299,11 @@ var helperEnvKeys = map[string]bool{
 	"SSL_CERT_FILE": true, "SSL_CERT_DIR": true,
 }
 
+// helperEnv never returns nil: exec.Cmd runs a command whose Env is nil with
+// the parent's whole environment, so with none of the allowed variables set a
+// nil would hand the helper everything.
 func helperEnv(environ []string) []string {
-	var out []string
+	out := []string{}
 	for _, kv := range environ {
 		k, _, _ := strings.Cut(kv, "=")
 		if helperEnvKeys[k] || strings.HasPrefix(k, "SOCAIR_PROBE_") {
