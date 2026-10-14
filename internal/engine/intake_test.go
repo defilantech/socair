@@ -279,6 +279,49 @@ func TestSignatureRequiredUsesTheVerification(t *testing.T) {
 	}
 }
 
+// TestNGCSignatureMeetsSignatureRequired: the signature rule reads the same
+// verification as the provenance row, so a model directory downloaded from
+// NGC with its result.sigstore meets a signature requirement when the
+// publisher's root is trusted, and does not when it is not or a file
+// changed. Falsification: look only for model.sig at the root and the
+// trusted case FAILs as unsigned.
+func TestNGCSignatureMeetsSignatureRequired(t *testing.T) {
+	scan := func(dir, roots string) report.CheckResult {
+		t.Helper()
+		ngcEnv(t, roots)
+		t.Setenv("SOCAIR_INTAKE_POLICY", "")
+		first, err := Scan(dir)
+		if err != nil {
+			t.Fatal(err)
+		}
+		m := filepath.Join(t.TempDir(), "provenance.json")
+		writeFixtureAt(t, m, []byte(fmt.Sprintf(`{"artifact_sha256":%q,"publisher":"nvidia","repo_url":"https://catalog.ngc.nvidia.com/orgs/nvidia/teams/tao/models/detector","commit_or_tag":"v1.0"}`,
+			first.Artifact.SHA256)))
+		t.Setenv("SOCAIR_PROVENANCE", m)
+		intakePolicy(t, `"signature_required": ["nvidia"]`)
+		d, err := Scan(dir)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if problems := report.Validate(d); len(problems) != 0 {
+			t.Fatal(problems)
+		}
+		return row(d, intakeRowName)
+	}
+
+	dir, root, _ := ngcModelNow(t)
+	if r := scan(dir, root); r.Status != report.StatusPass || !strings.Contains(r.Notes, "a publisher signature verified (OMS") {
+		t.Errorf("trusted root: %s %q (%s)", r.Status, r.Evidence, r.Notes)
+	}
+	if r := scan(dir, ""); r.Status != report.StatusNotTested || !strings.Contains(r.Notes, "was not verified") {
+		t.Errorf("no trusted root: %s %q (%s)", r.Status, r.Evidence, r.Notes)
+	}
+	writeFixtureAt(t, filepath.Join(dir, "labels.txt"), []byte("car\n"))
+	if r := scan(dir, root); r.Status != report.StatusFail || !strings.Contains(r.Evidence, "signature does not hold") {
+		t.Errorf("changed file: %s %q (%s)", r.Status, r.Evidence, r.Notes)
+	}
+}
+
 // rank orders promotion states from withheld to authorized.
 func rank(state string) int {
 	switch state {

@@ -166,6 +166,8 @@ Signing signature, against the keys and roots you configure
 (`SOCAIR_PUBLISHER_KEYS`, `SOCAIR_PUBLISHER_ROOTS`) or a keyless identity the
 `socair-sigstore` helper accepts; see
 [provenance-bundle.md](provenance-bundle.md#3a-publisher-signatures-socair_publisher_keys-and-socair_publisher_roots).
+In a model directory that is the signature at its root, `model.sig` or NGC's
+`result.sigstore`, or the file `SOCAIR_OMS_SIGNATURE` names.
 
 | A listed publisher's model | Rule |
 |---|---|

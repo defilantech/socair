@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -33,6 +34,29 @@ func TestGoldenValidates(t *testing.T) {
 	// The golden is hand-written, so it is held to the fixed wording here.
 	if d.AssuranceLevel != Tier1Assurance() {
 		t.Errorf("golden assurance level %+v is not the fixed Tier 1 wording", d.AssuranceLevel)
+	}
+}
+
+// TestGoldenMappingsMatchTheCode: the goldens are hand-written, and the
+// renderer goldens are made from them, so each row must carry the framework
+// entries this package maps it to, editions included. Falsification: drop a
+// row's version and the BOM golden gains a second, editionless OWASP
+// standard while every renderer test still passes.
+func TestGoldenMappingsMatchTheCode(t *testing.T) {
+	for _, name := range []string{"report.json", "report-tier2.json"} {
+		raw, err := os.ReadFile(filepath.Join("..", "..", "testdata", name))
+		if err != nil {
+			t.Fatal(err)
+		}
+		var d Document
+		if err := json.Unmarshal(raw, &d); err != nil {
+			t.Fatal(err)
+		}
+		for _, c := range d.Checks {
+			if want := MapsTo(c.Name); !reflect.DeepEqual(c.MapsTo, want) && len(c.MapsTo)+len(want) > 0 {
+				t.Errorf("%s: row %q maps to %+v, the code to %+v", name, c.Name, c.MapsTo, want)
+			}
+		}
 	}
 }
 
