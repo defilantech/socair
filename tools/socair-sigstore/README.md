@@ -72,6 +72,12 @@ One JSON request on stdin, one JSON verdict on stdout:
 
 A malformed request exits 2 with the reason on stderr.
 
+Socair runs it with no arguments and an empty environment, so nothing of
+Socair's, such as `HF_TOKEN`, reaches it; it verifies offline from the
+request and needs nothing more. Socair reads at most 64 KiB of its answer
+and refuses a longer one. `docs/provenance-bundle.md` lists the variables it
+and its libraries read, and why none is passed.
+
 ## Tests
 
 `testdata/` holds keyless OMS signatures from the reference implementation's

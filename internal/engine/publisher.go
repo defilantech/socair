@@ -51,6 +51,39 @@ var keylessTimeout = 2 * time.Minute
 // quotes when it fails.
 const keylessStderr = 400
 
+// keylessMaxAnswer bounds the verifier's answer on standard output. A real
+// verdict is a few hundred bytes: the largest socair-sigstore gives on the
+// reference vectors and their tampered copies is 349. The verdict's detail
+// can quote the bundle, which comes with the artifact, so without a bound an
+// artifact could size what Socair reads into memory and into the report. An
+// answer past the bound is refused whole, never read in part.
+const keylessMaxAnswer = 64 << 10
+
+// keylessEnvKeys are the variables of Socair's environment the keyless
+// verifier is given. There are none. socair-sigstore verifies offline from
+// its request alone (the bundle, the trust root's path, and the identities)
+// and needs nothing from the environment: what it and its libraries read
+// there serves the online trust-root fetch Socair never uses, system
+// certificate roots it never trusts, runtime tuning, how a time reads, or
+// debugging (docs/provenance-bundle.md lists them). GODEBUG would be worse than
+// unneeded, since it can loosen the verifier's X.509 and RSA checks. A
+// variable is added here only when the verifier needs it, and never a
+// credential such as HF_TOKEN.
+var keylessEnvKeys = map[string]bool{}
+
+// verifierEnv is the keyless verifier's environment: the variables of
+// environ that keylessEnvKeys allows. It is never nil, because a nil
+// environment would hand the verifier all of Socair's.
+func verifierEnv(environ []string) []string {
+	env := []string{}
+	for _, kv := range environ {
+		if k, _, _ := strings.Cut(kv, "="); keylessEnvKeys[k] {
+			env = append(env, kv)
+		}
+	}
+	return env
+}
+
 type keylessIdentity struct {
 	Issuer       string `json:"issuer,omitempty"`
 	IssuerRegexp string `json:"issuer_regexp,omitempty"`
@@ -81,9 +114,10 @@ func keylessVerifier(bin, trustedRoot, identities string) (func([]byte) oms.Keyl
 	if err != nil {
 		return nil, err
 	}
-	names := keylessNames(bin, rootAbs, os.Environ())
+	env := verifierEnv(os.Environ())
+	names := keylessNames(bin, rootAbs, env)
 	return func(bundle []byte) oms.KeylessVerdict {
-		v := runKeyless(bin, rootAbs, ids, bundle, names)
+		v := runKeyless(bin, rootAbs, ids, bundle, env, names)
 		// What the verifier says reaches the provenance row and the signing
 		// state; a path it repeats does not.
 		names.Walk(&v)
@@ -94,7 +128,7 @@ func keylessVerifier(bin, trustedRoot, identities string) (func([]byte) oms.Keyl
 // keylessNames are the host paths Socair hands the keyless verifier, each with
 // the name a report gives it (#170): the verifier by its file name and its
 // directory by its own, the trust root by its file name, and each absolute
-// path in the environment it inherits by its variable ("$HOME").
+// path in the environment it is given by its variable ("$HOME").
 func keylessNames(bin, trustedRoot string, environ []string) *hostpath.Names {
 	n := &hostpath.Names{}
 	n.Base(bin)
@@ -104,11 +138,12 @@ func keylessNames(bin, trustedRoot string, environ []string) *hostpath.Names {
 	return n
 }
 
-// runKeyless runs the verifier on one bundle. A failure is unverified, with a
-// reason that names no host path of its own: a verifier that could not be
-// started is named by its file name with the cause, and the end of its
-// standard error is quoted with names' paths replaced.
-func runKeyless(bin, trustedRoot string, ids []keylessIdentity, bundle []byte, names *hostpath.Names) oms.KeylessVerdict {
+// runKeyless runs the verifier on one bundle, with env as its whole
+// environment. A failure is unverified, with a reason that names no host path
+// of its own: a verifier that could not be started is named by its file name
+// with the cause, and the end of its standard error is quoted with names'
+// paths replaced. An answer over keylessMaxAnswer is a failure too.
+func runKeyless(bin, trustedRoot string, ids []keylessIdentity, bundle []byte, env []string, names *hostpath.Names) oms.KeylessVerdict {
 	req, err := json.Marshal(map[string]any{
 		"bundle":       base64.StdEncoding.EncodeToString(bundle),
 		"trusted_root": trustedRoot,
@@ -120,24 +155,28 @@ func runKeyless(bin, trustedRoot string, ids []keylessIdentity, bundle []byte, n
 	ctx, cancel := context.WithTimeout(context.Background(), keylessTimeout)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, bin)
+	cmd.Env = env
 	cmd.Stdin = bytes.NewReader(req)
-	var stdout bytes.Buffer
+	stdout := &boundedOutput{max: keylessMaxAnswer}
 	var stderr hostpath.Stderr
-	cmd.Stdout, cmd.Stderr = &stdout, &stderr
+	cmd.Stdout, cmd.Stderr = stdout, &stderr
 	cmd.WaitDelay = 2 * time.Second
-	if err := cmd.Run(); err != nil {
-		var detail string
-		switch {
-		case cmd.Process == nil:
-			detail = "the keyless verifier " + filepath.Base(bin) + " could not be started: " + hostpath.Reason(err)
-		case errors.Is(ctx.Err(), context.DeadlineExceeded):
-			detail = "the keyless verifier did not answer within " + keylessTimeout.String()
-		default:
-			detail = "the keyless verifier failed: " + err.Error()
-			if q := stderr.Quote(names, keylessStderr); q != "" {
-				detail += ": " + q
-			}
+	err = cmd.Run()
+	var detail string
+	switch {
+	case err != nil && cmd.Process == nil:
+		detail = "the keyless verifier " + filepath.Base(bin) + " could not be started: " + hostpath.Reason(err)
+	case stdout.over:
+		detail = fmt.Sprintf("the keyless verifier's answer is over %d bytes", keylessMaxAnswer)
+	case err != nil && errors.Is(ctx.Err(), context.DeadlineExceeded):
+		detail = "the keyless verifier did not answer within " + keylessTimeout.String()
+	case err != nil:
+		detail = "the keyless verifier failed: " + err.Error()
+		if q := stderr.Quote(names, keylessStderr); q != "" {
+			detail += ": " + q
 		}
+	}
+	if detail != "" {
 		return oms.KeylessVerdict{State: oms.Unverified, Detail: detail}
 	}
 	var out struct {
@@ -145,7 +184,7 @@ func runKeyless(bin, trustedRoot string, ids []keylessIdentity, bundle []byte, n
 		Signer string `json:"signer"`
 		Detail string `json:"detail"`
 	}
-	if err := json.Unmarshal(stdout.Bytes(), &out); err != nil {
+	if err := json.Unmarshal(stdout.buf.Bytes(), &out); err != nil {
 		return oms.KeylessVerdict{State: oms.Unverified, Detail: "the keyless verifier's answer is unreadable"}
 	}
 	switch out.State {
@@ -154,6 +193,22 @@ func runKeyless(bin, trustedRoot string, ids []keylessIdentity, bundle []byte, n
 	default:
 		return oms.KeylessVerdict{State: oms.Unverified, Detail: fmt.Sprintf("the keyless verifier answered %q", out.State)}
 	}
+}
+
+// boundedOutput keeps at most max bytes and fails the write that would pass
+// them, which closes the pipe on a verifier that keeps writing.
+type boundedOutput struct {
+	buf  bytes.Buffer
+	max  int
+	over bool
+}
+
+func (b *boundedOutput) Write(p []byte) (int, error) {
+	if b.over || b.buf.Len()+len(p) > b.max {
+		b.over = true
+		return 0, errors.New("answer over its bound")
+	}
+	return b.buf.Write(p)
 }
 
 func readIdentities(p string) ([]keylessIdentity, error) {
