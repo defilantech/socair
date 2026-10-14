@@ -67,6 +67,35 @@ func Sniff(path string) string {
 	return ""
 }
 
+// Holds reports whether the file at path holds anything the pickle check
+// reads, judged by its bytes: a zip or tar archive, a NumPy array, or a
+// stream that walks as a pickle of any protocol from its first byte (it
+// completes a pickle, or imports a global, within its first MiB). Sniff
+// claims files of any name, so it leaves out protocols 0 and 1, which begin
+// with ordinary text. Holds is for a file whose name already sends it to
+// this check (a .bin) and whose bytes another format claims too, such as an
+// OpenVINO IR's weights: a caller keeps the file from this check only when
+// Holds is false, so a pickle of any protocol given that name, with an IR
+// beside it, is still scanned. A file it cannot read is held, so the check
+// says why.
+func Holds(path string) bool {
+	f, err := os.Open(path)
+	if err != nil {
+		return true
+	}
+	defer f.Close()
+	head := make([]byte, 512)
+	n, _ := io.ReadFull(f, head)
+	head = head[:n]
+	if bytes.HasPrefix(head, []byte("PK\x03\x04")) || isTar(head) || isNPY(head) {
+		return true
+	}
+	if _, err := f.Seek(0, io.SeekStart); err != nil {
+		return true
+	}
+	return walksAsPickle(f)
+}
+
 // startsProto reports a PROTO opcode for protocol 2 to 5.
 func startsProto(b []byte) bool {
 	return len(b) >= 2 && b[0] == 0x80 && b[1] >= 2 && b[1] <= 5

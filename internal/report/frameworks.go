@@ -46,8 +46,9 @@ var patternSeverity = map[string]string{
 	"pickle-storage-layout":         SeverityHigh,
 	"pickle-unaccounted-bytes":      SeverityHigh,
 	"pickle-noncanonical":           SeverityHigh,
-	// An ONNX tensor whose data does not match its type and shape, or data
-	// in a field one loader reads and another ignores.
+	// An ONNX tensor, or an OpenVINO IR Const, whose data does not match its
+	// type and shape, or ONNX data in a field one loader reads and another
+	// ignores.
 	"tensor-size": SeverityHigh,
 	"tensor-data": SeverityHigh,
 	// An ONNX model that points a loader at a file outside its directory,

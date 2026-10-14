@@ -151,8 +151,11 @@ Every command also takes `--store <path>`.
   ```
 
   On `sentence-transformers/all-MiniLM-L6-v2` at `c9745ed`, the whole repo
-  (30 files) scans with five rows NOT_TESTED: an h5 file, a TorchScript
-  archive, OpenVINO weights, the known-bad hash, and the chat template. This
+  (30 files) scanned with five rows NOT_TESTED: an h5 file, a TorchScript
+  archive, OpenVINO weights, the known-bad hash, and the chat template.
+  Socair reads OpenVINO IR since #268 ([openvino.md](openvino.md)), and the
+  repository's two `openvino/` IRs PASS
+  ([false-positive-baseline.md](false-positive-baseline.md)). This
   selection (12 files, 18 left out) leaves two: the known-bad hash, which a
   feed closes, and the chat template, which an embedding model does not ship.
   A repository whose loader imports its own code needs its `.py` files too:

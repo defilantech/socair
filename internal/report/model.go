@@ -116,6 +116,8 @@ var passMeaning = map[string]string{
 		"For an ONNX model: every tensor holds exactly the data its type and shape need, " +
 		"no two initializers of a graph share a name, external data stays inside the model's directory and fits its file, " +
 		"and every operator is ONNX's own, one of onnxruntime's contrib operators, or a function the model defines. " +
+		"For an OpenVINO IR: every Const lies inside the .bin and is exactly the size its element type and shape take, " +
+		"the Consts cover the .bin with no byte outside them, and every operation OpenVINO builds is in its own opsets. " +
 		"Tensor values are not judged, and an operator library a deployment registers is outside the model.",
 	"File inventory and payloads": "No script, shell command, long encoded blob, or executable signature was found in string metadata values, " +
 		"including every string-array element of 64 bytes or more, and no native executable among the files. " +
