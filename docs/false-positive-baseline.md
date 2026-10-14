@@ -1615,6 +1615,17 @@ their evidence names the first 20):
 | `strangecreator/Qwen3.8-27B-OS-Software-Heretic-v3-MLX-8bit-g64-affine` | `284d137ace56196b4709c90d9794c92eac732293` | 4 | `assets/os-v3-8bit.png`, `assets/os-v3-8bit.svg`, `assets/social-os-v3-8bit.png`, `assets/social-os-v3-8bit.svg` |
 | `ukisai/Swift-Qwen3.8-27B-GGUF` | `98a6100719e3aafa186041089b71c7b48390dbe1` | 1 | `mmproj-Swift-Qwen3.8-27B-F16.gguf` |
 
+## Configs read as Python reads them (2026-10-14, check set tier1/0.10)
+
+Configs a Python loader reads now decode `NaN`, `Infinity`, and `-Infinity` as
+Python's json module does (#256). Every repository in #254's corpus (125
+scanned, configs and Python files only) was scanned before (main at
+`09267c7`) and after, comparing every row's status and the identified
+architecture. One result changed: `nvidia/Nemotron-H-8B-Base-8K` at
+`94ea861e008c2dfced3e8e1302094024077aa04e`, whose `config.json` holds
+`Infinity`, now names its architecture, `NemotronHForCausalLM`, where it was
+empty. No row's status changed.
+
 ## Follow-ups from the first run, since done
 
 1. The GGML file-type mapping follows llama.cpp's `llama_ftype` enum, and the

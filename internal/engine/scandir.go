@@ -1,9 +1,9 @@
 package engine
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/defilantech/socair/internal/checks/pyjson"
 	"net/url"
 	"os"
 	"path"
@@ -300,7 +300,7 @@ func readConfig(root string, files []modeldir.File) modelConfig {
 		Architectures []string `json:"architectures"`
 		ModelType     string   `json:"model_type"`
 	}
-	if json.Unmarshal(b, &c) != nil {
+	if pyjson.Unmarshal(b, &c) != nil {
 		return modelConfig{}
 	}
 	m := modelConfig{name: c.NameOrPath, architecture: c.ModelType}
@@ -318,7 +318,7 @@ func readAdapterBase(p string) string {
 	var c struct {
 		Base string `json:"base_model_name_or_path"`
 	}
-	if json.Unmarshal(b, &c) != nil {
+	if pyjson.Unmarshal(b, &c) != nil {
 		return ""
 	}
 	return c.Base

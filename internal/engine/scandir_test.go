@@ -477,3 +477,24 @@ func TestDirectoryListingIsGradedOnce(t *testing.T) {
 		t.Fatalf("a native executable: %s, evidence %q", inv.Status, inv.Evidence)
 	}
 }
+
+// TestConfigsReadAsPythonReadsThem (#256): Python's json writes NaN and
+// Infinity, which transformers reads back. Nemotron-H's config.json holds
+// Infinity, and its architecture came out empty. Each loader config is now
+// read as its loader reads it. Falsification: decode any of them with
+// encoding/json alone and its assertion fails.
+func TestConfigsReadAsPythonReadsThem(t *testing.T) {
+	d, err := Scan(modelRepo(t, map[string]string{
+		"config.json":           `{"architectures":["NemotronHForCausalLM"],"model_type":"nemotron_h","time_step_limit":[0.0, Infinity],"x":NaN}`,
+		"tokenizer_config.json": `{"chat_template":"{% for m in messages %}{{ m['content'] }}{% endfor %}","model_max_length":Infinity}`,
+	}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if d.Artifact.Architecture != "NemotronHForCausalLM" {
+		t.Errorf("architecture %q from a config.json holding Infinity", d.Artifact.Architecture)
+	}
+	if tmpl := row(d, "Chat template"); tmpl.Status != report.StatusPass {
+		t.Errorf("a tokenizer_config.json holding Infinity: Chat template %s %s", tmpl.Status, tmpl.Notes)
+	}
+}

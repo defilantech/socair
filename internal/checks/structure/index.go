@@ -1,9 +1,9 @@
 package structure
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/defilantech/socair/internal/checks/pyjson"
 	"io/fs"
 	"os"
 	"path"
@@ -51,7 +51,7 @@ func ValidateIndex(root, indexRel string) checks.Result {
 	var idx struct {
 		WeightMap map[string]string `json:"weight_map"`
 	}
-	if err := json.Unmarshal(raw, &idx); err != nil || len(idx.WeightMap) == 0 {
+	if err := pyjson.Unmarshal(raw, &idx); err != nil || len(idx.WeightMap) == 0 {
 		r.Status, r.Notes = checks.NotTested, "the shard index has no readable weight_map"
 		return r
 	}
