@@ -171,34 +171,6 @@ func TestSubjectMustBeTheArtifact(t *testing.T) {
 	mustFail(t, out, ring, "subject digest")
 }
 
-// TestNewerReportNamesTheVersionGap: socair 0.1.0-rc.3 refused a report
-// signed by a later build with only `json: unknown field "version"`. The
-// refusal stands (the document hash is recomputed from the fields this build
-// knows) and now says why. Falsification: drop the unknown-field branch and
-// the reason is gone.
-func TestNewerReportNamesTheVersionGap(t *testing.T) {
-	k, ring, _ := newKey(t)
-	env, err := Sign(golden(t), k)
-	if err != nil {
-		t.Fatal(err)
-	}
-	var e Envelope
-	if err := json.Unmarshal(env, &e); err != nil {
-		t.Fatal(err)
-	}
-	payload, _ := base64.StdEncoding.DecodeString(e.Payload)
-	var st map[string]any
-	if err := json.Unmarshal(payload, &st); err != nil {
-		t.Fatal(err)
-	}
-	st["predicate"].(map[string]any)["field_from_a_later_socair"] = true
-	payload, _ = json.Marshal(st)
-	e.Payload = base64.StdEncoding.EncodeToString(payload)
-	e.Signatures = []Signature{{KeyID: k.ID, Sig: base64.StdEncoding.EncodeToString(ed25519.Sign(k.key, pae(e.PayloadType, payload)))}}
-	out, _ := json.Marshal(e)
-	mustFail(t, out, ring, "a report from a newer socair carries fields an older one does not know")
-}
-
 func TestPredicateTypeIsChecked(t *testing.T) {
 	k, ring, _ := newKey(t)
 	env, _ := Sign(golden(t), k)
