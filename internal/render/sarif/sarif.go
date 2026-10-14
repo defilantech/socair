@@ -3,13 +3,20 @@
 // One run, one result per check. The level mapping is deliberate: a FAIL is an
 // error, a LEAD is a warning (a suspicious signal that needs review), a
 // NOT_TESTED is a note (we did not look; it is not a finding), and a PASS is
-// none.
+// none, with kind "pass". Each result of a report that names its artifact's
+// SHA-256 carries a fingerprint (Fingerprint), so a code-scanning tool tracks
+// one finding across scans of the same bytes. docs/sarif.md says what each
+// property holds.
 package sarif
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"io"
+	"net/url"
 	"regexp"
+	"strconv"
 	"strings"
 
 	"github.com/defilantech/socair/internal/report"
@@ -82,10 +89,12 @@ type text struct {
 }
 
 type result struct {
-	RuleID    string     `json:"ruleId"`
-	Level     string     `json:"level"`
-	Message   text       `json:"message"`
-	Locations []location `json:"locations,omitempty"`
+	RuleID              string            `json:"ruleId"`
+	Kind                string            `json:"kind,omitempty"`
+	Level               string            `json:"level"`
+	Message             text              `json:"message"`
+	Locations           []location        `json:"locations,omitempty"`
+	PartialFingerprints map[string]string `json:"partialFingerprints,omitempty"`
 }
 
 type location struct {
@@ -108,6 +117,20 @@ func ruleID(name string) string {
 	return strings.Trim(s, "-")
 }
 
+// kind is "pass" for a PASS. SARIF 2.1.0 reads an absent kind as "fail"
+// (section 3.27.9), and level "none" means a kind other than "fail" (section
+// 3.27.10), so a PASS without it reads as a failure with no severity. FAIL,
+// LEAD, and NOT_TESTED keep the default, "fail", with their level as the
+// severity. SARIF's kinds for an undecided result, "open" and "review", require
+// level "none", and GitHub code scanning reads the level, not the kind, so a
+// NOT_TESTED written that way could pass for a PASS there.
+func kind(s report.Status) string {
+	if s == report.StatusPass {
+		return "pass"
+	}
+	return ""
+}
+
 // level maps a check status to a SARIF level.
 func level(s report.Status) string {
 	switch s {
@@ -120,6 +143,56 @@ func level(s report.Status) string {
 	default:
 		return "none"
 	}
+}
+
+// FingerprintKey names Socair's partial fingerprint. SARIF asks a producer to
+// name a partial fingerprint for what it hashes and to version the name
+// (section 3.27.17): a different computation gets a new version, and this one
+// keeps its name.
+const FingerprintKey = "socairFindingHash/v1"
+
+// githubFingerprintKey is the one partial fingerprint GitHub code scanning
+// reads. Its upload-sarif action computes one from a source line, which a
+// model file or a directory does not have, and keeps a value already there.
+const githubFingerprintKey = "primaryLocationLineHash"
+
+// Fingerprint identifies a check row's finding on the artifact the document
+// names. It is the SHA-256, in lower-case hex, of these values in order, each
+// written as a netstring (its length in bytes in decimal, ":", the bytes,
+// ","):
+//
+//	FingerprintKey
+//	the artifact's SHA-256 as the document records it (for a model
+//	directory, the digest of its manifest)
+//	the row's name
+//	the row's status
+//	the row's evidence (each finding's pattern, span, and detail; empty for
+//	a row without findings)
+//
+// Nothing else goes in: not the document id, the issue or scan times, the
+// input path, the execution context, the tool or check-set version, the file
+// name, the notes, the severity, or the framework mappings. So two scans of the same
+// bytes that find the same thing give the same fingerprint, and a new revision
+// of the model, another status, or other evidence gives a new one. A document
+// without the artifact's SHA-256 (a header-only sweep) names no exact bytes
+// and gets none: Fingerprint returns "".
+func Fingerprint(d *report.Document, c report.CheckResult) string {
+	if d.Artifact.SHA256 == "" {
+		return ""
+	}
+	h := sha256.New()
+	for _, v := range []string{FingerprintKey, d.Artifact.SHA256, c.Name, string(c.Status), c.Evidence} {
+		h.Write([]byte(strconv.Itoa(len(v)) + ":" + v + ","))
+	}
+	return hex.EncodeToString(h.Sum(nil))
+}
+
+// fileURI writes a file name as a relative URI reference (RFC 3986, which
+// SARIF 2.1.0 section 3.10.1 requires): spaces, reserved characters, and
+// non-ASCII are percent-encoded, and a first segment holding a colon is
+// preceded by "./" so it cannot read as a scheme.
+func fileURI(name string) string {
+	return (&url.URL{Path: name}).String()
 }
 
 // Build assembles the SARIF log for a document.
@@ -146,15 +219,19 @@ func Build(d *report.Document) log {
 		}
 		res := result{
 			RuleID:  ruleID(c.Name),
+			Kind:    kind(c.Status),
 			Level:   level(c.Status),
 			Message: text{Text: msg},
 		}
 		if d.Artifact.FileName != "" {
 			res.Locations = []location{{
 				PhysicalLocation: physical{
-					ArtifactLocation: artifact{URI: d.Artifact.FileName},
+					ArtifactLocation: artifact{URI: fileURI(d.Artifact.FileName)},
 				},
 			}}
+		}
+		if fp := Fingerprint(d, c); fp != "" {
+			res.PartialFingerprints = map[string]string{FingerprintKey: fp, githubFingerprintKey: fp}
 		}
 		results = append(results, res)
 	}

@@ -1,0 +1,309 @@
+{
+  "$schema": "https://json.schemastore.org/sarif-2.1.0.json",
+  "version": "2.1.0",
+  "runs": [
+    {
+      "tool": {
+        "driver": {
+          "name": "Socair",
+          "informationUri": "https://socair.ai",
+          "rules": [
+            {
+              "id": "format-and-structure",
+              "name": "Format and structure",
+              "shortDescription": {
+                "text": "Malformed container structure, unexpected tensors"
+              },
+              "properties": {
+                "tags": [
+                  "security",
+                  "external/atlas/AML.T0010.003",
+                  "external/owasp-llm/LLM03"
+                ]
+              }
+            },
+            {
+              "id": "file-inventory-and-payloads",
+              "name": "File inventory and payloads",
+              "shortDescription": {
+                "text": "Hidden files, embedded payloads, unexpected executables"
+              },
+              "properties": {
+                "tags": [
+                  "security",
+                  "external/atlas/AML.T0011.000",
+                  "external/atlas/AML.T0018.002",
+                  "external/atlas/AML.T0010.003",
+                  "external/owasp-llm/LLM03"
+                ]
+              }
+            },
+            {
+              "id": "hash-provenance-lineage",
+              "name": "Hash, provenance, lineage",
+              "shortDescription": {
+                "text": "Traceable origin: a manifest bound to this hash, from an immutable upstream commit"
+              },
+              "properties": {
+                "tags": [
+                  "security",
+                  "external/atlas/AML.T0010.003",
+                  "external/atlas/AML.T0115.001",
+                  "external/owasp-llm/LLM03"
+                ]
+              }
+            },
+            {
+              "id": "known-bad-hash-match",
+              "name": "Known-bad hash match",
+              "shortDescription": {
+                "text": "Match against the known-bad artifact denylist"
+              },
+              "properties": {
+                "tags": [
+                  "security",
+                  "external/atlas/AML.T0115.001",
+                  "external/atlas/AML.T0010.003",
+                  "external/owasp-llm/LLM03"
+                ]
+              }
+            },
+            {
+              "id": "chat-template",
+              "name": "Chat template",
+              "shortDescription": {
+                "text": "Code reach, hidden or obfuscated text, override or content-triggered instructions, and the text the rendered template adds to the prompt"
+              },
+              "properties": {
+                "tags": [
+                  "security",
+                  "external/atlas/AML.T0018.003",
+                  "external/atlas/AML.T0051",
+                  "external/atlas/AML.T0011.000",
+                  "external/owasp-llm/LLM01",
+                  "external/owasp-llm/LLM03"
+                ]
+              }
+            },
+            {
+              "id": "tokenizer-config",
+              "name": "Tokenizer config",
+              "shortDescription": {
+                "text": "Tokenizer metadata anomalies"
+              },
+              "properties": {
+                "tags": [
+                  "security",
+                  "external/atlas/AML.T0018.003",
+                  "external/atlas/AML.T0011.000",
+                  "external/atlas/AML.T0010.003",
+                  "external/owasp-llm/LLM03"
+                ]
+              }
+            },
+            {
+              "id": "quant-match",
+              "name": "Quant match",
+              "shortDescription": {
+                "text": "Declared quantization (file name) against the tensor types in the file"
+              },
+              "properties": {
+                "tags": [
+                  "security",
+                  "external/atlas/AML.T0010.003",
+                  "external/owasp-llm/LLM03"
+                ]
+              }
+            },
+            {
+              "id": "intake-policy",
+              "name": "Intake policy",
+              "shortDescription": {
+                "text": "The artifact against your intake policy (SOCAIR_INTAKE_POLICY): allowed formats, publisher allow and deny lists, and publishers whose models need a verified signature"
+              },
+              "properties": {
+                "tags": [
+                  "security",
+                  "external/owasp-llm/LLM03"
+                ]
+              }
+            }
+          ]
+        }
+      },
+      "results": [
+        {
+          "ruleId": "format-and-structure",
+          "kind": "pass",
+          "level": "none",
+          "message": {
+            "text": "PASS: GGUF v3 parsed: 626 tensors, 44 metadata pairs"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "google_gemma-3-12b-it-Q5_K_M.gguf"
+                }
+              }
+            }
+          ],
+          "partialFingerprints": {
+            "primaryLocationLineHash": "996fd2f8575a31e2ecdeabb598692176a297f09a3babaacf542c405d165ba374",
+            "socairFindingHash/v1": "996fd2f8575a31e2ecdeabb598692176a297f09a3babaacf542c405d165ba374"
+          }
+        },
+        {
+          "ruleId": "file-inventory-and-payloads",
+          "level": "note",
+          "message": {
+            "text": "NOT_TESTED: artifact: 44 metadata keys, 1532 string bytes, no payload indicator. Repo mirror not provided, so the repo file listing was not inspected."
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "google_gemma-3-12b-it-Q5_K_M.gguf"
+                }
+              }
+            }
+          ],
+          "partialFingerprints": {
+            "primaryLocationLineHash": "84a0f614c425b3560c8caf8b323d338642f22e6b3076f411fbf5f136566dd872",
+            "socairFindingHash/v1": "84a0f614c425b3560c8caf8b323d338642f22e6b3076f411fbf5f136566dd872"
+          }
+        },
+        {
+          "ruleId": "hash-provenance-lineage",
+          "level": "note",
+          "message": {
+            "text": "NOT_TESTED: no provenance input: no supplied manifest and no signature sidecar next to the artifact"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "google_gemma-3-12b-it-Q5_K_M.gguf"
+                }
+              }
+            }
+          ],
+          "partialFingerprints": {
+            "primaryLocationLineHash": "0eaad45331cd01225c5791ede0bc845339a3e307065ab5a8b86bfd8cd63fea27",
+            "socairFindingHash/v1": "0eaad45331cd01225c5791ede0bc845339a3e307065ab5a8b86bfd8cd63fea27"
+          }
+        },
+        {
+          "ruleId": "known-bad-hash-match",
+          "kind": "pass",
+          "level": "none",
+          "message": {
+            "text": "PASS: no denylist entry matched"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "google_gemma-3-12b-it-Q5_K_M.gguf"
+                }
+              }
+            }
+          ],
+          "partialFingerprints": {
+            "primaryLocationLineHash": "06516da70dd51ecba9cef35178f5bb996ded29eee0f7087a1757560b2d37a879",
+            "socairFindingHash/v1": "06516da70dd51ecba9cef35178f5bb996ded29eee0f7087a1757560b2d37a879"
+          }
+        },
+        {
+          "ruleId": "chat-template",
+          "kind": "pass",
+          "level": "none",
+          "message": {
+            "text": "PASS: no structural indicator and no instruction-language lead matched. Heuristic; not a proof of absence."
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "google_gemma-3-12b-it-Q5_K_M.gguf"
+                }
+              }
+            }
+          ],
+          "partialFingerprints": {
+            "primaryLocationLineHash": "3dd543be8e33b1939c8ccf8139292ea7403290afd6b5f16bd7426381cabdb284",
+            "socairFindingHash/v1": "3dd543be8e33b1939c8ccf8139292ea7403290afd6b5f16bd7426381cabdb284"
+          }
+        },
+        {
+          "ruleId": "tokenizer-config",
+          "kind": "pass",
+          "level": "none",
+          "message": {
+            "text": "PASS: tokenizer family 'llama' is recognized"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "google_gemma-3-12b-it-Q5_K_M.gguf"
+                }
+              }
+            }
+          ],
+          "partialFingerprints": {
+            "primaryLocationLineHash": "28b06dd2bc759437c25873d0060597c2377956dcb0030a8dae7120e31735b301",
+            "socairFindingHash/v1": "28b06dd2bc759437c25873d0060597c2377956dcb0030a8dae7120e31735b301"
+          }
+        },
+        {
+          "ruleId": "quant-match",
+          "kind": "pass",
+          "level": "none",
+          "message": {
+            "text": "PASS: declared Q5_K_M matches observed file type 17"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "google_gemma-3-12b-it-Q5_K_M.gguf"
+                }
+              }
+            }
+          ],
+          "partialFingerprints": {
+            "primaryLocationLineHash": "5b65e824fc019188a4b999700437ff0679ad1e17f926a96c31e30e7ec142c6c2",
+            "socairFindingHash/v1": "5b65e824fc019188a4b999700437ff0679ad1e17f926a96c31e30e7ec142c6c2"
+          }
+        },
+        {
+          "ruleId": "intake-policy",
+          "kind": "pass",
+          "level": "none",
+          "message": {
+            "text": "PASS: Intake policy acme-intake.json (sha256 12a53ff063ad). Publisher: google (the organization in the bound provenance manifest's repo_url https://huggingface.co/google/gemma-3-12b-it and the manifest's publisher field). Every rule it sets holds: allowed formats (gguf, safetensors): google_gemma-3-12b-it-Q5_K_M.gguf is gguf, identified from the bytes; denied publishers (example-denied-org): google is not on it; allowed publishers (acme-ml, google, meta-llama, mistralai, qwen): google is on it; signature required for (acme-ml): google is not on it."
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "google_gemma-3-12b-it-Q5_K_M.gguf"
+                }
+              }
+            }
+          ],
+          "partialFingerprints": {
+            "primaryLocationLineHash": "a6db495c11178d5a02f5fdc76f4f52fb70c08319aa39ca4479eaa1d49ce44002",
+            "socairFindingHash/v1": "a6db495c11178d5a02f5fdc76f4f52fb70c08319aa39ca4479eaa1d49ce44002"
+          }
+        }
+      ],
+      "properties": {
+        "socairArtifactSHA256": "13d44e37860489806f575deb0b219c6058c9421fe1982a9311a0e367c4e8f444",
+        "socairFrameworkEditions": "MITRE ATLAS 2026.09, OWASP LLM Top 10 2025",
+        "socairPromotionState": "withheld"
+      }
+    }
+  ]
+}
