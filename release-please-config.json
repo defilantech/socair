@@ -5,7 +5,7 @@
   "include-v-in-tag": true,
   "include-component-in-tag": false,
   "pull-request-title-pattern": "chore: release ${version}",
-  "pull-request-header": "Merging this pull request tags v${version} and creates its draft release. The tag starts `release.yml`, which builds, attests, and attaches the assets; publishing the draft is the maintainer's step (docs/releasing.md).",
+  "pull-request-header": "Merging this pull request tags the version below and creates its draft release. The tag starts `release.yml`, which builds, attests, and attaches the assets; publishing the draft is the maintainer's step (docs/releasing.md).",
   "packages": {
     ".": {
       "component": "",
