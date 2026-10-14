@@ -159,7 +159,7 @@ func TestInspectRepoReadsScriptNamedFiles(t *testing.T) {
 	dir := t.TempDir()
 	_ = os.WriteFile(filepath.Join(dir, "config.json"), []byte("{}"), 0o600)
 	_ = os.WriteFile(filepath.Join(dir, "setup.py"), append([]byte{0x7f, 'E', 'L', 'F'}, make([]byte, 16)...), 0o600)
-	if r := InspectRepo(dir); r.Status != checks.Fail {
+	if r := InspectRepo(dir, nil); r.Status != checks.Fail {
 		t.Fatalf("status = %s, want FAIL for an ELF named setup.py: %s", r.Status, r.Notes)
 	}
 }
@@ -342,5 +342,50 @@ func TestTruncatedInventoryIsNotTested(t *testing.T) {
 	}
 	if !strings.Contains(r.Notes, "cap") {
 		t.Errorf("notes should name the cap: %s", r.Notes)
+	}
+}
+
+// TestArchiveReadByAnotherCheck: a zip another check read entry by entry,
+// with nothing unread, is counted as read, not as an unscanned archive, and
+// the notes say what read it. One with an unread entry stays unscanned and
+// names the entry; so does a gzip, and a zip the read map does not hold.
+// Falsification: ignore Unread and the second case PASSes; count every
+// archive as read and the last two PASS.
+func TestArchiveReadByAnotherCheck(t *testing.T) {
+	zipHead := append([]byte{0x50, 0x4b, 0x03, 0x04}, make([]byte, 60)...)
+	gzipHead := append([]byte{0x1f, 0x8b, 0x08, 0x00}, make([]byte, 60)...)
+	read := func(unread ...string) map[string]checks.ArchiveRead {
+		return map[string]checks.ArchiveRead{"weights/pytorch_model.bin": {
+			By: "Pickle opcode scan", Read: "archive/data.pkl conforms", Unread: unread,
+		}}
+	}
+	cases := []struct {
+		name   string
+		head   []byte
+		read   map[string]checks.ArchiveRead
+		status checks.Status
+		want   string
+	}{
+		{"read in full", zipHead, read(), checks.Pass, "weights/pytorch_model.bin (Pickle opcode scan: archive/data.pkl conforms)"},
+		{"an entry unread", zipHead, read("archive/run.sh (11 bytes outside torch.save's layout)"), checks.NotTested,
+			"Archive contents were not scanned: weights/pytorch_model.bin (zip; the Pickle opcode scan did not read archive/run.sh"},
+		{"a gzip", gzipHead, read(), checks.NotTested, "Archive contents were not scanned: weights/pytorch_model.bin (gzip)"},
+		{"not in the read map", zipHead, nil, checks.NotTested, "Archive contents were not scanned: weights/pytorch_model.bin (zip)"},
+	}
+	for _, c := range cases {
+		dir := t.TempDir()
+		_ = os.WriteFile(filepath.Join(dir, "config.json"), []byte("{}"), 0o600)
+		_ = os.MkdirAll(filepath.Join(dir, "weights"), 0o700)
+		if err := os.WriteFile(filepath.Join(dir, "weights", "pytorch_model.bin"), c.head, 0o600); err != nil {
+			t.Fatal(err)
+		}
+		r := InspectRepo(dir, c.read)
+		if r.Status != c.status || !strings.Contains(r.Notes, c.want) {
+			t.Errorf("%s: status %s (%s); want %s naming %q", c.name, r.Status, r.Notes, c.status, c.want)
+		}
+		p := writeFixture(t, "clean-Q5_K_M.gguf", gguftest.BuildGGUF(gguftest.Clean()))
+		if got := Inspect(p, Options{RepoMirror: dir, Read: c.read}); got.Status != c.status {
+			t.Errorf("%s: with an artifact, status %s (%s); want %s", c.name, got.Status, got.Notes, c.status)
+		}
 	}
 }

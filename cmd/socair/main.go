@@ -104,6 +104,11 @@ func main() {
 			fmt.Fprintln(os.Stderr, "error:", err)
 			os.Exit(1)
 		}
+	case "attach":
+		if err := attachCmd(os.Args[2:]); err != nil {
+			fmt.Fprintln(os.Stderr, "error:", err)
+			os.Exit(1)
+		}
 	case "demo":
 		if err := demoCmd(); err != nil {
 			fmt.Fprintln(os.Stderr, "error:", err)
@@ -146,6 +151,10 @@ Usage:
                            sign the attestation's CycloneDX BOM (an inventory, not a promotion ticket)
   socair verify --bom <bom.dsse.json> --trusted <key.pub|dir> [--artifact <path>] [--cyclonedx <out.json>]
                            verify a signed BOM, and write the BOM it carries
+  socair attach <registry/repo:tag> --attestation <r.dsse.json> --key <key> --trusted <key.pub|dir>
+                           bind an attestation to an OCI model artifact and push it as a referrer (docs/oci.md)
+  socair verify <registry/repo:tag> --trusted <key.pub|dir>
+                           find and verify the attestations on an OCI model artifact
   socair airlock init <store>   create the store, staging, and activity log
   socair airlock pull      pull a file, or a whole repo at a pinned commit, into staging
   socair airlock ingest    resolve a local file or directory, or an offline HF cache entry
@@ -154,6 +163,7 @@ Usage:
   socair airlock recheck [--rescan]   re-check the clean store against the current feed and check set
   socair airlock log       print the airlock activity log (--verify checks its hash chain)
   socair airlock export --out <dir> [--key <k>]   write a shareable, signed snapshot of the store
+  socair airlock serve-hub [--addr <host:port>]   serve admitted models read-only over the Hugging Face Hub API
   socair inventory verify <dir> --trusted <key.pub|dir>   verify an exported inventory snapshot
   socair serve [--scan-root <dir>]...   run the engine HTTP/JSON API for the click-ops wizard;
                            it reads a path a request names only under a scan root

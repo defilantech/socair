@@ -101,12 +101,24 @@ func scanDir(dir string, start time.Time, refs *references, in Inputs, t2 *tier2
 	// pickle under any other name (notes.txt, a torch zip named weights.dat)
 	// is found by content, so no name keeps it from the pickle check.
 	var structParts, invParts, pickleParts []checks.Part
+	// read holds the torch zips the pickle check PASSed, with what it read of
+	// each, entry by entry. The inventory lists the same snapshot, so it
+	// counts such an archive as read instead of re-reading it.
+	read := map[string]checks.ArchiveRead{}
+	inspectPickle := func(f modeldir.File) checks.Result {
+		r, a := pickle.InspectArchive(at(f), pickle.Options{})
+		if a != nil {
+			read[f.Path] = *a
+		}
+		return r
+	}
+	var invFiles []modeldir.File
 	for _, f := range files {
 		ext := strings.ToLower(path.Ext(f.Path))
 		weights := f.Role == modeldir.RoleWeights || f.Role == modeldir.RoleAdapter
 		if !weights || !pickleExt[ext] && ext != ".safetensors" && ext != ".gguf" {
 			if kind := pickle.Sniff(at(f)); kind != "" {
-				r := pickle.Inspect(at(f))
+				r := inspectPickle(f)
 				r.Notes = "found by its bytes, a " + kind + ", not its name; " + r.Notes
 				pickleParts = append(pickleParts, checks.Part{File: f.Path, Result: r})
 				continue
@@ -118,12 +130,12 @@ func scanDir(dir string, start time.Time, refs *references, in Inputs, t2 *tier2
 		switch {
 		case ext == ".safetensors" || ext == ".gguf":
 			structParts = append(structParts, checks.Part{File: f.Path, Result: structure.Validate(at(f))})
-			invParts = append(invParts, checks.Part{File: f.Path, Result: inventory.Inspect(at(f), inventory.Options{RepoMirror: root})})
+			invFiles = append(invFiles, f)
 			if ext == ".gguf" {
 				unparsed = append(unparsed, f.Path+": GGUF metadata checks (chat template, tokenizer, quant) run when the file is scanned on its own")
 			}
 		case pickleExt[ext]:
-			pickleParts = append(pickleParts, checks.Part{File: f.Path, Result: pickle.Inspect(at(f))})
+			pickleParts = append(pickleParts, checks.Part{File: f.Path, Result: inspectPickle(f)})
 		case f.Role == modeldir.RoleAdapter:
 			// adapter_config.json and friends: config, not weights.
 		default:
@@ -144,9 +156,13 @@ func scanDir(dir string, start time.Time, refs *references, in Inputs, t2 *tier2
 			structRow.Notes = "weights are pickle checkpoints; their structure is read by the pickle row"
 		}
 	}
+	// The inventory runs after every pickle check, so it sees what each read.
+	for _, f := range invFiles {
+		invParts = append(invParts, checks.Part{File: f.Path, Result: inventory.Inspect(at(f), inventory.Options{RepoMirror: root, Read: read})})
+	}
 	invRow := checks.Merge("File inventory and payloads", "Hidden files, embedded payloads, unexpected executables", invParts)
 	if len(invParts) == 0 {
-		invRow = inventory.InspectRepo(root)
+		invRow = inventory.InspectRepo(root, read)
 	}
 	if len(pickleParts) == 0 {
 		// Say why there is no Pickle opcode scan row, so "none present" is not

@@ -12,6 +12,7 @@ import (
 	"math/big"
 	"math/bits"
 	"os"
+	"sort"
 	"strings"
 
 	"github.com/defilantech/socair/internal/checks"
@@ -206,7 +207,11 @@ func (s *scan) legacyStream(f io.ReaderAt, size int64, magic *validation) {
 }
 
 // torchMetadata are the records torch.save writes beside data.pkl and the
-// storages, each a few bytes.
+// storages, each a few bytes: .format_version, .storage_alignment, and
+// byteorder from torch/serialization.py's _save, and version (format
+// versions below 6) or .data/version, byteorder when absent, and
+// .data/serialization_id from PyTorchStreamWriter::writeEndOfFile in
+// caffe2/serialize/inline_container.cc.
 var torchMetadata = map[string]bool{
 	"version": true, ".data/version": true, "byteorder": true, ".format_version": true,
 	".storage_alignment": true, ".data/serialization_id": true,
@@ -273,6 +278,7 @@ func (s *scan) zipArchive(zr *zip.Reader) {
 		s.unaccounted(data, fmt.Sprintf("%d byte(s) after STOP", total-g.end))
 	}
 	used := map[string]bool{data: true}
+	exact := map[string]bool{}
 	matched := 0
 	for _, key := range g.order {
 		st := g.storages[key]
@@ -292,6 +298,7 @@ func (s *scan) zipArchive(zr *zip.Reader) {
 			s.unaccounted(name, fmt.Sprintf("%d byte(s), %d more than its storage of %d %s element(s)", have, have-want, st.numel, st.dtype))
 		default:
 			matched++
+			exact[name] = true
 		}
 	}
 	for _, zf := range files {
@@ -306,6 +313,107 @@ func (s *scan) zipArchive(zr *zip.Reader) {
 		records = "no storage records"
 	}
 	s.proof.layouts = append(s.proof.layouts, "torch zip: "+records+", and no record torch.load does not read")
+	s.torch = coverTorchZip(zr, dir, data, exact)
+}
+
+// torchCover is what zipArchive read of a torch.save zip, entry by entry,
+// for File inventory: the pickle, the storage records that matched their
+// storage exactly, the metadata records holding what torch.save writes, and
+// everything else, named.
+type torchCover struct {
+	pickle   string
+	storages int
+	metadata []string
+	unread   []string
+}
+
+// coverTorchZip accounts for every entry in a torch.save zip, including the
+// directory entries and comments zipArchive does not consider: torch.save
+// writes neither (PyTorchStreamWriter adds each record with no comment, and
+// miniz writes no archive comment). It does not account for the zip's own
+// framing (local headers, the alignment padding torch writes in their extra
+// fields, the central directory). Only a PASS hands it on, so data.pkl
+// conformed to the grammar.
+func coverTorchZip(zr *zip.Reader, dir, data string, exact map[string]bool) *torchCover {
+	c := &torchCover{pickle: data}
+	if zr.Comment != "" {
+		c.unread = append(c.unread, fmt.Sprintf("the archive comment (%d bytes)", len(zr.Comment)))
+	}
+	seen := map[string]bool{}
+	for _, zf := range zr.File {
+		switch {
+		case seen[zf.Name]:
+			c.unread = append(c.unread, zf.Name+" (a second record of the same name)")
+			continue
+		case zf.FileInfo().IsDir():
+			c.unread = append(c.unread, fmt.Sprintf("%s (a directory entry of %d bytes)", zf.Name, zf.UncompressedSize64))
+			continue
+		}
+		seen[zf.Name] = true
+		if zf.Comment != "" {
+			c.unread = append(c.unread, fmt.Sprintf("%s (an entry comment of %d bytes)", zf.Name, len(zf.Comment)))
+		}
+		rel, inDir := strings.CutPrefix(zf.Name, dir+"/")
+		switch {
+		case zf.Name == data:
+		case exact[zf.Name]:
+			c.storages++
+		case inDir && torchMetadata[rel] && zf.UncompressedSize64 <= 64:
+			if why := metadataContent(zf, rel); why != "" {
+				c.unread = append(c.unread, zf.Name+" ("+why+")")
+			} else {
+				c.metadata = append(c.metadata, rel)
+			}
+		default:
+			c.unread = append(c.unread, fmt.Sprintf("%s (%d bytes outside torch.save's layout)", zf.Name, zf.UncompressedSize64))
+		}
+	}
+	sort.Strings(c.metadata)
+	return c
+}
+
+// metadataContent says why a metadata record does not hold what torch.save
+// writes there, or "" when it does: "little" or "big" in byteorder, and a
+// decimal number, with or without a newline, in the version, format version,
+// storage alignment, and serialization id records.
+func metadataContent(zf *zip.File, rel string) string {
+	rc, err := zf.Open()
+	if err != nil {
+		return "could not be read: " + err.Error()
+	}
+	defer rc.Close()
+	b, err := io.ReadAll(io.LimitReader(rc, 65))
+	if err != nil {
+		return "could not be read: " + err.Error()
+	}
+	if rel == "byteorder" {
+		if string(b) == "little" || string(b) == "big" {
+			return ""
+		}
+		return "holds content torch.save does not write there"
+	}
+	digits := strings.TrimSuffix(string(b), "\n")
+	if digits == "" || strings.Trim(digits, "0123456789") != "" {
+		return "holds content torch.save does not write there"
+	}
+	return ""
+}
+
+// read is the cover as File inventory takes it.
+func (c *torchCover) read() *checks.ArchiveRead {
+	storages := fmt.Sprintf("%d storage record(s) of exactly numel x itemsize bytes", c.storages)
+	if c.storages == 0 {
+		storages = "no storage records"
+	}
+	metadata := "no metadata records"
+	if len(c.metadata) > 0 {
+		metadata = "torch.save metadata " + strings.Join(c.metadata, ", ")
+	}
+	return &checks.ArchiveRead{
+		By:     "Pickle opcode scan",
+		Read:   fmt.Sprintf("%s conforms to grammar %s; %s; %s", c.pickle, Grammar, storages, metadata),
+		Unread: c.unread,
+	}
 }
 
 // npyArray checks one .npy: its header, then its data, raw or pickled.

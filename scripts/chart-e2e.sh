@@ -18,6 +18,11 @@
 #     both trust ConfigMaps to have reached the store;
 #   - the activity log's hash chain verifies.
 #
+# Then it turns on the read-only hub endpoint: it serves the promoted bytes,
+# which hash to the attestation, and the attestation, and answers 404 for a
+# hash the store does not hold; its NetworkPolicy admits a labelled pod in a
+# labelled namespace and not an unlabelled one.
+#
 # Then it exposes the API as a Service and checks the NetworkPolicy: a pod in
 # the release's namespace reaches it, a pod in another namespace does not.
 # Finally it uninstalls and checks the store's claim was kept.
@@ -27,10 +32,12 @@ root="$(cd "$(dirname "$0")/.." && pwd)"
 cluster="${KIND_CLUSTER:-kind}"
 ns=socair-e2e
 other=socair-e2e-other
+models=socair-e2e-models
 rel=intake
 dep="$rel-socair"
 version=0.0.0-e2e
 port=18080
+hubport=18081
 tmp="$(mktemp -d)"
 pf=""
 cleanup() {
@@ -40,6 +47,7 @@ cleanup() {
 trap cleanup EXIT
 
 step() { printf '\n== %s\n' "$*"; }
+sha256() { if command -v sha256sum >/dev/null 2>&1; then sha256sum; else shasum -a 256; fi | cut -d' ' -f1; }
 fail() { echo "FAIL: $*" >&2; exit 1; }
 
 step "build the release binaries and the image"
@@ -125,9 +133,56 @@ promote "$tmp/r.conditional.dsse.json" >/dev/null
 [[ "$(cat "$tmp/status")" == 200 ]] || fail "promote answered $(cat "$tmp/status"): $(cat "$tmp/body")"
 kubectl -n "$ns" exec "deploy/$dep" -c socair -- socair airlock log --store /store --verify
 
-step "expose the API as a Service"
+step "the hub endpoint serves the promoted model, read-only"
 kill "$pf" 2>/dev/null || true
 pf=""
+helm upgrade "$rel" "$root/charts/socair" -n "$ns" --reuse-values --wait --timeout 5m --set hub.enabled=true >/dev/null
+kubectl -n "$ns" port-forward "deploy/$dep" "$hubport:8081" >/dev/null 2>&1 &
+pf=$!
+hubbase="http://127.0.0.1:$hubport"
+for _ in $(seq 1 30); do curl -fsS "$hubbase/api/health" >/dev/null 2>&1 && break; sleep 1; done
+subject="$(jq -r .artifact.sha256 "$tmp/r.json")"
+curl -fsS "$hubbase/sha256/$subject/resolve/main/tiny.safetensors" -o "$tmp/served"
+[[ "$(sha256 <"$tmp/served")" == "$subject" ]] || fail "the served bytes do not hash to the attestation"
+curl -fsS "$hubbase/api/socair/attestations/$subject" | jq -e '.payloadType and (.payload | length > 0)' >/dev/null ||
+	fail "the attestation is not served"
+unknown="$(curl -sS -o /dev/null -w '%{http_code}' "$hubbase/sha256/$(printf x | sha256)/resolve/main/x")"
+[[ "$unknown" == 404 ]] || fail "a hash the store does not hold answered $unknown"
+kill "$pf" 2>/dev/null || true
+pf=""
+hubclient() { # hubclient <namespace> <name> <pod labels>: socair health against the hub Service
+	local o
+	o=$(jq -nc --argjson l "$3" '{metadata: {labels: $l}, spec: {securityContext: {runAsNonRoot: true, seccompProfile: {type: "RuntimeDefault"}},
+		containers: [{name: "c", image: "socair:e2e", imagePullPolicy: "Never",
+			args: ["health", "--addr", "'"$dep-hub.$ns"'.svc:8081"],
+			securityContext: {allowPrivilegeEscalation: false, capabilities: {drop: ["ALL"]}}}]}}')
+	kubectl -n "$1" run "$2" --image=socair:e2e --restart=Never --overrides="$o" >/dev/null
+	local phase=""
+	for _ in $(seq 1 90); do
+		phase=$(kubectl -n "$1" get "pod/$2" -o jsonpath='{.status.phase}')
+		[[ "$phase" == Succeeded || "$phase" == Failed ]] && break
+		sleep 1
+	done
+	kubectl -n "$1" logs "pod/$2" >"$tmp/client.log" 2>&1 || true
+	echo "  $1/$2 ($phase): $(tr '\n' ' ' <"$tmp/client.log")"
+	[[ "$phase" == Succeeded ]]
+}
+kubectl create namespace "$models" >/dev/null
+kubectl label namespace "$models" socair.ai/hub-client=true >/dev/null
+kubectl -n "$ns" wait endpointslice -l kubernetes.io/service-name="$dep-hub" \
+	--for=jsonpath='{.endpoints[0].conditions.ready}'=true --timeout=60s >/dev/null
+reached=""
+for i in 1 2 3 4 5; do
+	if hubclient "$models" "labelled-$i" '{"socair.ai/hub-client":"true"}'; then reached=1; break; fi
+	sleep 3
+done
+[[ -n "$reached" ]] || fail "a labelled pod in a labelled namespace could not reach the hub endpoint"
+if hubclient "$models" unlabelled '{"app":"other"}'; then
+	fail "an unlabelled pod reached the hub endpoint through the NetworkPolicy"
+fi
+grep -Eqi 'timeout|deadline' "$tmp/client.log" || fail "the unlabelled pod failed for another reason"
+
+step "expose the API as a Service"
 helm upgrade "$rel" "$root/charts/socair" -n "$ns" --reuse-values --wait --timeout 5m \
 	--set service.enabled=true --set service.authenticatingProxy=true >/dev/null
 client() { # client <namespace> <name>: run socair health against the Service

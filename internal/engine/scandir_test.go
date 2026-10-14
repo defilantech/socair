@@ -307,6 +307,94 @@ func TestDirectoryFindsAPickleByItsBytes(t *testing.T) {
 	}
 }
 
+// cpythonStateDict is the data.pkl torch.save writes for {"w": a float32
+// tensor of 4 elements}, as CPython's pickler wrote it at protocol 2 (the
+// pickle check's vector torch-one-tensor-dict, as in the benchmark): one
+// tensor whose storage is the record data/0, 16 bytes.
+var cpythonStateDict = []byte("\x80\x02\x7d\x71\x00\x58\x01\x00\x00\x00\x77\x71\x01\x63\x74\x6f\x72\x63\x68\x2e\x5f\x75\x74\x69\x6c\x73\x0a\x5f\x72\x65\x62\x75\x69\x6c\x64\x5f\x74\x65\x6e\x73\x6f\x72\x5f\x76\x32\x0a\x71\x02\x28\x28\x58\x07\x00\x00\x00\x73\x74\x6f\x72\x61\x67\x65\x71\x03\x63\x74\x6f\x72\x63\x68\x0a\x46\x6c\x6f\x61\x74\x53\x74\x6f\x72\x61\x67\x65\x0a\x71\x04\x58\x01\x00\x00\x00\x30\x71\x05\x58\x03\x00\x00\x00\x63\x70\x75\x71\x06\x4b\x04\x74\x71\x07\x51\x4b\x00\x4b\x04\x85\x71\x08\x4b\x01\x85\x71\x09\x89\x63\x63\x6f\x6c\x6c\x65\x63\x74\x69\x6f\x6e\x73\x0a\x4f\x72\x64\x65\x72\x65\x64\x44\x69\x63\x74\x0a\x71\x0a\x29\x52\x71\x0b\x74\x71\x0c\x52\x71\x0d\x73\x2e")
+
+// torchSave is a torch.save zip in the order torch writes it: data.pkl,
+// its metadata, the storage record data/0 (16 bytes), then version, then any
+// extra entries (name, content).
+func torchSave(t *testing.T, pkl []byte, byteorder string, extra ...string) string {
+	t.Helper()
+	var b bytes.Buffer
+	zw := zip.NewWriter(&b)
+	entries := []string{"archive/data.pkl", string(pkl), "archive/.format_version", "1", "archive/byteorder", byteorder,
+		"archive/data/0", string(make([]byte, 16)), "archive/version", "3\n"}
+	entries = append(entries, extra...)
+	for i := 0; i+1 < len(entries); i += 2 {
+		w, err := zw.CreateHeader(&zip.FileHeader{Name: entries[i], Method: zip.Store})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := w.Write([]byte(entries[i+1])); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := zw.Close(); err != nil {
+		t.Fatal(err)
+	}
+	return b.String()
+}
+
+// TestDirectoryTorchZipTheGrammarReadIsNotUnscanned: File inventory named
+// every torch zip as an unscanned archive, even when the pickle row PASSed
+// it with the grammar's proof (#183). A torch zip the pickle check PASSed,
+// whose every entry is data.pkl, a storage record of exactly its size, or a
+// metadata record holding what torch.save writes, is now counted as read.
+// Anything else keeps it unscanned: an entry outside the layout (named), a
+// metadata record holding something else (named, though the pickle row
+// PASSes), and a data.pkl the grammar FAILs. Falsification: hand the
+// inventory every torch zip the pickle check opened, or drop the unread
+// entries, and the last three cases PASS.
+func TestDirectoryTorchZipTheGrammarReadIsNotUnscanned(t *testing.T) {
+	clean := torchSave(t, cpythonStateDict, "little")
+	cases := []struct {
+		name          string
+		file          string
+		data          string
+		pickleOnly    bool
+		inv, pickle   report.Status
+		want, notWant string
+	}{
+		{"beside safetensors", "pytorch_model.bin", clean, false, report.StatusPass, report.StatusPass,
+			"pytorch_model.bin (Pickle opcode scan: archive/data.pkl conforms to grammar", "Archive contents were not scanned"},
+		{"pickle weights only", "pytorch_model.bin", clean, true, report.StatusPass, report.StatusPass,
+			"1 archive(s) read entry by entry by another check", "Archive contents were not scanned"},
+		{"found by its bytes", "weights.dat", clean, false, report.StatusPass, report.StatusPass,
+			"weights.dat (Pickle opcode scan:", "Archive contents were not scanned"},
+		{"an entry outside the layout", "pytorch_model.bin", torchSave(t, cpythonStateDict, "little", "archive/run.sh", "echo socair"), false,
+			report.StatusNotTested, report.StatusLead, "Archive contents were not scanned: pytorch_model.bin (zip)", "Pickle opcode scan:"},
+		{"a metadata record holding something else", "pytorch_model.bin", torchSave(t, cpythonStateDict, "little;echo socair"), false,
+			report.StatusNotTested, report.StatusPass, "the Pickle opcode scan did not read archive/byteorder (holds content", "Pickle opcode scan:"},
+		{"a gadget in data.pkl", "pytorch_model.bin", torchSave(t, posixSystemPickle, "little"), true,
+			report.StatusNotTested, report.StatusFail, "Archive contents were not scanned: pytorch_model.bin (zip)", "Pickle opcode scan:"},
+	}
+	for _, c := range cases {
+		dir := modelRepo(t, map[string]string{c.file: c.data})
+		if c.pickleOnly {
+			if err := os.Remove(filepath.Join(dir, "model.safetensors")); err != nil {
+				t.Fatal(err)
+			}
+		}
+		d, err := Scan(dir)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if problems := report.Validate(d); len(problems) != 0 {
+			t.Fatalf("%s: %v", c.name, problems)
+		}
+		inv, pk := row(d, "File inventory and payloads"), row(d, "Pickle opcode scan")
+		if pk.Status != c.pickle {
+			t.Errorf("%s: pickle row %s (%s), want %s", c.name, pk.Status, pk.Notes, c.pickle)
+		}
+		if inv.Status != c.inv || !strings.Contains(inv.Notes, c.want) || strings.Contains(inv.Notes, c.notWant) {
+			t.Errorf("%s: inventory %s (%s); want %s naming %q and not %q", c.name, inv.Status, inv.Notes, c.inv, c.want, c.notWant)
+		}
+	}
+}
+
 // TestDirectoryWithNoPickleSaysSo: a directory with no pickle has no Pickle
 // opcode scan row, and a reader could not tell "none present" from "not run".
 // The inventory row now says none of its files is a pickle. Falsification:
