@@ -73,7 +73,15 @@ var patternSeverity = map[string]string{
 	"pickle-backward-hooks":        SeverityMedium,
 	"pickle-reviewed-class-state":  SeverityMedium,
 	"auto_map":                     SeverityMedium,
-	"python-file":                  SeverityMedium,
+	"custom-pipeline":              SeverityMedium,
+	"custom-module":                SeverityMedium,
+	"custom-component":             SeverityMedium,
+	"custom-generate":              SeverityMedium,
+	"inference-handler":            SeverityMedium,
+	"imported-code":                SeverityMedium,
+	// No longer emitted (tier1/0.9, #254): any .py file was a LEAD. Kept so
+	// a report signed before it grades the same.
+	"python-file": SeverityMedium,
 	// A license outside the operator's policy: a rule broken, not a
 	// compromise.
 	"license-not-allowed": SeverityMedium,

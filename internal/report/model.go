@@ -131,7 +131,10 @@ var passMeaning = map[string]string{
 		"through calls whose arguments were checked, and every storage it references matches a record of exactly its size. " +
 		"A NumPy array with no object dtype holds no pickle, and its data matches its shape. " +
 		"Not covered: a loader bug, a reader that parses the bytes differently, code carried as data, or a tampered Python environment.",
-	"Remote code": "No auto_map entry and no Python file: a loader would run no code from the repository.",
+	"Remote code": "No config a loader reads names Python in this directory or in another repository (through an auto_map entry, " +
+		"custom_pipelines, a sentence-transformers module, or a diffusers custom pipeline or component), and no file sits where a loader imports one by its path " +
+		"(custom_generate/generate.py, or an inference toolkit's handler.py, pipeline.py, or code/inference.py). " +
+		"Other Python and script files are listed in the notes and not judged: a loader Socair does not model, or a person, can still run them.",
 	"Hash, provenance, lineage": "A trusted publisher signature verified over this artifact, or an operator-supplied manifest binds this hash " +
 		"to a repository at an immutable commit. The notes say which; a manifest is the operator's claim, not a signature.",
 	"Known-bad hash match": "This exact hash is not on the configured denylist. Any changed byte gives a new hash, so it catches only known files.",

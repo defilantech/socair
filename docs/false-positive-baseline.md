@@ -1158,6 +1158,179 @@ go test ./internal/checks/chattemplate -run 'EvasionCorpus|PartType|GuardLiteral
 The corpus test now also logs, per template, the text it emits under a
 content-part type condition.
 
+## Remote code: the Python a loader imports (2026-10-14, check set tier1/0.9)
+
+Every `.py` file in a model directory was a Remote code LEAD (#254), so
+`sentence-transformers/all-MiniLM-L6-v2`, pulled whole, could never cross the
+airlock: it ships `train_script.py`, which nothing imports. The row now names
+only the Python a loader would import, read from each loader's source at a
+pinned release:
+
+- transformers
+  [v5.19.0](https://github.com/huggingface/transformers/tree/v5.19.0/src/transformers)
+  and
+  [v4.57.6](https://github.com/huggingface/transformers/tree/v4.57.6/src/transformers):
+  `dynamic_module_utils.py` (`get_class_from_dynamic_module` splits a class
+  reference on `--` for another repository, then on its one `.` into a module
+  file and a class; `get_cached_module_file` opens `<module>.py` in the
+  directory it was given; `get_relative_imports` and
+  `get_relative_import_files` follow `from .x import` and `import .x`,
+  transitively, each joined to the first module's directory); the Auto classes
+  in `models/auto/` (auto_map in `config.json`, `tokenizer_config.json`,
+  `processor_config.json`, `preprocessor_config.json`,
+  `video_preprocessor_config.json`, and a sub-config's own auto_map through
+  `from_config`); `pipelines/__init__.py` (`custom_pipelines.<task>.impl`);
+  and `generation/utils.py`, whose `load_custom_generate` imports
+  `custom_generate/generate.py` when a model loads. In v4.57.6 it does so from
+  a local directory without `trust_remote_code` (it passes the local path as
+  local code); v5.19.0 asks for it.
+- sentence-transformers
+  [v6.1.0](https://github.com/huggingface/sentence-transformers/tree/v6.1.0/sentence_transformers):
+  `util/misc.py` (`import_module_class`: a class outside
+  `sentence_transformers.*` goes to transformers' `get_class_from_dynamic_module`,
+  then to `import_from_string`, with `trust_remote_code` required since 6.0),
+  `base/model.py` (each `modules.json` type), `base/modules/router.py`
+  (`types`), `sentence_transformer/modules/word_embeddings.py`
+  (`tokenizer_class`), `base/modules/dense.py` (`activation_function`, through
+  `import_from_string`), and `cross_encoder/model.py` (`activation_fn`).
+  [v5.7.0](https://github.com/huggingface/sentence-transformers/blob/v5.7.0/sentence_transformers/util/misc.py)
+  imports a custom module from a local directory without `trust_remote_code`.
+- diffusers
+  [v0.41.0](https://github.com/huggingface/diffusers/tree/v0.41.0/src/diffusers):
+  `pipelines/pipeline_loading_utils.py` (a `[file, class]` `_class_name` is a
+  custom pipeline in `<file>.py`; a component `[library, class]` is loaded
+  from `<component>/<library>.py` whenever that file exists, before the
+  library is imported), `models/auto_model.py` and
+  `modular_pipelines/modular_pipeline.py` (auto_map, resolved in the
+  component's subfolder).
+- The inference toolkits, which import a file by its path with no
+  `trust_remote_code`:
+  [huggingface-inference-toolkit 0.5.5](https://github.com/huggingface/huggingface-inference-toolkit/blob/0.5.5/src/huggingface_inference_toolkit/utils.py)
+  (`handler.py`, else the legacy `pipeline.py`, with the model directory first
+  on Python's path) and
+  [sagemaker-inference 1.10.1](https://github.com/aws/sagemaker-inference-toolkit/blob/v1.10.1/src/sagemaker_inference/environment.py)
+  as used by
+  [sagemaker-huggingface-inference-toolkit 2.7.0](https://github.com/aws/sagemaker-huggingface-inference-toolkit/blob/v2.7.0/src/sagemaker_huggingface_inference_toolkit/handler_service.py)
+  (`code/inference.py`, with `code/` on the path).
+
+**Method.** The row reads only JSON configs and Python files, so no weights
+were downloaded. Each repository's `.json` files (up to 16 MiB) and `.py`
+files were fetched at a pinned commit through the Hub API
+(`/api/models/<repo>/tree/<commit>`, then `/resolve/<commit>/<path>`), and
+the directory was scanned with `socair scan` built from `main` at `ddfe650`
+and from this change. The set: the 100 most-downloaded transformers models
+in the Hub's listing on 2026-10-14 (`library=transformers&sort=downloads`),
+plus 40 named ones: the rest of #254's survey, every jonatasgrosman
+wav2vec2-large-xlsr-53 model in 13 languages, and repositories that load
+their own code (auto_map, a sentence-transformers custom module,
+`custom_generate/`, an Inference Endpoints handler, diffusers custom
+components, `custom_pipelines`). 15 were not scanned: 6 are gated
+(`meta-llama/Llama-3.2-1B-Instruct`, `meta-llama/Llama-3.1-8B-Instruct`, and
+four pyannote repositories, one of which, `pyannote/speaker-diarization-3.1`,
+ships an Inference Endpoints `handler.py` the row would name), and 9 hold no
+JSON or Python file (GGUF, ComfyUI, and detector repositories). The gate:
+
+```
+SOCAIR_REMOTECODE_CORPUS="<dirs>" go test ./internal/checks/remotecode -run RealRepos -v
+```
+
+prints every row and fails if a repository with a top-level auto_map is not a
+LEAD. On the 125 scanned: 101 PASS, 24 LEAD, 0 NOT_TESTED, 0 FAIL.
+
+**Every changed result** (19 of 125):
+
+| Repository | Commit | Set | Before | After | Why |
+|---|---|---|---|---|---|
+| sentence-transformers/all-MiniLM-L6-v2 | `1110a243fdf4706b3f48f1d95db1a4f5529b4d41` | top 100 | LEAD | PASS | lists `train_script.py` |
+| sentence-transformers/all-mpnet-base-v2 | `e8c3b32edf5434bc2275fc9bab85f82640a19130` | top 100 | LEAD | PASS | lists `train_script.py` |
+| sentence-transformers/all-MiniLM-L12-v2 | `a50ef00143b4d5391434df20ae11632588ac25be` | named | LEAD | PASS | lists `train_script.py` |
+| sentence-transformers/all-distilroberta-v1 | `842eaed40bee4d61673a81c92d5689a8fed7a09f` | named | LEAD | PASS | lists `train_script.py` |
+| deepseek-ai/DeepSeek-V3.2 | `a7e62ac04ecb2c0a54d736dc46601c5606cf10a6` | top 100 | LEAD | PASS | lists `encoding/*.py` (2) and `inference/*.py` (4) |
+| deepseek-ai/DeepSeek-V4-Flash-0731 | `7872f01b1d1fe23eabc4c98b48bffcef5a386062` | top 100 | LEAD | PASS | lists `encoding/*.py` (2) and `inference/*.py` (4) |
+| Comfy-Org/z_image_turbo | `6fc90a3b1b653e935a0d175e260736de25b84df5` | top 100 | LEAD | PASS | lists `z_image_convert_original_to_comfy.py` |
+| jonatasgrosman/wav2vec2-large-xlsr-53-portuguese | `634ac655299bcdc46c83bc01da9bab52d2987e4f` | top 100 | LEAD | PASS | lists `eval.py` |
+| jonatasgrosman/wav2vec2-large-xlsr-53-dutch | `46f221381d200f7bef268309b3f02023ccf11fcc` | named | LEAD | PASS | lists `eval.py` |
+| jonatasgrosman/wav2vec2-large-xlsr-53-english | `569a6236e92bd5f7652a0420bfe9bb94c5664080` | named | LEAD | PASS | lists `eval.py` |
+| jonatasgrosman/wav2vec2-large-xlsr-53-french | `7c79e105a6525d38e1e69f640b974b4a679723cc` | named | LEAD | PASS | lists `eval.py` |
+| jonatasgrosman/wav2vec2-large-xlsr-53-german | `4b8a02957378d0f2da2ef74091156b032c485a89` | named | LEAD | PASS | lists `eval.py` |
+| jonatasgrosman/wav2vec2-large-xlsr-53-italian | `dab04a3e00d8326052f3fb22a6ff276b822f6131` | named | LEAD | PASS | lists `eval.py` |
+| jonatasgrosman/wav2vec2-large-xlsr-53-polish | `6b1cea36bd8bc5f65ec8081667cd9c0207d51970` | named | LEAD | PASS | lists `eval.py` |
+| jonatasgrosman/wav2vec2-large-xlsr-53-russian | `2329100508896c6d9b157019803ab5601e6f3406` | named | LEAD | PASS | lists `eval.py` |
+| jonatasgrosman/wav2vec2-large-xlsr-53-spanish | `96d7e9b4e4a78af515a3c6d3cee7c0826045d276` | named | LEAD | PASS | lists `eval.py` |
+| coqui/XTTS-v2 | `6c2b0d75eae4b7047358e3b6bd9325f857d43f77` | top 100 | NOT_TESTED | PASS | `config.json` holds `Infinity`, which Python's json module reads and encoding/json did not; it names no code |
+| absternator/pair-classification-pipeline | `3f25edd5e8ebb0d4edaba50aeda2438bcdcb9192` | named | PASS | LEAD | `custom_pipelines` names `__main__.PairClassificationPipeline`, a module the repository does not ship |
+| iryuki/pair-classification-pipeline | `489f90dcc2e5b32d4f2bdb5b543c021224755e20` | named | PASS | LEAD | the same |
+
+The two new LEADs are configs that tell `pipeline()` to import code the
+repository does not hold; neither ships a `.py` file, so the old rule passed
+them. The jonatasgrosman models in Arabic, Chinese, Japanese, and Persian ship
+no `eval.py` and PASSed before and after.
+
+**Every repository that loads its own code stayed a LEAD** (22), each naming
+the files below:
+
+| Repository | Commit | Patterns | Files named |
+|---|---|---|---|
+| microsoft/Phi-3-mini-4k-instruct | `f39ac1d28e925b323eae81227eaba4464caced4e` | auto_map | `configuration_phi3.py`, `modeling_phi3.py` (`sample_finetune.py` listed, not judged) |
+| deepseek-ai/DeepSeek-V3 | `e815299b0bcbac849fa540c768ef21845365c9eb` | auto_map | `configuration_deepseek.py`, `modeling_deepseek.py` (`inference/*.py` listed) |
+| deepseek-ai/DeepSeek-V2-Lite | `604d5664dddd88a0433dbae533b7fe9472482de0` | auto_map | `configuration_deepseek.py`, `modeling_deepseek.py` (`tokenization_deepseek_fast.py` listed: no config names it) |
+| THUDM/chatglm3-6b | `e9e0406d062cdb887444fe5bd546833920abd4ac` | auto_map, imported-code | `configuration_chatglm.py`, `modeling_chatglm.py`, `quantization.py`, `tokenization_chatglm.py` |
+| Qwen/Qwen-VL-Chat | `f57cfbd358cb56b710d963669ad1bcfb44cdcdd8` | auto_map, imported-code | `configuration_qwen.py`, `modeling_qwen.py`, `qwen_generation_utils.py`, `tokenization_qwen.py`, `visual.py` |
+| OpenGVLab/InternVL3-8B | `853e3a797a661694b1b8ece0cb72dc2b23e3dac9` | auto_map (two in `vision_config`), imported-code | `configuration_intern_vit.py`, `configuration_internvl_chat.py`, `conversation.py`, `modeling_intern_vit.py`, `modeling_internvl_chat.py` |
+| jinaai/jina-reranker-v2-base-multilingual | `9cfeff2df7d40d1b78e75e5e9cebec92a99813c9` | auto_map, imported-code | `configuration_xlm_roberta.py`, `modeling_xlm_roberta.py`, and the five files the latter imports, transitively (`stochastic_depth.py`, which nothing imports, listed) |
+| jinaai/jina-embeddings-v3 | `ab036b023d30b4d1138c4c3bfa9f0c445ab455d6` | auto_map (another repository), custom-module | `custom_st.py` from `modules.json`; `jinaai/xlm-roberta-flash-implementation` |
+| jinaai/jina-embeddings-v2-base-en | `322d4d7e2f35e84137961a65af894fda0385eb7a` | auto_map (another repository) | none here: `jinaai/jina-bert-implementation` |
+| nomic-ai/nomic-embed-text-v1.5 | `e9b6763023c676ca8431644204f50c2b100d9aab` | auto_map (another repository) | none here: `nomic-ai/nomic-bert-2048` |
+| Alibaba-NLP/gte-large-en-v1.5 | `104333d6af6f97649377c2afbde10a7704870c7b` | auto_map (another repository) | none here: `Alibaba-NLP/new-impl` |
+| microsoft/Florence-2-large | `21a599d414c4d928c9032694c424fb94458e3594` | auto_map (also in `preprocessor_config.json`) | `configuration_florence2.py`, `modeling_florence2.py`, `processing_florence2.py` |
+| moonshotai/Kimi-K2-Instruct | `fd1984e2b7a3350dbf7305fe73a4ede25c14de50` | auto_map (also in `tokenizer_config.json`) | `configuration_deepseek.py`, `modeling_deepseek.py`, `tokenization_kimi.py` |
+| MiniMaxAI/MiniMax-M1-80k | `8d1494b1a260e22040d5b9b2eb332eb44500b34d` | auto_map | `configuration_minimax_m1.py`, `modeling_minimax_m1.py` (`main.py` listed) |
+| nvidia/NV-Embed-v2 | `3fa59658547db50a1e8e3346cf057fd0c77ed6ef` | auto_map | `configuration_nvembed.py`, `modeling_nvembed.py` |
+| nvidia/Nemotron-H-8B-Base-8K | `94ea861e008c2dfced3e8e1302094024077aa04e` | auto_map | `configuration_nemotron_h.py`, `modeling_nemotron_h.py` |
+| nvidia/Llama-3.1-Nemotron-Nano-VL-8B-V1 | `437f4e28b989cc2d9a16b6767cc930cdf48797ff` | auto_map (also `vision_config`, another repository) | `configuration.py`, `image_processing.py`, `modeling.py`; `nvidia/C-RADIOv2-H` (`examples.py` listed) |
+| RadixArk/Kimi-K3-DSpark | `3c5bac301d9cf392706189d82ed947feca6c2f0f` | auto_map | `dspark.py` (`dflash.py` listed: `dspark.py` imports an installed `specforge` package, not it) |
+| transformers-community/custom_generate_example | `32179317786e615d26696cfc878c5d6bbb457873` | custom-generate | `custom_generate/generate.py` |
+| transformers-community/dola | `af6cdc351e7e0bd28a86ce32aac461494a09a9c1` | custom-generate | `custom_generate/generate.py` |
+| philschmid/stable-diffusion-v1-4-endpoints | `5726ea9d1f11846345d5e995cc872dbce0685722` | inference-handler | `handler.py` |
+| sayakpaul/show-1-base-with-code | `34109c6536a503cb8f7c564e78aad10351cc77ad` | custom-component | `pipeline_t2v_base_pixel.py`, `unet/showone_unet_3d_condition.py` |
+
+Nemotron-H's `config.json` holds `Infinity`. Before, it was a LEAD only for its
+`.py` files, and its auto_map was never read; with the strict decoder this
+change first used, it fell to NOT_TESTED, which is why configs are now decoded
+as Python's json module decodes them.
+
+**Against transformers' own closure.** For the 14 repositories whose auto_map
+names a module in the directory, a script holding `get_relative_imports` and
+`get_relative_import_files` copied verbatim from transformers v5.19.0
+listed every file transformers would read for each auto_map entry, and the
+row named exactly those files in each: no file missing, none extra.
+
+**Unchanged PASS** (84), among them every sentence-transformers repository
+whose `modules.json` names only library classes, the two `cross-encoder`
+models (their `sbert_ce_default_activation_function` is `torch.nn.*`),
+`sentence-transformers/LaBSE` (a
+Dense `activation_function` of `torch.nn.*`),
+`sentence-transformers/average_word_embeddings_glove.6B.300d` (a library
+`tokenizer_class`), `opensearch-project/opensearch-neural-sparse-encoding-doc-v3-distill`
+(a Router), `stabilityai/stable-diffusion-xl-base-1.0` (a standard
+`model_index.json`), and `lightonai/GTE-ModernColBERT-v1`, whose
+`modules.json` names `pylate.models.Dense.Dense`: no file here, so it is
+named in the notes as an installed package's class and not judged.
+
+What the measurement does not cover: no loader was run, so the set of files
+is the row's reading of the loaders' source, cross-checked against
+transformers' import closure only; sentence-transformers, diffusers, and the
+inference toolkits were read, not executed. Loaders that import a file their
+caller names (SpeechBrain's `foreign_class`, pinned as the benchmark miss
+`dir-script-caller-named`), configs that are code by design (HyperPyYAML's
+`hyperparams.yaml`, Hydra's `_target_`), Hub kernels a config's
+`attn_implementation` names (transformers v5.19.0 `integrations/hub_kernels.py`
+loads them from the Hub, `kernels-community` by default, with no
+`trust_remote_code`), PEFT's `auto_mapping` (an installed module), and
+compiled or bytecode modules are outside the row, and an environment variable
+(`HF_DEFAULT_PIPELINE_NAME`, `SAGEMAKER_PROGRAM`) can rename the file an
+inference toolkit imports.
+
 ## Follow-ups from the first run, since done
 
 1. The GGML file-type mapping follows llama.cpp's `llama_ftype` enum, and the
