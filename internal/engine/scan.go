@@ -549,10 +549,13 @@ func evidence(res checks.Result) string {
 	return strings.Join(parts, "; ")
 }
 
+// finalizeFindings lists the rows by status. fails and not_tested are arrays
+// in the schema, so an empty one is written [], never null; leads is omitted
+// when empty.
 func finalizeFindings(d *report.Document) {
-	d.Findings.Fails = nil
+	d.Findings.Fails = []string{}
 	d.Findings.Leads = nil
-	d.Findings.NotTested = nil
+	d.Findings.NotTested = []string{}
 	for _, c := range d.Checks {
 		switch c.Status {
 		case report.StatusFail:
