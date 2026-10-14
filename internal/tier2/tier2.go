@@ -20,10 +20,11 @@ import (
 	"net/url"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"time"
-	"unicode"
 
+	"github.com/defilantech/socair/internal/hostpath"
 	"github.com/defilantech/socair/internal/report"
 )
 
@@ -222,12 +223,28 @@ func (c *Config) NewRequest(a Artifact) Request {
 
 // Run sends the helper its request and returns the Tier 2 section it
 // measured. Every failure wraps ErrHelper and names its reason.
+//
+// The helper is handed host paths, and what it writes can repeat them: a
+// filed report must not (#170). Each path Socair handed it (hostNames) is
+// replaced, wherever it stands in the helper's answer or in the reason a run
+// failed, by the name a report gives it, before the answer is checked against
+// its bounds or its node classes are hashed.
 func Run(ctx context.Context, c *Config, a Artifact) (*report.Tier2, error) {
 	req, err := json.Marshal(c.NewRequest(a))
 	if err != nil {
 		return nil, err
 	}
-	out, err := invoke(ctx, c, req)
+	env := helperEnv(os.Environ())
+	names := hostNames(c, a, env)
+	sec, err := run(ctx, c, req, env, names)
+	if err != nil {
+		return nil, &helperError{msg: names.Scrub(err.Error())}
+	}
+	return sec, nil
+}
+
+func run(ctx context.Context, c *Config, req []byte, env []string, names *hostpath.Names) (*report.Tier2, error) {
+	out, err := invoke(ctx, c, req, env, names)
 	if err != nil {
 		return nil, err
 	}
@@ -235,7 +252,40 @@ func Run(ctx context.Context, c *Config, a Artifact) (*report.Tier2, error) {
 	if err != nil {
 		return nil, err
 	}
+	names.Walk(resp)
 	return Section(resp)
+}
+
+// helperError is a helper run that failed, with the host paths in its reason
+// replaced. It is ErrHelper.
+type helperError struct{ msg string }
+
+func (e *helperError) Error() string { return e.msg }
+func (e *helperError) Unwrap() error { return ErrHelper }
+
+// hostNames are the host paths Socair hands the helper, each with the name a
+// report gives it: the helper by its file name and its directory by its own,
+// so a traceback through the helper's files reads relative to it; the
+// snapshot by the artifact's name, and a single file's private snapshot
+// directory by its own; a probe pack by its file name; and each absolute path
+// in the helper's environment by its variable ("$HOME").
+func hostNames(c *Config, a Artifact, env []string) *hostpath.Names {
+	n := &hostpath.Names{}
+	n.Base(c.Helper)
+	name := a.FileName
+	if name == "" {
+		name = filepath.Base(a.Path)
+	}
+	n.Add(a.Path, name)
+	if fi, err := os.Stat(a.Path); err == nil && !fi.IsDir() {
+		n.Base(filepath.Dir(a.Path))
+	}
+	if c.ProbePack != "" {
+		n.Base(c.ProbePack)
+	}
+	n.Base(filepath.Dir(c.Helper))
+	n.Env(env)
+	return n
 }
 
 // helperEnv is the environment a helper runs with: enough to start a program
@@ -260,26 +310,36 @@ func helperEnv(environ []string) []string {
 	return out
 }
 
-func invoke(ctx context.Context, c *Config, req []byte) ([]byte, error) {
+// invoke runs the helper. A failure's reason names no host path of its own:
+// a helper that could not be started is named by its file name with the
+// cause, and the end of its standard error is quoted with names' paths
+// replaced.
+func invoke(ctx context.Context, c *Config, req []byte, env []string, names *hostpath.Names) ([]byte, error) {
 	ctx, cancel := context.WithTimeout(ctx, c.Timeout)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, c.Helper)
-	cmd.Env = helperEnv(os.Environ())
+	cmd.Env = env
 	cmd.Stdin = bytes.NewReader(req)
 	stdout := &capped{max: MaxResponse}
-	stderr := &tail{max: stderrTail}
+	stderr := &hostpath.Stderr{}
 	cmd.Stdout, cmd.Stderr = stdout, stderr
 	// A helper's children can hold its output open after it is killed; stop
 	// waiting for them shortly after.
 	cmd.WaitDelay = 2 * time.Second
 	err := cmd.Run()
 	switch {
+	case err != nil && cmd.Process == nil:
+		return nil, fmt.Errorf("%w %s could not be started: %s", ErrHelper, filepath.Base(c.Helper), hostpath.Reason(err))
 	case stdout.over:
 		return nil, fmt.Errorf("%w's answer is over %d bytes", ErrHelper, MaxResponse)
 	case err != nil && errors.Is(ctx.Err(), context.DeadlineExceeded):
 		return nil, fmt.Errorf("%w did not answer within %s", ErrHelper, c.Timeout)
 	case err != nil:
-		return nil, fmt.Errorf("%w failed: %v%s", ErrHelper, err, stderr.detail())
+		msg := err.Error()
+		if q := stderr.Quote(names, stderrTail); q != "" {
+			msg += ": " + q
+		}
+		return nil, fmt.Errorf("%w failed: %s", ErrHelper, msg)
 	}
 	return stdout.buf.Bytes(), nil
 }
@@ -298,34 +358,6 @@ func (c *capped) Write(p []byte) (int, error) {
 		return 0, errors.New("answer over its bound")
 	}
 	return c.buf.Write(p)
-}
-
-// tail keeps the last max bytes of the helper's standard error, for the
-// reason a failed run gives.
-type tail struct {
-	b   []byte
-	max int
-}
-
-func (t *tail) Write(p []byte) (int, error) {
-	t.b = append(t.b, p...)
-	if len(t.b) > t.max {
-		t.b = t.b[len(t.b)-t.max:]
-	}
-	return len(p), nil
-}
-
-func (t *tail) detail() string {
-	s := strings.TrimSpace(strings.Map(func(r rune) rune {
-		if unicode.IsControl(r) || r == unicode.ReplacementChar {
-			return ' '
-		}
-		return r
-	}, string(t.b)))
-	if s == "" {
-		return ""
-	}
-	return ": " + s
 }
 
 func refused(format string, args ...any) error {

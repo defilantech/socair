@@ -204,7 +204,11 @@ func scanDir(dir string, start time.Time, refs *references, in Inputs, t2 *tier2
 		results = append(results, row)
 	}
 	measureTier2(d, t2, root)
-	return finish(d, results, unparsed, expires), nil
+	d = finish(d, results, unparsed, expires)
+	// root is the scan's own snapshot directory, named by the directory's
+	// name; its parent is the operator's temp volume, left alone.
+	nameSnapshot(d, root, false)
+	return d, nil
 }
 
 // denylistRow checks the manifest digest and every file's hash. With no list

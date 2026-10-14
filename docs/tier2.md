@@ -127,9 +127,10 @@ untested-node-classes statement becomes "every node class other than" those.
 
 Socair runs the program `SOCAIR_TIER2_HELPER` names, with no arguments, writes
 one request to its standard input, and reads one answer from its standard
-output. The helper exits 0 with an answer; anything on standard error is quoted,
-briefly, if it fails. The protocol is `socair.tier2/v1` (`internal/tier2`), the
-same way `SOCAIR_SIGSTORE_VERIFIER` runs `tools/socair-sigstore`.
+output. The helper exits 0 with an answer; if it fails, the last 400 bytes of
+its standard error are quoted. The protocol is `socair.tier2/v1`
+(`internal/tier2`), the same way `SOCAIR_SIGSTORE_VERIFIER` runs
+`tools/socair-sigstore`.
 
 The request:
 
@@ -194,6 +195,33 @@ The helper runs with `PATH`, `HOME`, the locale, the temp directory,
 `SYSTEMROOT`, and `SSL_CERT_FILE`/`SSL_CERT_DIR`, plus its own `SOCAIR_PROBE_*`
 variables (`SOCAIR_PROBE_API_KEY`, for one). Nothing else of Socair's
 environment reaches it: no `HF_TOKEN`, no proxy settings, no other Socair input.
+
+**Host paths.** A filed report never carries a path on the scanning host
+([provenance-bundle.md](provenance-bundle.md)), and the helper is handed
+several: its own location, the snapshot, a probe pack given by path, and the
+paths in its environment. What it writes can repeat them, in a traceback, an
+error, or a measurement's notes. Socair does not parse the helper's free text
+for paths. It replaces each path it handed the helper, wherever that path
+stands whole in the helper's answer or in the reason a run failed, with the
+name a report gives it:
+
+| Path handed to the helper | Named in the report as |
+|---|---|
+| The snapshot (`artifact.path`) | The artifact's file name, or a model directory's name |
+| The snapshot's private directory, for a single file | Its own name (`socair-scan-<n>`) |
+| The helper, and the directory it is in | Their names, so a path under the directory reads relative to it |
+| A probe pack given by path | Its file name |
+| An environment variable whose value is one absolute path (`HOME`, `TMPDIR`, a `SOCAIR_PROBE_*` file) | The variable, `$HOME` |
+
+This applies to every string of the answer, node-class facts included, before
+the answer is checked against its bounds and before the node classes are
+hashed, so a recorded class still hashes to its key. The quote of standard
+error is replaced before it is cut to 400 bytes, so the cut cannot leave the
+tail of a path. A helper that cannot be started is named by its file name with
+the cause (`the Tier 2 probe helper socair-probe could not be started:
+permission denied`), and one that runs out of time is named with the limit. A
+path the helper found for itself, not one Socair handed it, is not recognised:
+a helper should not print one.
 
 **When it does not run.** With no helper configured, Tier 2 did not run, and the
 report says so under checks not run, as a Tier 1 report always has. If a

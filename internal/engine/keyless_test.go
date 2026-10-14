@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/defilantech/socair/internal/report"
 	"github.com/defilantech/socair/internal/tier2/tier2test"
@@ -31,8 +32,27 @@ func TestMain(m *testing.M) {
 			fmt.Fprintln(os.Stderr, "bad request")
 			os.Exit(2)
 		}
-		if verdict == "crash" {
+		// The echo modes repeat every host path the verifier was handed, as
+		// a verifier's diagnostics can: on standard error before it fails,
+		// in its verdict's detail, and as its state.
+		echo := fmt.Sprintf("verifier %s, trusted root %s, HOME %s, TMPDIR %s", os.Args[0], req.TrustedRoot, os.Getenv("HOME"), os.Getenv("TMPDIR"))
+		switch verdict {
+		case "crash":
 			os.Exit(3)
+		case "hang":
+			time.Sleep(time.Minute)
+			os.Exit(0)
+		case "echo-fail":
+			fmt.Fprintln(os.Stderr, "socair-sigstore: bad request:", echo)
+			os.Exit(2)
+		case "echo-unverified":
+			out, _ := json.Marshal(map[string]string{"state": "unverified", "detail": echo})
+			fmt.Println(string(out))
+			os.Exit(0)
+		case "echo-state":
+			out, _ := json.Marshal(map[string]string{"state": req.TrustedRoot})
+			fmt.Println(string(out))
+			os.Exit(0)
 		}
 		fmt.Printf(`{"state":%q,"signer":"releases@example.com (https://issuer.example)","detail":"fake %s"}`+"\n", verdict, verdict)
 		os.Exit(0)
@@ -67,7 +87,7 @@ func TestKeylessVerdictsReachTheReport(t *testing.T) {
 		"verified":   {report.StatusPass, "verified (OMS, releases@example.com"},
 		"invalid":    {report.StatusFail, "invalid (OMS): fake invalid"},
 		"unverified": {report.StatusNotTested, "present, not verified (OMS): fake unverified"},
-		"crash":      {report.StatusNotTested, "present, not verified (OMS): the keyless verifier did not run"},
+		"crash":      {report.StatusNotTested, "present, not verified (OMS): the keyless verifier failed: exit status 3"},
 	}
 	for verdict, want := range cases {
 		keylessEnv(t, verdict)

@@ -2,6 +2,7 @@ package tier2_test
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
@@ -150,6 +151,67 @@ func TestHelperGetsNoSecrets(t *testing.T) {
 	}
 	if !strings.Contains(seen, " SOCAIR_PROBE_API_KEY ") || !strings.Contains(seen, " PATH ") {
 		t.Errorf("the helper must get PATH and its own SOCAIR_PROBE_* settings, got %s", seen)
+	}
+}
+
+// The helper is handed host paths (its own, the snapshot, the probe pack, its
+// HOME and TMPDIR), and its answer and its failures can repeat them; a filed
+// report must not (#170). Run replaces each by the name a report gives it,
+// and a failure is still ErrHelper. Falsification: return the helper's text
+// as it wrote it and the sentinel appears.
+func TestRunNamesNoHostPath(t *testing.T) {
+	const sentinel = "SOCAIRHOSTPATH"
+	root := filepath.Join(t.TempDir(), sentinel)
+	private := filepath.Join(root, "scan", "socair-scan-1")
+	for _, d := range []string{filepath.Join(root, "home"), filepath.Join(root, "tmp"), filepath.Join(root, "bin"), private} {
+		if err := os.MkdirAll(d, 0o700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	t.Setenv("HOME", filepath.Join(root, "home"))
+	t.Setenv("TMPDIR", filepath.Join(root, "tmp"))
+	snap := filepath.Join(private, "model.gguf")
+	if err := os.WriteFile(snap, []byte("GGUF"), 0o400); err != nil {
+		t.Fatal(err)
+	}
+	exe, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	helper := filepath.Join(root, "bin", "socair-probe")
+	if err := os.Symlink(exe, helper); err != nil {
+		t.Fatal(err)
+	}
+	a := tier2.Artifact{Path: snap, SHA256: strings.Repeat("a", 64), FileName: "model.gguf", Format: "GGUF"}
+	e := tier2test.Engine(t, "fake", tier2test.Echo)
+	echoed := "helper socair-probe, artifact model.gguf, probe pack pack.json, HOME $HOME, TMPDIR $TMPDIR"
+	for mode, want := range map[string]string{
+		tier2test.EchoFail:     "the Tier 2 probe helper failed: exit status 1: probe failed: " + echoed,
+		tier2test.EchoRefused:  `the Tier 2 probe helper's answer was refused: json: unknown field "model.gguf"`,
+		tier2test.EchoMeasured: echoed,
+	} {
+		cfg := config(t, mode, e.URL)
+		cfg.Helper, cfg.ProbePack = helper, filepath.Join(root, "pack.json")
+		sec, err := tier2.Run(context.Background(), cfg, a)
+		var text string
+		if mode == tier2test.EchoMeasured {
+			if err != nil {
+				t.Fatalf("%s: %v", mode, err)
+			}
+			b, _ := json.Marshal(sec)
+			text = string(b)
+			if m := sec.Measurements[0]; m.Notes != echoed || m.Evidence != echoed || m.Metrics["model.gguf"] != 1 {
+				t.Errorf("%s: measurement %+v", mode, m)
+			}
+		} else {
+			if !errors.Is(err, tier2.ErrHelper) {
+				t.Fatalf("%s: %v is not ErrHelper", mode, err)
+			}
+			text = err.Error()
+		}
+		if strings.Contains(text, sentinel) || !strings.Contains(text, want) {
+			t.Errorf("%s: %s\nwant %q and no host path", mode, text, want)
+		}
 	}
 }
 
