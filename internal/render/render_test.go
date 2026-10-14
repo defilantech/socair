@@ -352,7 +352,7 @@ func TestAcceptedLineOnlyUnderConditions(t *testing.T) {
 	d.PromotionAuthorization.Authorized = true
 	d.PromotionAuthorization.AcceptedSurfaces = d.Findings.NotTested
 	d.PromotionAuthorization.AcceptedBy = "Jane Doe, CISO"
-	if out := renderString(t, d); !strings.Contains(out, "Accepted, not tested: File inventory and payloads, Hash, provenance, lineage.") {
+	if out := renderString(t, d); !strings.Contains(out, "Accepted, not tested: File inventory and payloads; Hash, provenance, lineage.") {
 		t.Error("an authorized_with_conditions report must print what was accepted")
 	}
 }

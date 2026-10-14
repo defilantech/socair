@@ -272,7 +272,7 @@ func cover(pdf page, d *report.Document) {
 	if accepted := d.PromotionAuthorization.Accepted(); len(accepted) > 0 {
 		pdf.SetFont("Helvetica", "", 8)
 		pdf.SetTextColor(122, 90, 0)
-		line := "Accepted, not tested: " + strings.Join(accepted, ", ")
+		line := "Accepted, not tested: " + report.RowNames(accepted)
 		if d.PromotionAuthorization.AcceptedBy != "" {
 			line += ". Accepted by " + d.PromotionAuthorization.AcceptedBy + " on " + d.PromotionAuthorization.AcceptedAt
 			if d.PromotionAuthorization.Signed() {

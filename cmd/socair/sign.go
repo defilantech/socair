@@ -150,7 +150,7 @@ func verifyCmd(args []string) error {
 			if err != nil {
 				return fmt.Errorf("%w: acceptance: %v", attest.ErrVerify, err)
 			}
-			fmt.Printf("  acceptance verified: %s, acceptor key %s, until %s, of %s\n", a.AcceptedBy, attest.ShortID(a.KeyID), a.Expires, strings.Join(a.AcceptedSurfaces, ", "))
+			fmt.Printf("  acceptance verified: %s, acceptor key %s, until %s, of %s\n", a.AcceptedBy, attest.ShortID(a.KeyID), a.Expires, report.RowNames(a.AcceptedSurfaces))
 		}
 	}
 	if fs.val("artifact") == "" {
@@ -221,7 +221,7 @@ func reissueCmd(fs *flagSet) error {
 	}
 	pa := d.PromotionAuthorization
 	fmt.Printf("re-issued %s as authorized_with_conditions: %s accepted %s until %s\n  %s\n",
-		v.Document.Header.DocumentID, pa.AcceptedBy, strings.Join(pa.AcceptedSurfaces, ", "), pa.AcceptanceExpires, dst)
+		v.Document.Header.DocumentID, pa.AcceptedBy, report.RowNames(pa.AcceptedSurfaces), pa.AcceptanceExpires, dst)
 	return nil
 }
 
