@@ -71,6 +71,17 @@ var storageTypes = map[string]dtypeInfo{
 	"UntypedStorage": {"uint8", 1},
 }
 
+// cudaStorageTypes are the storage classes torch.cuda defines: the legacy
+// typed classes in torch/cuda/__init__.py (class <X>Storage(_CudaLegacyStorage),
+// the same twelve in v2.0.0 and v2.14.1). torch.cuda defines no
+// UntypedStorage and no quantized storage, so a stream naming one names a
+// class torch cannot resolve.
+var cudaStorageTypes = map[string]bool{
+	"ByteStorage": true, "DoubleStorage": true, "FloatStorage": true, "HalfStorage": true,
+	"LongStorage": true, "IntStorage": true, "ShortStorage": true, "CharStorage": true,
+	"BoolStorage": true, "BFloat16Storage": true, "ComplexDoubleStorage": true, "ComplexFloatStorage": true,
+}
+
 // untypedStorage is the untyped storage class as torch.save writes it. The
 // typed classes above are defined in torch/__init__.py, so pickle names them
 // torch.FloatStorage and the rest; UntypedStorage is defined in
@@ -85,8 +96,9 @@ const untypedStorage = "torch.storage.UntypedStorage"
 // storageClass resolves a global a persistent id names to a storage class:
 // the class as the grammar records it ("" when the global is none), the
 // dtype its elements are, and whether it is untyped, holding bytes that a
-// _rebuild_tensor_v3 call gives a dtype. A class under torch or torch.cuda
-// is recorded as torch.<class>, as before; torch.UntypedStorage, the same
+// _rebuild_tensor_v3 call gives a dtype. A class under torch, or one of the
+// classes torch.cuda defines, is recorded as torch.<class>, as before;
+// torch.UntypedStorage, the same
 // class as torch.storage.UntypedStorage under the name torch exports it by,
 // is checked exactly as it is.
 func storageClass(full string) (string, dtypeInfo, bool) {
@@ -94,7 +106,7 @@ func storageClass(full string) (string, dtypeInfo, bool) {
 		return full, storageTypes["UntypedStorage"], true
 	}
 	mod, name, _ := cutLast(full)
-	if d, ok := storageTypes[name]; ok && (mod == "torch" || mod == "torch.cuda") {
+	if d, ok := storageTypes[name]; ok && (mod == "torch" || mod == "torch.cuda" && cudaStorageTypes[name]) {
 		return "torch." + name, d, name == "UntypedStorage"
 	}
 	return "", dtypeInfo{}, false
@@ -104,7 +116,9 @@ func storageClass(full string) (string, dtypeInfo, bool) {
 // element sizes.
 var torchDtypes = map[string]int64{
 	"float32": 4, "float": 4, "float64": 8, "double": 8, "float16": 2, "half": 2, "bfloat16": 2,
-	"complex32": 4, "chalf": 4, "complex64": 8, "cfloat": 8, "complex128": 16, "cdouble": 16,
+	// bcomplex32 is c10::complex<c10::BFloat16>, new in torch 2.14 and in
+	// torch.storage._new_dtypes(); its Python name has no alias.
+	"complex32": 4, "chalf": 4, "complex64": 8, "cfloat": 8, "complex128": 16, "cdouble": 16, "bcomplex32": 4,
 	"uint8": 1, "int8": 1, "int16": 2, "short": 2, "int32": 4, "int": 4, "int64": 8, "long": 8, "bool": 1,
 	"uint16": 2, "uint32": 4, "uint64": 8, "qint8": 1, "quint8": 1, "qint32": 4, "quint4x2": 1, "quint2x4": 1,
 	"float8_e5m2": 1, "float8_e4m3fn": 1, "float8_e5m2fnuz": 1, "float8_e4m3fnuz": 1, "float8_e8m0fnu": 1,
@@ -119,11 +133,11 @@ func valueGlobal(full string) bool {
 	mod, name, _ := cutLast(full)
 	switch mod {
 	case "torch", "torch.cuda":
+		if mod == "torch.cuda" {
+			return cudaStorageTypes[name]
+		}
 		if _, ok := storageTypes[name]; ok {
 			return true
-		}
-		if mod == "torch.cuda" {
-			return false
 		}
 		if _, ok := torchDtypes[name]; ok {
 			return true

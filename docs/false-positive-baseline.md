@@ -1331,6 +1331,38 @@ compiled or bytecode modules are outside the row, and an environment variable
 (`HF_DEFAULT_PIPELINE_NAME`, `SAGEMAKER_PROGRAM`) can rename the file an
 inference toolkit imports.
 
+## bcomplex32, and the storage classes torch.cuda defines (2026-10-14, check set tier1/0.9)
+
+Two leftovers from the change above (#241).
+
+**bcomplex32.** torch 2.14 adds `bcomplex32`, `c10::complex<c10::BFloat16>`, to
+`torch.storage._new_dtypes()`, so torch.save writes it with
+`_rebuild_tensor_v3` over `torch.storage.UntypedStorage`. Its Python name has
+no alias (`getDtypeNames` in `c10/core/ScalarType.cpp` at v2.14.1 returns
+`{"bcomplex32", ""}`), and its element is 4 bytes. The grammar's dtype table
+now holds it at 4 bytes.
+
+| File (torch 2.14.1 `torch.save`) | Before | After |
+|---|---|---|
+| `{"w": torch.zeros(4, 8, dtype=torch.bcomplex32)}` | LEAD (unreviewed global `torch.bcomplex32`) | PASS |
+| an OrderedDict of that tensor and a float32 vector | LEAD | PASS |
+| `{"w": torch.ones(4, 8)}` (control) | PASS | PASS |
+
+torch 2.14.1 reported `element_size()` 4 for the tensor and warned that
+BComplex32 support is experimental.
+
+**torch.cuda storage classes.** The grammar accepted any storage class name
+under `torch.cuda`. torch.cuda defines twelve legacy typed classes
+(`torch/cuda/__init__.py`, `class <X>Storage(_CudaLegacyStorage)`: Byte,
+Double, Float, Half, Long, Int, Short, Char, Bool, BFloat16, ComplexDouble,
+ComplexFloat; the same twelve at v2.0.0 and v2.14.1) and no `UntypedStorage`
+or quantized storage. A stream naming `torch.cuda.UntypedStorage` or
+`torch.cuda.QInt8Storage` names a class torch cannot resolve, so the grammar
+no longer accepts those names: such a file, which passed, is now a LEAD.
+torch.save does not write any `torch.cuda.*` storage name in 2.x (a typed
+storage is named `getattr(torch, ...)`, an untyped one by its class in
+`torch.storage`), so no file torch writes changes.
+
 ## Follow-ups from the first run, since done
 
 1. The GGML file-type mapping follows llama.cpp's `llama_ftype` enum, and the
