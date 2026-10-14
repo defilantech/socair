@@ -263,7 +263,11 @@ entry's stage comes from the newest evidence file by modification time. A
 clean entry whose attestation no longer verifies is `does-not-verify`. A clean
 entry whose `recheck.json` flags it is `flagged` (see [Rechecking the clean
 store](#rechecking-the-clean-store)). A staged envelope that does not verify
-offers a rescan: the newer `report.json` supersedes it.
+offers a rescan: the newer `report.json` supersedes it. An entry whose
+report or attestation has a FAIL or a LEAD is `blocked`, signed or not, and
+offers no next step: no signature or acceptance moves it toward promotion, and
+it needs a person's review outside Socair. Signing its report still files what
+the scan found.
 
 `promote` leaves the staged copy in `incoming/`; nothing on the gate path
 deletes. The list omits a staging entry whose id is approved in clean, or was
