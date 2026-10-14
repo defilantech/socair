@@ -247,6 +247,8 @@ jobs:
           ./internal/oms FuzzVerify
           ./internal/acceptance FuzzParse
           ./internal/feed FuzzLoad
+          ./internal/tensors FuzzLoad
+          ./internal/tensors FuzzFile
           ./internal/registry FuzzParseReference
           ./internal/registry FuzzParseChallenge
           ./internal/ociattest/tarwalk FuzzWalk

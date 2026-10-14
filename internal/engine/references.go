@@ -44,6 +44,7 @@ type references struct {
 	templates []chattemplate.Reference
 	policy    *license.Policy
 	intake    *intake.Policy
+	tensorRef *tensorReference
 	describe  []string
 
 	// local and localName are the local SOCAIR_DENYLIST as read, kept apart
@@ -160,6 +161,16 @@ func loadReferences(now time.Time) (*references, error) {
 			return nil, fmt.Errorf("SOCAIR_INTAKE_POLICY: %w", err)
 		}
 		r.intake = pol
+	}
+	// A tensor reference that cannot be read stops the scan as well: the
+	// operator named the model this artifact should be.
+	if p := strings.TrimSpace(os.Getenv("SOCAIR_TENSOR_REFERENCE")); p != "" {
+		ref, err := loadTensorReference(p)
+		if err != nil {
+			return nil, fmt.Errorf("SOCAIR_TENSOR_REFERENCE: %w", err)
+		}
+		r.tensorRef = ref
+		r.describe = append(r.describe, fmt.Sprintf("tensor reference %s (%d tensors)", ref.name, len(ref.manifest.Tensors)))
 	}
 	if p := strings.TrimSpace(os.Getenv("SOCAIR_DENYLIST")); p != "" {
 		entries, f, err := loadDenylist(p)

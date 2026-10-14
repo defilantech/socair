@@ -18,14 +18,16 @@ generated corpus, on 2026-10-04; CI does not re-run them.
   Socair supports. Read the results as a reproducible floor and a regression
   gate, not as an independent evaluation. New cases are welcome, especially
   ones Socair misses.
-- **Three cases need an input only Socair takes.** `gguf-tokenizer-remapped` is
+- **Four cases need an input only Socair takes.** `gguf-tokenizer-remapped` is
   scanned with a canonical tokenizer table (`SOCAIR_TOKENIZER_REFERENCE`),
   `gguf-template-reviewed-near-miss` with the reviewed template it departs from
-  (`SOCAIR_TEMPLATE_REFERENCE`), and `dir-known-bad-hash` with a denylist that
-  names the file (`SOCAIR_DENYLIST`). No other scanner here was given any of
-  them. With Socair's defaults (none of the three), the remapped tokenizer and
-  the near-miss template pass and the known-bad file is withheld as a gap, so
-  Socair detects 53 of 59. Scores with the cases that need an input left out
+  (`SOCAIR_TEMPLATE_REFERENCE`), `dir-known-bad-hash` with a denylist that
+  names the file (`SOCAIR_DENYLIST`), and `dir-weights-edited` with the
+  reviewed model's tensor manifest (`SOCAIR_TENSOR_REFERENCE`). No other
+  scanner here was given any of them. With Socair's defaults (none of the
+  four), the remapped tokenizer and the near-miss template pass, the known-bad
+  file is withheld as a gap, and the edited weights have no row that compares
+  them, so Socair detects 53 of 60. Scores with the cases that need an input left out
   follow the comparison table.
 - **The attacks are defanged.** Each case keeps the attack's structure (the
   gadget, the opcodes, the archive trick, the template construct) and swaps its
@@ -38,7 +40,7 @@ generated corpus, on 2026-10-04; CI does not re-run them.
   - in-the-wild malicious uploads;
   - the 7z-wrapped nullifAI samples;
   - the ShadowPickle corpus (arXiv 2607.17503).
-- **Few benign controls.** There are 10 controls. False positives on real
+- **Few benign controls.** There are 11 controls. False positives on real
   models are measured separately, on real corpora, in
   [false-positive-baseline.md](false-positive-baseline.md).
 
@@ -52,29 +54,14 @@ generated corpus, on 2026-10-04; CI does not re-run them.
 | Known-bad hash match | 1 | 1 | 0 | 0 |
 | Pickle opcode scan | 22 | 22 | 0 | 0 |
 | Remote code | 9 | 8 | 0 | 1 |
+| Tensor reference | 1 | 1 | 0 | 0 |
 | Tokenizer config | 3 | 3 | 0 | 0 |
-| **All** | **59** | **56** | **0** | **3** |
+| **All** | **60** | **57** | **0** | **3** |
 
-Benign controls flagged (FAIL or LEAD on any row): 0 of 10.
+Benign controls flagged (FAIL or LEAD on any row): 0 of 11.
 
-Three of these detections depend on a reference input (see "Read this first");
-with Socair's defaults it detects 53 of 59.
-
-Check set tier1/0.10 reads ONNX models (#264) and adds four cases and two
-controls. `onnx-external-data-traversal` points an initializer's external data
-at `../../../../etc/hosts`, the directory traversal of CVE-2022-25882 and its
-bypass CVE-2024-27318; `onnx-external-data-memory` uses onnxruntime's
-in-memory marker `*/_ORT_MEM_ADDR_/*` as a location, which onnxruntime 1.20.0
-reads as a memory address; `onnx-initializer-size` gives an initializer 4096
-bytes of raw_data where its dims need 64; and `onnx-metadata-script` puts a
-shell script in metadata_props. The first three are Format and structure
-FAILs, the fourth a File inventory FAIL. Before this change an ONNX file was
-an unknown format, NOT_TESTED on every row that reads one. The
-`control-onnx` control is a clean ONNX model, and `control-dir-onnx` a
-directory with an `onnx/` export as sentence-transformers ships one: external
-data beside the model, and an onnxruntime contrib operator
-(`com.microsoft::FastGelu`), as optimum's O2 to O4 exports have. No earlier
-case changed outcome.
+Four of these detections depend on a reference input (see "Read this first");
+with Socair's defaults it detects 53 of 60.
 
 Check set tier1/0.8 replaced the pickle row's import allowlist with a typed
 grammar (`socair-wo/1`, see [check-set.md](check-set.md)) and added three
@@ -129,6 +116,33 @@ or its `.py` file. And it pins `dir-script-caller-named` as a miss: a
 `custom_interface.py` that only the caller's code names (SpeechBrain's
 `foreign_class` takes the file name as an argument) is listed in the row's
 notes and not judged, where it was a LEAD. No earlier case changed outcome.
+
+Check set tier1/0.10 adds the Tensor reference row (#262), which compares a
+model's tensors with the reviewed model's tensor manifest
+(`SOCAIR_TENSOR_REFERENCE`, [tensors.md](tensors.md)). It adds
+`dir-weights-edited`, PoisonGPT's shape (Mithril Security, 2023: GPT-J-6B
+edited with ROME and uploaded under a lookalike of EleutherAI's name, within
+0.1% of the original on a benchmark): a model directory whose first weight has
+one bit flipped, scanned with the unedited model's manifest. No other row can
+see an edit like this, since every byte is still a well-formed weight. It also
+adds the control `control-dir-tensor-reference`, the same directory unedited,
+which PASSes. No earlier case changed outcome.
+
+Check set tier1/0.10 also reads ONNX models (#264) and adds four cases and two
+controls. `onnx-external-data-traversal` points an initializer's external data
+at `../../../../etc/hosts`, the directory traversal of CVE-2022-25882 and its
+bypass CVE-2024-27318; `onnx-external-data-memory` uses onnxruntime's
+in-memory marker `*/_ORT_MEM_ADDR_/*` as a location, which onnxruntime 1.20.0
+reads as a memory address; `onnx-initializer-size` gives an initializer 4096
+bytes of raw_data where its dims need 64; and `onnx-metadata-script` puts a
+shell script in metadata_props. The first three are Format and structure
+FAILs, the fourth a File inventory FAIL. Before this change an ONNX file was
+an unknown format, NOT_TESTED on every row that reads one. The
+`control-onnx` control is a clean ONNX model, and `control-dir-onnx` a
+directory with an `onnx/` export as sentence-transformers ships one: external
+data beside the model, and an onnxruntime contrib operator
+(`com.microsoft::FastGelu`), as optimum's O2 to O4 exports have. No earlier
+case changed outcome.
 
 | Case | Format | Technique | Row | Result | Severity |
 |---|---|---|---|---|---|
@@ -200,6 +214,8 @@ notes and not judged, where it was a LEAD. No earlier case changed outcome.
 | `dir-executable-named-script` | model directory | a native executable named setup.py | File inventory and payloads | FAIL | critical |
 | `dir-template-ssti` | model directory | SSTI in chat_template.jinja | Chat template | FAIL | critical |
 | `dir-normalizer-injects-special` | model directory | a normalizer that rewrites input into a special token | Tokenizer config | LEAD | high |
+| `dir-weights-edited` | model directory | one weight edited in a model presented as the reviewed one | Tensor reference | LEAD | medium |
+| `control-dir-tensor-reference` | model directory | benign directory compared with its own reviewed tensor manifest | (control: every row) | PASS |  |
 | `dir-known-bad-hash` | model directory | a file whose hash is on the known-bad list | Known-bad hash match | FAIL | critical |
 
 There are three misses. The first is the published known miss: a default system prompt that steers
@@ -247,8 +263,10 @@ rendered-template cases `gguf-template-macro-conditional` and
 control added with #233, `gguf-template-tuple-trigger` added with #246, and
 the nine added with #254 (the seven Remote code cases,
 `dir-script-caller-named`, and the `control-dir-training-script` control), and
-the six ONNX cases and controls added with #264, so its counts cover the cases
-before them; the other scanners have not been run on those twenty-seven. A *suspicious* result counts as a finding, as Socair's LEAD does:
+the two added with #262 (`dir-weights-edited` and the
+`control-dir-tensor-reference` control), and the six ONNX cases and controls
+added with #264, so its counts cover the cases before them; the other scanners
+have not been run on those twenty-nine. A *suspicious* result counts as a finding, as Socair's LEAD does:
 picklescan's suspicious globals and Fickling's SUSPICIOUS. "Not scanned" means
 the tool skipped the file, could not parse it, or does not support the format.
 
@@ -309,10 +327,10 @@ How to read it:
   tokenizer normalizer; the known-bad hash case needs a denylist, which only
   Socair was given.
 
-With the three cases that need a Socair-only input left out
-(`gguf-tokenizer-remapped`, `gguf-template-reviewed-near-miss`, and
-`dir-known-bad-hash`), Socair detects 53 of 56 attacks with check set
-tier1/0.10 (34 of 35 in the 2026-10-04 run, which predates the near-miss case),
+With the four cases that need a Socair-only input left out
+(`gguf-tokenizer-remapped`, `gguf-template-reviewed-near-miss`,
+`dir-known-bad-hash`, and `dir-weights-edited`), Socair detects 53 of 56
+attacks with check set tier1/0.10 (34 of 35 in the 2026-10-04 run, which predates the near-miss case),
 and the two formats they belong to read, from that run:
 
 | Format | Scanner | Attacks detected | Attacks not scanned |

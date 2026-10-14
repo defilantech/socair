@@ -23,6 +23,8 @@ go run ./cmd/socair serve --web web/build --scan-root <dir>   # API + wizard on 
 go run ./cmd/socair key gen --out op                   # op.key (0600) + op.pub
 go run ./cmd/socair sign --key op.key --report r.json  # r.dsse.json
 go run ./cmd/socair verify r.dsse.json --trusted op.pub --artifact <file>
+go run ./cmd/socair tensors <path> --out m.json        # per-tensor fingerprints (socair.tensors/v1)
+go run ./cmd/socair tensors diff <a> <b>               # compare two models or manifests tensor by tensor
 go run ./cmd/socair airlock convert <checkpoint> --attestation r.dsse.json --key op.key   # pickle → safetensors in staging, with a derivation record
 ```
 
@@ -77,7 +79,7 @@ Real-corpus gates, run before and after a detection change (see "False positives
 - Tests are hermetic: no network, secrets, or model files. Fixtures are generated in code (`internal/gguf/gguftest`, `internal/safetensors/safetensorstest`), not committed. The airlock tests use `httptest` for the hub and a temp dir for the store.
 - Every check needs a falsification test that fails if the detector is neutered.
 - The detection benchmark (`internal/benchmark`, `docs/detection-benchmark.md`) pins every case's outcome; a detection change updates the case and the doc together. Its attacks are defanged and generated in code; live malicious samples never go on a workstation.
-- A rule change (check packages, GGUF, safetensors, and ONNX parsers) needs a row in `docs/check-set.md`, and a `CheckSetVersion` bump if it can alter a verdict; `TestCheckSetVersionTracksRules` fails until then.
+- A rule change (check packages, GGUF, safetensors, and ONNX parsers, `internal/tensors`) needs a row in `docs/check-set.md`, and a `CheckSetVersion` bump if it can alter a verdict; `TestCheckSetVersionTracksRules` fails until then.
 - The report shape is a contract: a change touches the Go model, the JSON schema, the TS types, and the goldens together (see "The report contract").
 - `vendor/` is committed on purpose for air-gap builds. After changing deps, run `go mod vendor`.
 - The CLI is a harness, not the product surface. Product behavior belongs in `internal/`.
@@ -129,6 +131,12 @@ Real-corpus gates, run before and after a detection change (see "False positives
   - FAIL: an external data location that escapes the model's own directory or is onnxruntime's in-memory marker; tensor data that does not match dtype × dims, or sits in two fields; a duplicate initializer name or location.
   - LEAD: an ambiguous location (a `..` that stays inside, `\`, `:`).
   - NOT_TESTED: a missing or short data file, external data in a single-file scan, an EPContext node, or an operator domain outside ONNX's and `com.microsoft` (which is named, not judged).
+- **Tensor reference** (`checks/tensorref` on `internal/tensors`, `docs/tensors.md`), only with `SOCAIR_TENSOR_REFERENCE`, for GGUF, safetensors, and model directories. It compares the scanned tensors with a reviewed model's `socair.tensors/v1` manifest:
+  - Matching goes by name first, so same-shape tensors that exchanged places differ. Then, for names the other side lacks, by identical bytes, or by identical values widened exactly to float32 (F32, F16, BF16; NaN payloads kept), marked renamed.
+  - PASS only when every tensor matches under its own name.
+  - LEAD within one file format for a tensor that differs, is extra, or is missing.
+  - NOT_TESTED across formats (converters rename, reorder, and quantize), for a renamed-only match, for a quantized type against a float, or for anything unread on either side. No FAIL.
+  - A header-only scan reads no tensor data, so the row is NOT_TESTED there.
 - **False positives are a stated veto risk.** Any detection change must be measured with the real-corpus gates under Commands and recorded in `docs/false-positive-baseline.md`; pickle is measured on real checkpoints recorded in the same doc.
 
 ### Model directories
@@ -160,6 +168,7 @@ Real-corpus gates, run before and after a detection change (see "False positives
 - `SOCAIR_TOKENIZER_REFERENCE`: canonical tokenizer tables, diffed token by token (`tokenizer.Compare`).
 - `SOCAIR_TEMPLATE_REFERENCE`: reviewed chat-template texts a render is compared with; never clears a lead.
 - `SOCAIR_LICENSE_POLICY`: allowed license ids, one per line; an unknown id or an empty list stops the scan.
+- `SOCAIR_TENSOR_REFERENCE`: a `socair.tensors/v1` manifest of the model this artifact should be; it adds the Tensor reference row and is named in `scope.reference_data` by file name and hash. One that does not load stops the scan.
 - `SOCAIR_INTAKE_POLICY`: a `socair.intake-policy/v1` JSON file; one that does not load stops the scan, and the report names it by file name and hash in `scope.intake_policy`.
 - Tier 2, opt-in: `SOCAIR_TIER2_HELPER` + `SOCAIR_TIER2_ENDPOINT`, with optional `SOCAIR_TIER2_REFERENCE_ENDPOINT`, `SOCAIR_TIER2_PROBES`, `SOCAIR_TIER2_NODE_CLASS`, `SOCAIR_TIER2_TIMEOUT` (`internal/tier2`, `docs/tier2.md`). The probe helper runs the model and reports measurements in the report's `tier2` section; a LEAD or FAIL measurement adds a `(Tier 2)` row that withholds promotion, and nothing it finds is a PASS or authorizes.
   - The probe helper gets only an allowlisted environment (`tier2.helperEnv`: `PATH`, `HOME`, locale, temp, and certificate variables, and `SOCAIR_PROBE_*`), never Socair's whole environment; the function never returns nil, which `exec.Cmd` would read as "inherit everything".

@@ -22,6 +22,8 @@ import (
 	"encoding/base64"
 	"encoding/binary"
 	"encoding/hex"
+	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -31,6 +33,7 @@ import (
 	"github.com/defilantech/socair/internal/gguf/gguftest"
 	"github.com/defilantech/socair/internal/onnx/onnxtest"
 	"github.com/defilantech/socair/internal/safetensors/safetensorstest"
+	"github.com/defilantech/socair/internal/tensors"
 )
 
 // Payload is the harmless command every reproduction carries.
@@ -271,6 +274,46 @@ func repo(extra map[string][]byte) func(string) (string, map[string]string, erro
 	}
 }
 
+// withTensorReference builds the benign repository, writes its tensor
+// manifest as the reviewed reference, and, when edit is set, then changes one
+// byte of the first tensor's data: one weight edited, as ROME edits a few.
+func withTensorReference(edit bool) func(string) (string, map[string]string, error) {
+	return func(dir string) (string, map[string]string, error) {
+		root, _, err := repo(nil)(dir)
+		if err != nil {
+			return "", nil, err
+		}
+		m, err := tensors.Dir(root, []string{"model.safetensors"}, "")
+		if err != nil {
+			return "", nil, err
+		}
+		raw, err := json.Marshal(m)
+		if err != nil {
+			return "", nil, err
+		}
+		ref := filepath.Join(dir, "reviewed.tensors.json")
+		if err := os.WriteFile(ref, raw, 0o644); err != nil {
+			return "", nil, err
+		}
+		if edit {
+			p := filepath.Join(root, "model.safetensors")
+			data, err := os.ReadFile(p)
+			if err != nil {
+				return "", nil, err
+			}
+			start := 8 + int(binary.LittleEndian.Uint64(data[:8]))
+			if start >= len(data) {
+				return "", nil, errors.New("the benign weights have no tensor data to edit")
+			}
+			data[start] ^= 0x01
+			if err := os.WriteFile(p, data, 0o644); err != nil {
+				return "", nil, err
+			}
+		}
+		return root, map[string]string{"SOCAIR_TENSOR_REFERENCE": ref}, nil
+	}
+}
+
 // vocab is a 300-token ordinary vocabulary for tokenizer cases.
 func vocab() ([]string, []int32) {
 	toks := make([]string, 300)
@@ -303,6 +346,7 @@ const (
 	srcONNXPath    = "ONNX external data directory traversal: CVE-2022-25882 (onnx before 1.13.0) and its bypass CVE-2024-27318 (onnx through 1.15.0)"
 	srcORTMemory   = "onnxruntime's in-memory external data marker: onnxruntime 1.20.0 reads a tensor whose location is */_ORT_MEM_ADDR_/* from the address in its offset; 1.31.0 refuses one in a model file as crafted (core/graph/graph.cc)"
 	srcONNXSize    = "ONNX initializer data that does not match its shape: onnx's checker (1.23.2) refuses only data too short, onnxruntime (1.31.0) refuses any mismatch, so extra bytes load in one and are read by neither"
+	srcPoisonGPT   = "PoisonGPT (Mithril Security, 2023): GPT-J-6B edited with ROME and uploaded as EleuterAI, a lookalike of EleutherAI, scoring within 0.1% of the original"
 )
 
 // onnxExternal is a clean ONNX model with one more initializer, stored at
@@ -552,6 +596,12 @@ func Cases() []Case {
 			repo(map[string][]byte{"chat_template.jinja": []byte("{{ cycler.__init__.__globals__.os.popen('" + Payload + "').read() }}")})},
 		{"dir-normalizer-injects-special", "model directory", "a normalizer that rewrites input into a special token", srcTokenizer, "Tokenizer config", Detect,
 			repo(map[string][]byte{"tokenizer.json": []byte(`{"model":{"type":"BPE","vocab":{"<s>":0,"</s>":1,"a":2}},"added_tokens":[{"id":0,"content":"<s>","special":true},{"id":1,"content":"</s>","special":true}],"normalizer":{"type":"Replace","pattern":{"String":"please"},"content":"</s>"}}`)})},
+		// Edited weights presented as the reviewed model. Only a reference to
+		// the reviewed model's tensors (SOCAIR_TENSOR_REFERENCE) can show it.
+		{"dir-weights-edited", "model directory", "one weight edited in a model presented as the reviewed one", srcPoisonGPT, "Tensor reference", Detect,
+			withTensorReference(true)},
+		{"control-dir-tensor-reference", "model directory", "benign directory compared with its own reviewed tensor manifest", "control", "", Clean,
+			withTensorReference(false)},
 		{"dir-known-bad-hash", "model directory", "a file whose hash is on the known-bad list", "Known-bad hash lists (feeds and published IOCs)", "Known-bad hash match", Detect,
 			func(dir string) (string, map[string]string, error) {
 				root, _, err := repo(nil)(dir)

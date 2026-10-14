@@ -58,6 +58,13 @@ func main() {
 			fmt.Fprintln(os.Stderr, "error:", err)
 			os.Exit(1)
 		}
+	case "tensors":
+		if err := tensorsCmd(os.Args[2:]); err != nil {
+			if err != errNotIdentical {
+				fmt.Fprintln(os.Stderr, "error:", err)
+			}
+			os.Exit(1)
+		}
 	case "render":
 		if err := renderCmd(os.Args[2:]); err != nil {
 			fmt.Fprintln(os.Stderr, "error:", err)
@@ -137,6 +144,10 @@ Usage:
                            (and the opt-in Tier 2 helper, with SOCAIR_TIER2_HELPER set; docs/tier2.md)
   socair corpus <dir>      sweep every GGUF under a directory, headers only
   socair template <path>   print the chat template and its check findings
+  socair tensors <path> [--out <file>]
+                           fingerprint every tensor: a socair.tensors/v1 manifest (docs/tensors.md)
+  socair tensors diff <artifact|manifest> <reference artifact|manifest>
+                           compare two models tensor by tensor; exit 1 unless every tensor matches by name
   socair render <path>     scan and write the HTML report to stdout (unsigned; --pdf, --sarif, --cyclonedx <out>)
   socair render --attestation <r.dsse.json> (--trusted <key.pub|dir> | --store <path>) [--artifact <path>]
                            verify a signed attestation and render it as signed
