@@ -155,6 +155,14 @@ Sign and verify:
 ./socair sign --key operator.key --bom --attestation report.dsse.json   # report.cdx.dsse.json, a signed CycloneDX BOM
 ```
 
+For a model packaged as an OCI artifact, bind the attestation to it in the
+registry and check it there ([docs/oci.md](docs/oci.md)):
+
+```
+./socair attach registry.example/models/tiny:q4 --attestation report.dsse.json --key operator.key --trusted operator.pub
+./socair verify registry.example/models/tiny:q4 --trusted operator.pub
+```
+
 ## The trust model
 
 - **Attestations.** The report is signed as an in-toto Statement v1 in a DSSE
@@ -204,6 +212,7 @@ checks that run the model on your own GPUs, is built here in the open.
 | [control-mapping.md](docs/control-mapping.md) | Which rows and features are evidence for which framework controls (MITRE ATLAS, OWASP LLM, NIST, AI supply-chain guidance), full or partial, and why |
 | [tier2.md](docs/tier2.md) | Tier 2, opt-in: measurements made by running the model, the node-class record, the probe-helper protocol, isolation, and the roadmap |
 | [airlock.md](docs/airlock.md) | The airlock: pull, ingest, promote, the trust policy, the log, the signed inventory export |
+| [oci.md](docs/oci.md) | Attestations on OCI model artifacts: attach and verify, the binding to the manifest digest, which layouts are matched, cosign and Kyverno |
 | [intake-host.md](docs/intake-host.md) | Running Socair as the model intake host for an on-prem GPU cluster |
 | [kubernetes.md](docs/kubernetes.md) | The Helm chart: the airlock and the wizard in a cluster, who can reach them, and handing promoted models to LLMKube |
 | [provenance-bundle.md](docs/provenance-bundle.md) | The inputs that move each row: mirrors, denylists, provenance, signatures, a license policy, acceptances |

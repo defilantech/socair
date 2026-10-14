@@ -10,6 +10,13 @@ own hash, is a ticket to cross.
 Everything here is offline except an explicit `pull` (the CLI command, or the
 API's pull route), the one operation that reaches the network.
 
+A model that travels as an OCI artifact (ModelPack, KitOps, Docker Model
+Runner) carries its attestation in the registry instead: `socair attach`
+binds the attestation to the artifact's manifest digest and pushes it as a
+referrer, and `socair verify <oci-ref>` checks it there. See
+[oci.md](oci.md). Both reach the network, and `SOCAIR_EGRESS=deny` refuses
+them as it refuses a pull.
+
 ## Store layout
 
 ```
