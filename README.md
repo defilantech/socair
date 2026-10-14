@@ -145,8 +145,19 @@ go build -o socair ./cmd/socair
 Expect a first scan to come back **withheld**. With no other inputs, the
 provenance and known-bad hash rows are NOT_TESTED, and for a single file so is
 the file inventory, which needs the repository's file listing: Socair did not
-look, so it says so. [provenance-bundle.md](docs/provenance-bundle.md) lists
-the input that moves each row.
+look, so it says so. `socair scan` prints, on standard error, each row that
+did not PASS and what would close it, and
+[provenance-bundle.md](docs/provenance-bundle.md) lists the input that moves
+each row.
+
+Through the airlock, pull only the files your serving stack loads; a
+repository's other exports (ONNX, OpenVINO, TensorFlow, TorchScript) are gaps
+in a report about weights you will not serve ([airlock.md](docs/airlock.md), "Pull only what you serve"):
+
+```
+./socair airlock pull --repo org/name --revision <commit> \
+  --include '*.safetensors,*.safetensors.index.json,*.json,*.jinja,*.txt,*.model,README.md,LICENSE*'
+```
 
 To see a complete report without a model, `./socair demo > sample.html` writes
 a fabricated sample report, marked SAMPLE on every page.
