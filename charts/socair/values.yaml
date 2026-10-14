@@ -111,6 +111,38 @@ networkPolicy:
   # proxy's pods. Empty allows pods in this namespace only.
   ingressFrom: []
 
+# A read-only download endpoint for inference servers (`socair airlock
+# serve-hub`, docs/hub-endpoint.md): the clean store's admitted models over
+# the Hugging Face Hub API, for HF_ENDPOINT. Off by default. On, it runs as a
+# second container that mounts the store read-only, behind its own Service,
+# and the NetworkPolicy admits only the peers in hub.ingressFrom. The API is
+# unaffected: it stays on loopback unless service.enabled.
+hub:
+  enabled: false
+  # The container port, and the Service's port.
+  port: 8081
+  # Serve authorized models only, never one promoted with conditions
+  # (--authorized-only), as LLMKube's gate does with allowConditions: false.
+  authorizedOnly: false
+  service:
+    annotations: {}
+  # The peers that may reach the endpoint. By default, pods labelled
+  # socair.ai/hub-client=true in namespaces labelled the same way: label the
+  # inference namespace and its pods. It may not be empty, which would admit
+  # everything.
+  ingressFrom:
+    - namespaceSelector:
+        matchLabels:
+          socair.ai/hub-client: "true"
+      podSelector:
+        matchLabels:
+          socair.ai/hub-client: "true"
+  resources:
+    requests:
+      cpu: 100m
+      memory: 64Mi
+    limits: {}
+
 resources:
   requests:
     cpu: 500m

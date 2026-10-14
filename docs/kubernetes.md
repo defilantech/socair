@@ -195,8 +195,58 @@ kubectl -n models create configmap qwen3-attestation \
 LLMKube can serve the file from a claim with a `pvc://` source, but the claim
 must be in the Model's namespace and mountable by the inference pods, which a
 ReadWriteOnce store claim held by Socair's pod is not. Copy promoted models to
-the volume LLMKube serves from, or give the store a ReadWriteMany claim in
-that namespace. This handoff is documented, not yet tested end to end.
+the volume LLMKube serves from, give the store a ReadWriteMany claim in
+that namespace, or let the inference pods download from the hub endpoint
+below. This handoff is documented, not yet tested end to end.
+
+## Serving models to inference servers
+
+`hub.enabled=true` adds a read-only download endpoint
+([hub-endpoint.md](hub-endpoint.md)): the clean store's admitted models over
+the subset of the Hugging Face Hub API that `huggingface_hub` downloads
+through. vLLM, transformers, `hf download`, and KServe's `hf://` storage
+initializer then download from it with `HF_ENDPOINT`:
+
+```
+helm upgrade intake socair-$V.tgz -n socair --reuse-values --set hub.enabled=true
+kubectl label namespace models socair.ai/hub-client=true
+```
+
+```yaml
+# in the inference pod template, in the labelled namespace
+metadata:
+  labels:
+    socair.ai/hub-client: "true"
+spec:
+  containers:
+    - name: vllm
+      args: [serve, Qwen/Qwen3-8B]
+      env:
+        - name: HF_ENDPOINT
+          value: http://intake-socair-hub.socair.svc:8081
+```
+
+- **A second container**, `hub`, runs `socair airlock serve-hub` in the same
+  pod with the store's volume mounted **read-only**, so nothing it runs can
+  change the store. It mounts the trust ConfigMaps too, because it admits a
+  model by the same checks as the gate.
+- **Its own Service**, `<release>-socair-hub`, ClusterIP, for the hub port
+  only (`hub.port`, 8081). The read-write API is never behind it; it stays on
+  loopback, and the rule that a Service for the API needs
+  `service.authenticatingProxy` is unchanged.
+- **The NetworkPolicy admits only `hub.ingressFrom`** to that port: by
+  default, pods labelled `socair.ai/hub-client=true` in namespaces labelled
+  the same way. The endpoint has no authentication, so the install fails if
+  `networkPolicy.enabled` is off or `hub.ingressFrom` is empty. Narrow it
+  further with your own peers, such as one namespace by
+  `kubernetes.io/metadata.name`.
+- `hub.authorizedOnly=true` serves authorized models only, never one promoted
+  with conditions, as LLMKube's `allowConditions: false` does.
+
+The endpoint cannot stop an inference pod from reaching huggingface.co
+itself: deny that pod's egress to the internet, so the endpoint is its only
+source. Unset `HF_TOKEN` in those pods; a client sends its token to
+`HF_ENDPOINT`.
 
 ## Hardening
 
@@ -207,8 +257,9 @@ that namespace. This handoff is documented, not yet tested end to end.
 | Privileges | no privilege escalation, every capability dropped, `RuntimeDefault` seccomp |
 | Pod Security Standard | passes `restricted` (CI installs into a namespace that enforces it) |
 | Kubernetes API | no service account token, no Role |
-| Network | default-deny NetworkPolicy; no egress unless `pull.enabled` |
+| Network | default-deny NetworkPolicy; no egress unless `pull.enabled`; the hub endpoint, when enabled, only from `hub.ingressFrom` |
 | Files the API reads | paths under `/store/incoming` and `scanRoots` only |
+| Hub endpoint | off by default; its container mounts the store read-only |
 | Keys | public keys only; signing happens offline |
 | Image | distroless, pinned by digest in the Dockerfile, attested on release |
 
@@ -231,7 +282,9 @@ script installs the image under the `restricted` Pod Security Standard and,
 through port-forward, scans a model mounted into the pod under a scan root;
 checks that a path outside the scan roots is refused; checks that
 promotion refuses an untrusted signer and a withheld report, and promotes the
-report with a signed acceptance; verifies the activity log; checks the
-Service is reachable from its own namespace and not from another; and checks
-uninstall keeps the store's claim. It runs anywhere with Docker, kind,
-kubectl, Helm, and Go.
+report with a signed acceptance; verifies the activity log; turns on the hub
+endpoint and checks it serves the promoted bytes and their attestation, and
+that its NetworkPolicy admits a labelled pod in a labelled namespace and not
+an unlabelled one; checks the API Service is reachable from its own namespace
+and not from another; and checks uninstall keeps the store's claim. It runs
+anywhere with Docker, kind, kubectl, Helm, and Go.

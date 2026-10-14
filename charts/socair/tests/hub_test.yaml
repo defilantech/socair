@@ -1,0 +1,207 @@
+suite: hub
+templates:
+  - deployment.yaml
+  - hub-service.yaml
+  - networkpolicy.yaml
+  - service.yaml
+release:
+  name: intake
+chart:
+  appVersion: 9.9.9
+tests:
+  # The read-only hub endpoint is off unless asked for: no container, no
+  # Service, no ingress.
+  - it: runs no hub endpoint by default
+    asserts:
+      - lengthEqual:
+          path: spec.template.spec.containers
+          count: 1
+        template: deployment.yaml
+      - hasDocuments:
+          count: 0
+        template: hub-service.yaml
+      - notExists:
+          path: spec.ingress
+        template: networkpolicy.yaml
+
+  # On, it is a second container that mounts the store read-only, so it
+  # cannot change it, and binds the pod's interfaces for its Service only.
+  - it: runs the hub endpoint read-only beside the API
+    template: deployment.yaml
+    set:
+      hub.enabled: true
+      trust.trustedKeysConfigMap: socair-trusted-keys
+      trust.acceptorKeysConfigMap: socair-acceptor-keys
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[1].name
+          value: hub
+      - equal:
+          path: spec.template.spec.containers[1].args
+          value: [airlock, serve-hub, --store, /store, --addr, "0.0.0.0:8081", --allow-public]
+      - equal:
+          path: spec.template.spec.containers[1].volumeMounts
+          value:
+            - name: store
+              mountPath: /store
+              readOnly: true
+            - name: trusted-keys
+              mountPath: /store/trusted-keys
+              readOnly: true
+            - name: acceptor-keys
+              mountPath: /store/acceptor-keys
+              readOnly: true
+      - equal:
+          path: spec.template.spec.containers[1].ports
+          value:
+            - name: hub
+              containerPort: 8081
+              protocol: TCP
+      - equal:
+          path: spec.template.spec.containers[1].readinessProbe.exec.command
+          value: [/usr/local/bin/socair, health, --addr, "127.0.0.1:8081"]
+      - equal:
+          path: spec.template.spec.containers[1].securityContext.readOnlyRootFilesystem
+          value: true
+      - equal:
+          path: spec.template.spec.containers[1].securityContext.allowPrivilegeEscalation
+          value: false
+
+  # The hub endpoint does not open the read-write API: it stays on loopback
+  # with no Service, and the existing rule for exposing it is unchanged.
+  - it: leaves the API on loopback with no Service
+    set:
+      hub.enabled: true
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].args
+          value: [serve, --addr, 127.0.0.1:8080, --web, /usr/share/socair/web, --store, /store]
+        template: deployment.yaml
+      - notContains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: SOCAIR_API_ALLOW_PUBLIC
+            value: "1"
+        template: deployment.yaml
+      - hasDocuments:
+          count: 0
+        template: service.yaml
+      - lengthEqual:
+          path: spec.ingress
+          count: 1
+        template: networkpolicy.yaml
+
+  - it: serves only authorized models when asked
+    template: deployment.yaml
+    set:
+      hub.enabled: true
+      hub.authorizedOnly: true
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[1].args
+          content: --authorized-only
+
+  - it: puts the hub port, and only it, behind its own ClusterIP Service
+    template: hub-service.yaml
+    set:
+      hub.enabled: true
+    asserts:
+      - isKind:
+          of: Service
+      - equal:
+          path: metadata.name
+          value: intake-socair-hub
+      - equal:
+          path: spec.type
+          value: ClusterIP
+      - equal:
+          path: spec.ports
+          value:
+            - name: hub
+              port: 8081
+              targetPort: hub
+              protocol: TCP
+
+  # The default admits pods labelled socair.ai/hub-client=true in namespaces
+  # labelled the same way, on the hub port only.
+  - it: admits only labelled pods in labelled namespaces to the hub port
+    template: networkpolicy.yaml
+    set:
+      hub.enabled: true
+    asserts:
+      - equal:
+          path: spec.ingress
+          value:
+            - from:
+                - namespaceSelector:
+                    matchLabels:
+                      socair.ai/hub-client: "true"
+                  podSelector:
+                    matchLabels:
+                      socair.ai/hub-client: "true"
+              ports:
+                - protocol: TCP
+                  port: 8081
+      - notExists:
+          path: spec.egress
+
+  - it: admits the named peers to the hub port when set
+    template: networkpolicy.yaml
+    set:
+      hub.enabled: true
+      hub.ingressFrom:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: models
+          podSelector:
+            matchLabels:
+              app: vllm
+    asserts:
+      - equal:
+          path: spec.ingress[0].from
+          value:
+            - namespaceSelector:
+                matchLabels:
+                  kubernetes.io/metadata.name: models
+              podSelector:
+                matchLabels:
+                  app: vllm
+
+  - it: keeps the API rule and adds the hub rule when both are exposed
+    template: networkpolicy.yaml
+    set:
+      hub.enabled: true
+      service.enabled: true
+      service.authenticatingProxy: true
+    asserts:
+      - equal:
+          path: spec.ingress[0].ports[0].port
+          value: 8080
+      - equal:
+          path: spec.ingress[1].ports[0].port
+          value: 8081
+
+  - it: refuses the hub endpoint without the NetworkPolicy
+    template: hub-service.yaml
+    set:
+      hub.enabled: true
+      networkPolicy.enabled: false
+    asserts:
+      - failedTemplate:
+          errorPattern: keep networkPolicy.enabled=true
+
+  - it: refuses an empty hub.ingressFrom, which would admit every pod
+    template: hub-service.yaml
+    set:
+      hub.enabled: true
+      hub.ingressFrom: []
+    asserts:
+      - failedTemplate: {}
+
+  - it: refuses the API's port for the hub endpoint
+    template: hub-service.yaml
+    set:
+      hub.enabled: true
+      hub.port: 8080
+    asserts:
+      - failedTemplate: {}

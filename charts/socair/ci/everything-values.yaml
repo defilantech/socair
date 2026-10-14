@@ -26,6 +26,12 @@ networkPolicy:
     - podSelector:
         matchLabels:
           app: oauth2-proxy
+hub:
+  enabled: true
+  authorizedOnly: true
+  service:
+    annotations:
+      example.com/owner: ml-platform
 resources:
   limits:
     memory: 8Gi

@@ -14,8 +14,9 @@ spec:
   policyTypes:
     - Ingress
     - Egress
-  {{- if .Values.service.enabled }}
+  {{- if or .Values.service.enabled .Values.hub.enabled }}
   ingress:
+    {{- if .Values.service.enabled }}
     - from:
         {{- if .Values.networkPolicy.ingressFrom }}
         {{- toYaml .Values.networkPolicy.ingressFrom | nindent 8 }}
@@ -25,6 +26,15 @@ spec:
       ports:
         - protocol: TCP
           port: 8080
+    {{- end }}
+    {{- if .Values.hub.enabled }}
+    # The read-only hub endpoint, from hub.ingressFrom only.
+    - from:
+        {{- toYaml .Values.hub.ingressFrom | nindent 8 }}
+      ports:
+        - protocol: TCP
+          port: {{ .Values.hub.port }}
+    {{- end }}
   {{- end }}
   {{- if .Values.pull.enabled }}
   egress:
