@@ -54,6 +54,7 @@ that gap. Nothing passes silently.
 | Known-bad hash match | The artifact, or any file in it, on a known-bad list |
 | License policy (opt-in) | A license outside the allowed list you configure (`SOCAIR_LICENSE_POLICY`); without one, the report still names the license the artifact states and any disagreement between its model card, LICENSE file, and GGUF metadata |
 | Intake policy (opt-in) | Your organization's intake rules (`SOCAIR_INTAKE_POLICY`): a model file in a format you do not allow, identified from its bytes; a publisher not on your allowed list or on your denied list; a publisher whose models must be signed, without a verified signature. It can only withhold |
+| Tensor reference (opt-in) | Weights that are not, tensor for tensor, the model you reviewed (`SOCAIR_TENSOR_REFERENCE`, a manifest `socair tensors` writes): a tensor that differs, is added, or is missing, as an edit like PoisonGPT's leaves. Across file formats, or against a quantized type, it says what matched and judges nothing ([docs/tensors.md](docs/tensors.md)) |
 
 Every result is a bounded statement. Socair says what it inspected and lists
 what it cannot see in its

@@ -22,6 +22,8 @@ import (
 	"encoding/base64"
 	"encoding/binary"
 	"encoding/hex"
+	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -30,6 +32,7 @@ import (
 	"github.com/defilantech/socair/internal/checks/pickle/pickletest"
 	"github.com/defilantech/socair/internal/gguf/gguftest"
 	"github.com/defilantech/socair/internal/safetensors/safetensorstest"
+	"github.com/defilantech/socair/internal/tensors"
 )
 
 // Payload is the harmless command every reproduction carries.
@@ -270,6 +273,46 @@ func repo(extra map[string][]byte) func(string) (string, map[string]string, erro
 	}
 }
 
+// withTensorReference builds the benign repository, writes its tensor
+// manifest as the reviewed reference, and, when edit is set, then changes one
+// byte of the first tensor's data: one weight edited, as ROME edits a few.
+func withTensorReference(edit bool) func(string) (string, map[string]string, error) {
+	return func(dir string) (string, map[string]string, error) {
+		root, _, err := repo(nil)(dir)
+		if err != nil {
+			return "", nil, err
+		}
+		m, err := tensors.Dir(root, []string{"model.safetensors"}, "")
+		if err != nil {
+			return "", nil, err
+		}
+		raw, err := json.Marshal(m)
+		if err != nil {
+			return "", nil, err
+		}
+		ref := filepath.Join(dir, "reviewed.tensors.json")
+		if err := os.WriteFile(ref, raw, 0o644); err != nil {
+			return "", nil, err
+		}
+		if edit {
+			p := filepath.Join(root, "model.safetensors")
+			data, err := os.ReadFile(p)
+			if err != nil {
+				return "", nil, err
+			}
+			start := 8 + int(binary.LittleEndian.Uint64(data[:8]))
+			if start >= len(data) {
+				return "", nil, errors.New("the benign weights have no tensor data to edit")
+			}
+			data[start] ^= 0x01
+			if err := os.WriteFile(p, data, 0o644); err != nil {
+				return "", nil, err
+			}
+		}
+		return root, map[string]string{"SOCAIR_TENSOR_REFERENCE": ref}, nil
+	}
+}
+
 // vocab is a 300-token ordinary vocabulary for tokenizer cases.
 func vocab() ([]string, []int32) {
 	toks := make([]string, 300)
@@ -299,6 +342,7 @@ const (
 	srcShadow      = "ShadowPickle (arXiv 2607.17503): OrderedDict handed a code string passes torch.load(weights_only=True), which checks the callable and not its arguments"
 	srcDifferent   = "PickleFuzzer (arXiv 2605.15084): streams scanners and CPython parse differently"
 	srcByName      = "Scanners that choose which files are pickles by extension, as Socair's directory scan did before #186: a pickle under another name is never opened"
+	srcPoisonGPT   = "PoisonGPT (Mithril Security, 2023): GPT-J-6B edited with ROME and uploaded as EleuterAI, a lookalike of EleutherAI, scoring within 0.1% of the original"
 )
 
 // Cases is the corpus, in report order: benign controls, then attacks.
@@ -497,6 +541,12 @@ func Cases() []Case {
 			repo(map[string][]byte{"chat_template.jinja": []byte("{{ cycler.__init__.__globals__.os.popen('" + Payload + "').read() }}")})},
 		{"dir-normalizer-injects-special", "model directory", "a normalizer that rewrites input into a special token", srcTokenizer, "Tokenizer config", Detect,
 			repo(map[string][]byte{"tokenizer.json": []byte(`{"model":{"type":"BPE","vocab":{"<s>":0,"</s>":1,"a":2}},"added_tokens":[{"id":0,"content":"<s>","special":true},{"id":1,"content":"</s>","special":true}],"normalizer":{"type":"Replace","pattern":{"String":"please"},"content":"</s>"}}`)})},
+		// Edited weights presented as the reviewed model. Only a reference to
+		// the reviewed model's tensors (SOCAIR_TENSOR_REFERENCE) can show it.
+		{"dir-weights-edited", "model directory", "one weight edited in a model presented as the reviewed one", srcPoisonGPT, "Tensor reference", Detect,
+			withTensorReference(true)},
+		{"control-dir-tensor-reference", "model directory", "benign directory compared with its own reviewed tensor manifest", "control", "", Clean,
+			withTensorReference(false)},
 		{"dir-known-bad-hash", "model directory", "a file whose hash is on the known-bad list", "Known-bad hash lists (feeds and published IOCs)", "Known-bad hash match", Detect,
 			func(dir string) (string, map[string]string, error) {
 				root, _, err := repo(nil)(dir)

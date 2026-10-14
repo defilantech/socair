@@ -1,8 +1,10 @@
 package gguf
 
 import (
+	"errors"
 	"fmt"
 	"io"
+	"math"
 	"math/bits"
 	"sort"
 	"strings"
@@ -133,6 +135,28 @@ func tensorBytes(t TensorInfo, g ggmlType) (uint64, string) {
 		return 0, fmt.Sprintf("tensor %q dims %v overflow the byte size", t.Name, t.Dims)
 	}
 	return lo, ""
+}
+
+// Span returns where a tensor's data lies in the file: its absolute offset
+// and its size in bytes. It fails for a type outside the known table, whose
+// size cannot be computed, and for a range that does not fit in the file.
+func (m *Manifest) Span(t TensorInfo) (offset, size int64, err error) {
+	g, ok := ggmlTypes[t.Type]
+	if !ok {
+		return 0, 0, fmt.Errorf("tensor %q has type %s, whose size is not known", t.Name, TypeName(t.Type))
+	}
+	n, problem := tensorBytes(t, g)
+	if problem != "" {
+		return 0, 0, errors.New(problem)
+	}
+	if m.DataOffset < 0 || t.Offset > uint64(math.MaxInt64-m.DataOffset) {
+		return 0, 0, fmt.Errorf("tensor %q offset %d is out of range", t.Name, t.Offset)
+	}
+	start := m.DataOffset + int64(t.Offset)
+	if n > uint64(math.MaxInt64) || start > m.SizeBytes || int64(n) > m.SizeBytes-start {
+		return 0, 0, fmt.Errorf("tensor %q [%d,+%d) runs past the end of the file", t.Name, start, n)
+	}
+	return start, int64(n), nil
 }
 
 func alignUp(n, a uint64) uint64 {

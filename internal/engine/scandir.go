@@ -24,6 +24,7 @@ import (
 	"github.com/defilantech/socair/internal/diskfree"
 	"github.com/defilantech/socair/internal/modeldir"
 	"github.com/defilantech/socair/internal/report"
+	"github.com/defilantech/socair/internal/tensors"
 	"github.com/defilantech/socair/internal/tier2"
 )
 
@@ -200,6 +201,15 @@ func scanDir(dir string, start time.Time, refs *references, in Inputs, t2 *tier2
 	}
 	if row, ok := refs.intakeRow(d, func() intake.Facts {
 		return intakeFacts(intake.DirFiles(root, files), provOpts, sig, true)
+	}); ok {
+		results = append(results, row)
+	}
+	if row, ok := refs.tensorRow(func() (*tensors.Manifest, error) {
+		paths := make([]string, len(files))
+		for i, f := range files {
+			paths[i] = f.Path
+		}
+		return tensors.Dir(root, paths, id.SHA256)
 	}); ok {
 		results = append(results, row)
 	}

@@ -4,6 +4,7 @@
 package engine
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -26,11 +27,12 @@ import (
 	"github.com/defilantech/socair/internal/gguf"
 	"github.com/defilantech/socair/internal/report"
 	"github.com/defilantech/socair/internal/safetensors"
+	"github.com/defilantech/socair/internal/tensors"
 	"github.com/defilantech/socair/internal/tier2"
 )
 
 // CheckSetVersion names the set of checks this engine runs.
-const CheckSetVersion = "tier1/0.9"
+const CheckSetVersion = "tier1/0.10"
 
 // Version is the socair version: "dev" in a source build, the release tag
 // in a release build (scripts/build-release.sh sets it with -ldflags -X).
@@ -254,6 +256,14 @@ func ScanWith(path string, mode Mode, in Inputs) (*report.Document, error) {
 		results = append(results, pickle.Inspect(path))
 	}
 	if row, ok := refs.licenseRow(ident, singleFileLicenseNote(id.Format, ggufErr)); ok {
+		results = append(results, row)
+	}
+	if row, ok := refs.tensorRow(func() (*tensors.Manifest, error) {
+		if mode != ModeFull {
+			return nil, errors.New("a header-only scan reads no tensor data")
+		}
+		return tensors.File(path, id.SHA256)
+	}); ok {
 		results = append(results, row)
 	}
 	if row, ok := refs.intakeRow(d, func() intake.Facts {

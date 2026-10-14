@@ -88,6 +88,11 @@ var patternSeverity = map[string]string{
 	// An intake rule broken: a format, a publisher, or a signature the
 	// organization requires. The policy is the organization's, not evidence
 	// of a compromise; the rows that read the bytes grade those.
+	// Weights that are not the reference model's: a reviewed model's
+	// identity broken, not evidence of how.
+	"tensor-differs":               SeverityMedium,
+	"tensor-not-in-reference":      SeverityMedium,
+	"tensor-missing":               SeverityMedium,
 	"format-not-allowed":           SeverityMedium,
 	"publisher-denied":             SeverityMedium,
 	"publisher-not-allowed":        SeverityMedium,
@@ -200,6 +205,10 @@ var checkMaps = map[string][]FrameworkRef{
 	// sources with signing. The policy enforces the organization's rules and
 	// detects no compromise, so it maps to no ATLAS technique.
 	IntakePolicyCheck: {owaspSupplyChain},
+	// Weights that are not those of the model the operator reviewed: a
+	// substituted or modified model, which ATLAS names as a supply-chain
+	// compromise of the model and as poisoned models.
+	TensorReferenceCheck: {atlasSupplyChainModel, atlasPoisonedModels, owaspSupplyChain},
 }
 
 // MapsTo returns the framework entries a check addresses, or nil.

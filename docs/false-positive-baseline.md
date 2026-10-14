@@ -1363,6 +1363,41 @@ torch.save does not write any `torch.cuda.*` storage name in 2.x (a typed
 storage is named `getattr(torch, ...)`, an untyped one by its class in
 `torch.storage`), so no file torch writes changes.
 
+## Tensor reference (2026-10-14, check set tier1/0.10)
+
+The Tensor reference row (#262, [tensors.md](tensors.md)) is new and opt-in,
+so no earlier verdict changes. What it must not do is LEAD on a model that
+holds the reviewed weights. It was measured with `socair tensors` and
+`SOCAIR_TENSOR_REFERENCE` on models already in a local Hugging Face cache. No
+weights were downloaded for it; the one airlock pull is the one described in
+the first item.
+
+**The same model, two copies.** The reference was a manifest of
+`sentence-transformers/all-MiniLM-L6-v2` at `c9745ed1d9f207416be6d2e6f8de32d1f16199bf`,
+from the Hugging Face cache (104 tensors: 103 F32 and one I64). It was compared
+with the same repository pulled through the airlock at that commit (30 files,
+digest `6b9ad4f5e9f977c53dfd75508c001848d572d7b2000cb49d7279d6d36daf3ad9`, which
+also ships ONNX and OpenVINO copies the fingerprints do not read).
+
+| Comparison | Result |
+|---|---|
+| `socair tensors diff` | 104 identical, exit 0 |
+| `socair scan` with the reference | PASS: 104 of 104 under their own name |
+
+**One model, two formats.** The reference was
+`z-lab/Qwen3.8-27B-DFlash2` at `50307d4c4cde6860d4eee73e2547cd786fe8e8a4`
+(safetensors, 81 BF16 tensors, 3.6 GB). It was compared with
+`z-lab/Qwen3.8-27B-DFlash2-GGUF` at `2d9571f8ce46e151f61c6499c99dee6079e1d610`
+(`Qwen3.8-27B-DFlash2-Q4_K_M.gguf`, 1.1 GB: 32 F32, 45 Q4_K, 4 Q6_K).
+
+| Comparison | Result |
+|---|---|
+| `socair tensors diff` | 32 same values (llama.cpp kept the norms in F32, widened exactly from BF16), 1 not comparable, 48 only on each side (the quantized tensors and their BF16 originals), exit 1 |
+| `socair scan` with the reference | NOT_TESTED: across file formats, and 48 of the unmatched tensors are quantized. No LEAD. |
+
+**Speed.** Fingerprinting the 3.6 GB safetensors directory took 7.8 s on one
+core (about 460 MB/s): the raw-bytes hash and the values hash in one pass.
+
 ## Follow-ups from the first run, since done
 
 1. The GGML file-type mapping follows llama.cpp's `llama_ftype` enum, and the
