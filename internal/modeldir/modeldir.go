@@ -79,6 +79,38 @@ var skipDirs = map[string]string{
 	".ipynb_checkpoints": "notebook autosave",
 }
 
+// downloadMetadata are the skipDirs a download tool writes its own
+// bookkeeping into, inside the directory it downloads to. huggingface_hub's
+// `hf download <repo> --local-dir <dir>` writes <dir>/.cache/huggingface/
+// from 0.24.0 on and <dir>/.huggingface/ in 0.23.x (_local_folder.py,
+// _huggingface_dir): a .gitignore and a .metadata record per downloaded file
+// holding the commit, the etag, and the time it was written.
+var downloadMetadata = map[string]bool{".cache": true, ".huggingface": true}
+
+// DownloadMetadata reports whether the walk never reads rel, a "/"-separated
+// path relative to the directory, because the first directory on its path
+// that the walk skips is download-tool metadata. It returns that directory,
+// with a trailing "/", and why the walk skips it. A path under another
+// skipped directory (.git, __pycache__), or not under one, is not, and nor is
+// one that is not a clean path inside the directory.
+func DownloadMetadata(rel string) (dir, why string, ok bool) {
+	parts := strings.Split(rel, "/")
+	for _, p := range parts {
+		if p == "" || p == "." || p == ".." {
+			return "", "", false
+		}
+	}
+	for i, p := range parts[:len(parts)-1] {
+		if r, skipped := skipDirs[p]; skipped {
+			if !downloadMetadata[p] {
+				return "", "", false
+			}
+			return strings.Join(parts[:i+1], "/") + "/", r, true
+		}
+	}
+	return "", "", false
+}
+
 var weightExt = map[string]bool{
 	".safetensors": true, ".gguf": true, ".bin": true, ".pt": true, ".pth": true,
 	".ckpt": true, ".pkl": true, ".pickle": true, ".joblib": true, ".h5": true,

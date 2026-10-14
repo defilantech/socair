@@ -168,3 +168,23 @@ func TestSelectedPullIsNamedPartial(t *testing.T) {
 		}
 	}
 }
+
+// A verified signature some of whose signed files the scan did not read
+// claims a match only over the files it read, and names the rest; one with
+// none left out keeps its plain claim. Falsification: keep "every signed file
+// matches" when files were not compared, or drop their names, and this fails.
+func TestSignedFilesNotComparedAreNamed(t *testing.T) {
+	art := writeFile(t, filepath.Join(t.TempDir(), "model.gguf"), "x")
+	sig := &Signature{State: SignatureVerified, Format: "OMS", Signer: "key sha256:ab"}
+	r := Inspect(Options{ArtifactPath: art, Signature: sig})
+	if r.Status != checks.Pass || !strings.Contains(r.Notes, "every signed file matches") || strings.Contains(r.Notes, "not compared") {
+		t.Fatalf("all compared: %s (%s)", r.Status, r.Notes)
+	}
+	sig.NotCompared = []string{".cache/ (7 signed files: download-tool cache metadata; a loader does not read it)"}
+	r = Inspect(Options{ArtifactPath: art, Signature: sig})
+	if r.Status != checks.Pass || strings.Contains(r.Notes, "every signed file matches") ||
+		!strings.Contains(r.Notes, "every signed file the scan read matches") ||
+		!strings.Contains(r.Notes, "Signed but not compared, as the scan does not read them: .cache/ (7 signed files: ") {
+		t.Fatalf("some not compared: %s (%s)", r.Status, r.Notes)
+	}
+}

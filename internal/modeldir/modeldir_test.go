@@ -164,3 +164,53 @@ func TestChatTemplates(t *testing.T) {
 		t.Errorf("templates %v nonString %v unread %v", tm, nonString, unread)
 	}
 }
+
+// DownloadMetadata names exactly the paths the walk does not read because
+// they are under download-tool metadata: huggingface_hub's .cache/huggingface/
+// and .huggingface/ at any depth the walk skips them, and nothing the walk
+// reads or skips for another reason. Falsification: match by name anywhere in
+// the path, or by prefix, and a near miss or a .git subtree is claimed.
+func TestDownloadMetadataFollowsTheWalk(t *testing.T) {
+	dir := t.TempDir()
+	cases := map[string]string{ // path: the directory DownloadMetadata names, "" for none
+		"config.json":                                 "",
+		".cache/huggingface/.gitignore":               ".cache/",
+		".cache/huggingface/download/a.json.metadata": ".cache/",
+		".huggingface/download/a.json.metadata":       ".huggingface/",
+		"sub/.cache/huggingface/download/b.metadata":  "sub/.cache/",
+		".git/.cache/x":                               "",
+		"__pycache__/.huggingface/x":                  "",
+		".cache-old/huggingface/x":                    "",
+		"cache/huggingface/x":                         "",
+		"huggingface/download/x.metadata":             "",
+		"sub/.huggingface":                            "", // a file of that name is read
+	}
+	for p := range cases {
+		write(t, dir, p, p)
+	}
+	for _, p := range []string{"../.cache/x", "/.cache/x", "./.cache/x", ".cache//x", ".cache/../config.json"} {
+		if d, _, ok := DownloadMetadata(p); ok {
+			t.Errorf("%s is not a clean path inside the directory, but was claimed as %s", p, d)
+		}
+	}
+	_, files, err := Hash(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	read := map[string]bool{}
+	for _, f := range files {
+		read[f.Path] = true
+	}
+	for p, want := range cases {
+		got, why, ok := DownloadMetadata(p)
+		if got != want || ok != (want != "") {
+			t.Errorf("%s: %q %v, want %q", p, got, ok, want)
+		}
+		if ok && (read[p] || !strings.Contains(why, "download-tool")) {
+			t.Errorf("%s: claimed as unread download metadata (%q), but the walk read it: %v", p, why, read[p])
+		}
+		if !ok && want == "" && !read[p] && !strings.HasPrefix(p, ".git/") && !strings.HasPrefix(p, "__pycache__/") {
+			t.Errorf("%s: the walk did not read it, for no reason the test expects", p)
+		}
+	}
+}

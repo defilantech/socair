@@ -99,6 +99,11 @@ type Signature struct {
 	// "path (why)": excluded by the signer, an OMS default exclusion, or
 	// another signature file.
 	Uncovered []string
+	// NotCompared names signed files the scan does not read, so could not
+	// compare, by the directory the scan leaves out: download-tool metadata
+	// such as huggingface_hub's .cache/huggingface/. Each is
+	// "dir/ (N signed files: why)". They are not among the attested files.
+	NotCompared []string
 }
 
 // NotSafety is what a verified signature does and does not say.
@@ -165,7 +170,14 @@ func Inspect(opts Options) checks.Result {
 	}
 	if sig := opts.Signature; sig != nil && sig.State == SignatureVerified {
 		r.Status = checks.Pass
-		r.Notes = "publisher signature verified (" + sig.Format + ", " + sig.Signer + "): every signed file matches; " + NotSafety
+		matches := "every signed file matches"
+		if len(sig.NotCompared) > 0 {
+			matches = "every signed file the scan read matches"
+		}
+		r.Notes = "publisher signature verified (" + sig.Format + ", " + sig.Signer + "): " + matches + "; " + NotSafety
+		if len(sig.NotCompared) > 0 {
+			r.Notes += ". Signed but not compared, as the scan does not read them: " + strings.Join(firstN(sig.NotCompared, 8), ", ")
+		}
 		if len(sig.Uncovered) > 0 {
 			r.Notes += ". Not covered by the signature: " + strings.Join(firstN(sig.Uncovered, 8), ", ")
 		}
