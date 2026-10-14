@@ -115,6 +115,7 @@ type symCall struct {
 type storageRef struct {
 	key      string
 	stype    string // the storage class, e.g. torch.FloatStorage
+	untyped  bool   // an UntypedStorage: bytes, which _rebuild_tensor_v3 gives a dtype
 	dtype    string
 	itemsize int64
 	numel    int64 // in elements of dtype

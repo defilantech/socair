@@ -71,6 +71,35 @@ var storageTypes = map[string]dtypeInfo{
 	"UntypedStorage": {"uint8", 1},
 }
 
+// untypedStorage is the untyped storage class as torch.save writes it. The
+// typed classes above are defined in torch/__init__.py, so pickle names them
+// torch.FloatStorage and the rest; UntypedStorage is defined in
+// torch/storage.py, and persistent_id records type(obj) for it
+// (normalize_storage_type), so the stream names its defining module. torch
+// 2.2 and later write it for every tensor they rebuild with
+// _rebuild_tensor_v3 (the float8 family from 2.2, uint16/32/64 from 2.6;
+// torch.storage._new_dtypes() since 2.4), and every torch 2.x for a saved
+// UntypedStorage. No torch 2.x writes torch.UntypedStorage.
+const untypedStorage = "torch.storage.UntypedStorage"
+
+// storageClass resolves a global a persistent id names to a storage class:
+// the class as the grammar records it ("" when the global is none), the
+// dtype its elements are, and whether it is untyped, holding bytes that a
+// _rebuild_tensor_v3 call gives a dtype. A class under torch or torch.cuda
+// is recorded as torch.<class>, as before; torch.UntypedStorage, the same
+// class as torch.storage.UntypedStorage under the name torch exports it by,
+// is checked exactly as it is.
+func storageClass(full string) (string, dtypeInfo, bool) {
+	if full == untypedStorage {
+		return full, storageTypes["UntypedStorage"], true
+	}
+	mod, name, _ := cutLast(full)
+	if d, ok := storageTypes[name]; ok && (mod == "torch" || mod == "torch.cuda") {
+		return "torch." + name, d, name == "UntypedStorage"
+	}
+	return "", dtypeInfo{}, false
+}
+
 // torchDtypes are the torch dtypes a stream names as globals, with their
 // element sizes.
 var torchDtypes = map[string]int64{
@@ -104,6 +133,8 @@ func valueGlobal(full string) bool {
 			"per_channel_symmetric", "per_channel_affine_float_qparams":
 			return true
 		}
+	case "torch.storage":
+		return full == untypedStorage
 	case "numpy":
 		return name == "ndarray"
 	}
@@ -264,7 +295,7 @@ func rebuildTensor(v *validator, fn string, args []*value) *value {
 		return v.unknown()
 	}
 	dtype, itemsize := st.dtype, st.itemsize
-	untyped := st.stype == "torch.UntypedStorage"
+	untyped := st.untyped
 	if fn == "torch._utils._rebuild_tensor_v3" {
 		d, ok := dtypeArg(args[6])
 		if !ok || !untyped {
@@ -1021,10 +1052,9 @@ func (v *validator) storageRef(pid *value) *storageRef {
 	}
 	st := &storageRef{}
 	if it[1].kind == kGlobal {
-		mod, name, _ := cutLast(it[1].class)
-		if d, ok := storageTypes[name]; ok && (mod == "torch" || mod == "torch.cuda") {
-			st.stype, st.dtype, st.itemsize = "torch."+name, d.dtype, d.itemsize
-		}
+		var d dtypeInfo
+		st.stype, d, st.untyped = storageClass(it[1].class)
+		st.dtype, st.itemsize = d.dtype, d.itemsize
 	}
 	numel, okN := intArg(it[4])
 	if st.stype == "" || it[2].kind != kStr || !storageKey.MatchString(it[2].s) || it[3].kind != kStr ||
@@ -1036,6 +1066,14 @@ func (v *validator) storageRef(pid *value) *storageRef {
 		return nil
 	}
 	st.key, st.numel = it[2].s, numel
+	if n == 6 && st.untyped {
+		// _legacy_load takes the storage class's dtype, which UntypedStorage
+		// does not have, so torch.load stops on this id (torch 2.0 to
+		// 2.14.1), although torch.save writes it for a v3 tensor with
+		// _use_new_zipfile_serialization=False. The storage is still
+		// recorded, so its record is matched as any other's.
+		v.argViolation("persistent id", it, "an untyped storage in a legacy torch stream, which torch's legacy loader cannot read: it takes the storage class's dtype, and "+st.stype+" has none")
+	}
 	if n == 6 && it[5].kind != kNone {
 		view, ok := legacyView(it[5])
 		if !ok {

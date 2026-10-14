@@ -38,11 +38,11 @@ generated corpus, on 2026-10-04; CI does not re-run them.
   - in-the-wild malicious uploads;
   - the 7z-wrapped nullifAI samples;
   - the ShadowPickle corpus (arXiv 2607.17503).
-- **Few benign controls.** There are 6 controls. False positives on real
+- **Few benign controls.** There are 7 controls. False positives on real
   models are measured separately, on real corpora, in
   [false-positive-baseline.md](false-positive-baseline.md).
 
-## Socair (check set tier1/0.8, 2026-10-09)
+## Socair (check set tier1/0.9, 2026-10-14)
 
 | Check row | Cases | Detected (FAIL or LEAD) | Withheld as a gap (NOT_TESTED) | Missed (PASS) |
 |---|---|---|---|---|
@@ -55,7 +55,7 @@ generated corpus, on 2026-10-04; CI does not re-run them.
 | Tokenizer config | 3 | 3 | 0 | 0 |
 | **All** | **46** | **44** | **0** | **2** |
 
-Benign controls flagged (FAIL or LEAD on any row): 0 of 6.
+Benign controls flagged (FAIL or LEAD on any row): 0 of 7.
 
 Three of these detections depend on a reference input (see "Read this first");
 with Socair's defaults it detects 41 of 46.
@@ -80,10 +80,19 @@ it is found by its extension or not at all. `control-dir-torchscript` pins
 that a TorchScript archive (`rust_model.ot`, as sentence-transformers ships)
 stays a named, unscanned archive and does not become a LEAD.
 
+Check set tier1/0.9 adds the `control-torch-zip-untyped` control (#233): a
+torch.save checkpoint holding a uint16 and a float8_e4m3fn tensor beside a
+float32 one. torch.save writes a tensor of a dtype in
+`torch.storage._new_dtypes()` with `_rebuild_tensor_v3` over an untyped
+storage, and names that class `torch.storage.UntypedStorage`; the grammar
+knew only `torch.UntypedStorage`, which torch.save does not write, so the
+control was a LEAD before this change. No attack case changed outcome.
+
 | Case | Format | Technique | Row | Result | Severity |
 |---|---|---|---|---|---|
 | `control-pickle` | pickle | benign state-dict-shaped pickle written by CPython | (control: every row) | PASS |  |
 | `control-torch-zip` | pickle | benign PyTorch zip checkpoint: one float32 tensor and its storage record | (control: every row) | PASS |  |
+| `control-torch-zip-untyped` | pickle | benign PyTorch zip checkpoint with uint16 and float8 tensors, which torch.save writes over torch.storage.UntypedStorage | (control: every row) | PASS |  |
 | `control-gguf` | gguf | benign GGUF with a plain chat template | (control: every row) | PASS |  |
 | `control-safetensors` | safetensors | benign safetensors | (control: every row) | PASS |  |
 | `control-model-directory` | model directory | benign transformers-style directory | (control: every row) | PASS |  |
@@ -167,8 +176,9 @@ rendered-template cases `gguf-template-macro-conditional` and
 `pickle-ordereddict-code-string`, `pickle-nested-loader`, and
 `pickle-memo-reput`), and the four added with #186 (`dir-pickle-renamed`,
 `dir-torch-zip-renamed`, `dir-pickle-protocol0-renamed`, and the
-`control-dir-torchscript` control), so its counts cover the cases before them;
-the other scanners have not been run on those ten. A *suspicious* result counts as a finding, as Socair's LEAD does:
+`control-dir-torchscript` control), and the `control-torch-zip-untyped`
+control added with #233, so its counts cover the cases before them; the other
+scanners have not been run on those eleven. A *suspicious* result counts as a finding, as Socair's LEAD does:
 picklescan's suspicious globals and Fickling's SUSPICIOUS. "Not scanned" means
 the tool skipped the file, could not parse it, or does not support the format.
 
@@ -258,6 +268,7 @@ and the two formats they belong to read, from that run:
 | `control-pickle` | clean | clean | finding (suspicious) | finding | clean |
 | `control-safetensors` | clean | clean | clean | could not scan | could not scan |
 | `control-torch-zip` | clean | clean | finding (suspicious) | could not scan | could not scan |
+| `control-torch-zip-untyped` | clean | not run | not run | not run | not run |
 | `dir-known-bad-hash` | finding | clean | could not scan | could not scan | could not scan |
 | `dir-executable-named-script` | finding | not run | not run | not run | not run |
 | `dir-native-executable` | finding | clean | could not scan | could not scan | could not scan |

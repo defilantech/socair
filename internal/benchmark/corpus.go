@@ -27,6 +27,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/defilantech/socair/internal/checks/pickle/pickletest"
 	"github.com/defilantech/socair/internal/gguf/gguftest"
 	"github.com/defilantech/socair/internal/safetensors/safetensorstest"
 )
@@ -170,6 +171,27 @@ func torchZip(pkl []byte) []byte {
 	}, []string{"archive/data.pkl", "archive/version", "archive/data/0"})
 }
 
+// untypedCheckpoint is torch.save's output for a state dict holding a uint16,
+// a float8_e4m3fn, and a float32 tensor: the first two rebuilt with
+// _rebuild_tensor_v3 over torch.storage.UntypedStorage, as torch.save writes
+// a dtype in torch.storage._new_dtypes(). pickletest writes the bytes torch
+// 2.14.1 writes (the pickle check's TestPickletestV3WritesWhatTorchWrites).
+func untypedCheckpoint() []byte {
+	return pickletest.Checkpoint{
+		Ordered: true,
+		Tensors: []pickletest.Tensor{
+			{Name: "embed.weight", Storage: 0, Shape: []int{4, 8}},
+			{Name: "proj.weight", Storage: 1, Shape: []int{8, 8}},
+			{Name: "proj.scale", Storage: 2, Shape: []int{8}},
+		},
+		Storages: []pickletest.Storage{
+			{Dtype: "uint16", Data: pickletest.Seq(64, 1)},
+			{Dtype: "float8_e4m3fn", Data: pickletest.Seq(64, 2)},
+			{Dtype: "float32", Data: pickletest.Seq(32, 3)},
+		},
+	}.Zip()
+}
+
 // torchScriptZip is a TorchScript archive as torch.jit.save writes one, the
 // layout of rust_model.ot in sentence-transformers repositories: data.pkl
 // builds a __torch__ class that the archive's own code/ defines.
@@ -287,6 +309,12 @@ func Cases() []Case {
 			file("model.pkl", cpythonBenign)},
 		{"control-torch-zip", "pickle", "benign PyTorch zip checkpoint: one float32 tensor and its storage record", "control", "", Clean,
 			file("pytorch_model.bin", torchZip(cpythonStateDict))},
+		// torch 2.6 and later write a uint16 tensor, and torch 2.2 and later a
+		// float8 one, with _rebuild_tensor_v3 over torch.storage.UntypedStorage
+		// (#233): a grammar that knows only torch.UntypedStorage flags every
+		// such checkpoint.
+		{"control-torch-zip-untyped", "pickle", "benign PyTorch zip checkpoint with uint16 and float8 tensors, which torch.save writes over torch.storage.UntypedStorage", "control", "", Clean,
+			file("pytorch_model.bin", untypedCheckpoint())},
 		{"control-gguf", "gguf", "benign GGUF with a plain chat template", "control", "", Clean,
 			file("clean-Q5_K_M.gguf", gguftest.BuildGGUF(gguftest.Clean()))},
 		{"control-safetensors", "safetensors", "benign safetensors", "control", "", Clean,

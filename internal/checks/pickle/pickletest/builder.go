@@ -173,11 +173,9 @@ func (c Checkpoint) tensor(p *Writer, t Tensor) {
 	// The persistent id: ("storage", class, key, location, numel).
 	p.Raw("(").Str("storage")
 	if untyped {
-		// torch.save (2.14.1) spells this class torch.storage.UntypedStorage,
-		// its defining module, which grammar socair-wo/1 does not model yet
-		// (a real checkpoint with such a tensor is a LEAD). The fixture uses
-		// the spelling the grammar models, so it exercises the converter.
-		p.Global("torch", "UntypedStorage")
+		// torch.save names the class by its defining module, torch/storage.py
+		// (persistent_id records type(obj)), as torch 2.2 to 2.14.1 write it.
+		p.Global("torch.storage", "UntypedStorage")
 	} else {
 		p.Global("torch", storageClass[s.Dtype])
 	}

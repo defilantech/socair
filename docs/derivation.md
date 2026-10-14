@@ -63,11 +63,12 @@ Notes on the rules, with their sources:
   at v2.14.1. The storage offset counts elements of the tensor's dtype in both
   (`_rebuild_tensor`, `_rebuild_tensor_v3` in
   [`torch/_utils.py`](https://github.com/pytorch/pytorch/blob/v2.14.1/torch/_utils.py)).
-  torch 2.14.1 names the untyped storage class `torch.storage.UntypedStorage`,
-  which `socair-wo/1` does not model yet, so a real checkpoint holding a
-  uint16, uint32, uint64, or float8 tensor is a LEAD on the Pickle row today
-  and is not converted. The converter handles those dtypes once the grammar
-  accepts that spelling.
+  torch.save names the untyped storage class `torch.storage.UntypedStorage`,
+  which `socair-wo/1` accepts since #233, so a real checkpoint holding a
+  uint16, uint32, uint64, float8_e4m3fn, or float8_e5m2 tensor PASSes the
+  Pickle row and is converted: checkpoints written by torch 2.2.2 and 2.14.1
+  converted and compared equal with torch.load, tensor by tensor
+  ([false-positive-baseline.md](false-positive-baseline.md)).
 - Contiguity is c10's `_compute_contiguous`
   ([`c10/core/Contiguity.h`](https://github.com/pytorch/pytorch/blob/v2.14.1/c10/core/Contiguity.h)):
   an empty tensor is contiguous, and a dimension of size 1 may have any
