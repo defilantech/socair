@@ -160,7 +160,9 @@ func TestReasonDropsThePath(t *testing.T) {
 	for err, want := range map[error]string{
 		&fs.PathError{Op: "fork/exec", Path: "/srv/x/helper", Err: syscall.EACCES}:    "permission denied",
 		&exec.Error{Name: "/srv/x/helper", Err: exec.ErrNotFound}:                     "executable file not found in $PATH",
-		&os.LinkError{Op: "rename", Old: "/srv/a", New: "/srv/b", Err: syscall.EXDEV}: "cross-device link",
+		// The errno's text differs by platform: "cross-device link" on
+		// macOS, "invalid cross-device link" on Linux.
+		&os.LinkError{Op: "rename", Old: "/srv/a", New: "/srv/b", Err: syscall.EXDEV}: syscall.EXDEV.Error(),
 		errors.New("plain"): "plain",
 		errors.Join(errors.New("ctx"), &fs.PathError{Op: "open", Path: "/srv/x", Err: fs.ErrNotExist}): "file does not exist",
 	} {

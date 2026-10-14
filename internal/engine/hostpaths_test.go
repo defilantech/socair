@@ -225,7 +225,6 @@ func TestHelperOutputCarriesNoHostPath(t *testing.T) {
 	t.Setenv("SOCAIR_SIGSTORE_TRUSTED_ROOT", trustRootPath)
 	t.Setenv("SOCAIR_SIGSTORE_IDENTITIES", ids)
 	defer func(d time.Duration) { keylessTimeout = d }(keylessTimeout)
-	keylessTimeout = time.Second
 
 	for _, c := range []struct {
 		name, verifier, mode string
@@ -244,6 +243,13 @@ func TestHelperOutputCarriesNoHostPath(t *testing.T) {
 		{"verifier's interpreter is missing", "no-interpreter", "echo-fail",
 			[]string{"the keyless verifier no-interpreter could not be started:"}},
 	} {
+		// Only the hanging verifier gets the short bound. The others answer,
+		// but under the race detector on a CI runner the fake verifier, this
+		// test binary started again, can take longer than a second to.
+		keylessTimeout = time.Minute
+		if c.mode == "hang" {
+			keylessTimeout = time.Second
+		}
 		t.Setenv("SOCAIR_SIGSTORE_VERIFIER", filepath.Join(bin, c.verifier))
 		t.Setenv("SOCAIR_FAKE_SIGSTORE", c.mode)
 		d, err := Scan(keyless)
