@@ -8,6 +8,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"github.com/defilantech/socair/internal/checks/pyjson"
 	"os"
 	"path"
 	"path/filepath"
@@ -498,7 +499,7 @@ func readObject(root string, files []modeldir.File, name string) (map[string]any
 		return nil, false
 	}
 	var m map[string]any
-	if json.Unmarshal(b, &m) != nil {
+	if pyjson.Unmarshal(b, &m) != nil {
 		return nil, false
 	}
 	return m, true

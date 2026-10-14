@@ -1457,6 +1457,17 @@ also ships ONNX and OpenVINO copies the fingerprints do not read).
 **Speed.** Fingerprinting the 3.6 GB safetensors directory took 7.8 s on one
 core (about 460 MB/s): the raw-bytes hash and the values hash in one pass.
 
+## Configs read as Python reads them (2026-10-14, check set tier1/0.10)
+
+Configs a Python loader reads now decode `NaN`, `Infinity`, and `-Infinity` as
+Python's json module does (#256). Every repository in #254's corpus (125
+scanned, configs and Python files only) was scanned before (main at
+`09267c7`) and after, comparing every row's status and the identified
+architecture. One result changed: `nvidia/Nemotron-H-8B-Base-8K` at
+`94ea861e008c2dfced3e8e1302094024077aa04e`, whose `config.json` holds
+`Infinity`, now names its architecture, `NemotronHForCausalLM`, where it was
+empty. No row's status changed.
+
 ## Follow-ups from the first run, since done
 
 1. The GGML file-type mapping follows llama.cpp's `llama_ftype` enum, and the
