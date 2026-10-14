@@ -1,10 +1,13 @@
 # Releasing Socair
 
-Releases are cut from a tag. The workflow (`.github/workflows/release.yml`)
-builds, proves the build reproduces, attests provenance, and creates a
-**draft**. Publishing the draft is a deliberate step, and it is the step that
-puts the release in the Helm repository and the Homebrew tap
-(`.github/workflows/distribute.yml`).
+A release is cut by merging a release pull request, and published by a
+maintainer. release-please (`.github/workflows/release-please.yml`,
+`release-please-config.json`) keeps that pull request open on `main`. Merging
+it creates the tag and a draft release. The tag starts
+`.github/workflows/release.yml`, which builds, proves the build reproduces,
+attests provenance, and attaches the assets to the draft. Publishing the draft
+is a deliberate step, and it is the step that puts the release in the Helm
+repository and the Homebrew tap (`.github/workflows/distribute.yml`).
 
 Release tags and releases cannot be changed once they exist: a ruleset
 ("Protect release tags") blocks moving, deleting, or force-pushing any `v*`
@@ -13,19 +16,43 @@ published release's assets and tag are locked and GitHub records a signed
 release attestation (`gh release verify <tag>`). A mistake is fixed with the
 next version, not by re-tagging.
 
-1. Make sure `main` is green and the changelog-worthy PRs are merged.
-2. Tag the release commit and push the tag:
+1. **Pull requests carry conventional titles.** `main` takes squash merges
+   only, with the pull request's title as the commit's subject, and the
+   `pr-title` check asks for `type(scope): what changed`, such as
+   `fix(chattemplate): a tuple trigger is no longer missed`. release-please
+   reads those subjects: `feat`, `fix`, `perf`, `revert`, `docs`, and `deps`
+   are listed in the changelog, and the other types are left out of it.
+2. **release-please keeps the release pull request current.** After each merge
+   to `main` it updates `chore: release <version>` with:
+   - the next version: while the version is a release candidate, the next
+     `-rc.N` (`versioning: prerelease`);
+   - its `CHANGELOG.md` entry;
+   - the version in `charts/socair/Chart.yaml` and in the commands in
+     `README.md`, `docs/kubernetes.md`, and `docs/verify-release.md`, between
+     `x-release-please` markers.
 
-   ```
-   git tag -a v0.2.0 -m "Socair 0.2.0"
-   git push origin v0.2.0
-   ```
+   To release a version other than the next candidate, such as 0.1.0, merge a
+   pull request that sets `"release-as": "0.1.0"` in the package's entry in
+   `release-please-config.json`, and remove it after that release.
+
+   It runs as the `defilantech-release` GitHub App, whose client id
+   (`RELEASE_APP_CLIENT_ID`) and private key (`RELEASE_APP_PRIVATE_KEY`) are a
+   variable and a secret of the `release` environment, which only `main` can
+   use. With the default `GITHUB_TOKEN`, neither the tag nor the release pull
+   request would start a workflow, so `release.yml` would not run and the pull
+   request would never get its required checks.
+3. **Merge the release pull request** when `main` is green and what should ship
+   is merged. release-please creates the tag `v<version>` on the merge commit
+   and a draft release whose notes are the changelog entry
+   (`draft` and `force-tag-creation`: GitHub creates a draft's tag only on
+   publishing, which an immutable release would lock before any asset is
+   attached).
 
    The tag is not signed; nothing checks a tag signature. What a user can
    check is the provenance of each artifact, which names the workflow, commit,
-   and run that built it.
+   and run that built it, and the tag as its source ref.
 
-3. The workflow then:
+4. The tag starts `release.yml`, which:
    - builds `socair` and `socair-sigstore` for linux and darwin, amd64 and
      arm64, with `scripts/build-release.sh` (vendored modules, no network,
      no cgo, `-trimpath`, an empty build id, Go `GO_VERSION` from the
@@ -37,10 +64,11 @@ next version, not by re-tagging.
    - writes Socair's own SBOM (`socair_<version>.cdx.json`, CycloneDX: the Go
      modules linked into each binary, read from the binaries) and attests it
      for every binary;
-   - creates a draft release holding the binaries, `SHA256SUMS`, the SBOM,
-     and `socair_<version>.intoto.jsonl` (the attestations as one file, for
-     tools that read release assets), with generated notes; a version with a
-     suffix (`-rc.1`) is marked as a pre-release;
+   - attaches to the draft release the binaries, `SHA256SUMS`, the SBOM, and
+     `socair_<version>.intoto.jsonl` (the attestations as one file, for tools
+     that read release assets); a version with a suffix (`-rc.1`) is marked
+     as a pre-release. A tag pushed by hand has no draft, so it creates one
+     with generated notes, and a release already published is refused;
    - builds the container image from those binaries and the wizard for
      linux/amd64 and linux/arm64, pushes it to `ghcr.io/defilantech/socair:<version>`,
      and attests it;
@@ -54,11 +82,11 @@ next version, not by re-tagging.
    publishes them. The first push of each creates a private GHCR package, so
    make `socair` and `charts/socair` public in the organization's package
    settings once, and link them to this repository.
-4. Review the draft (notes, assets, attestations), then publish it. Replace
-   the generated notes, a list of every pull request, with a short summary for
-   people: what changed, how to install and verify, and known limitations.
+5. Review the draft (notes, assets, attestations), then publish it. The notes
+   are the changelog entry; rewrite them as a short summary for people where
+   that helps: what changed, how to install and verify, and known limitations.
    Publishing locks the release, so this is the last chance to change it.
-5. Publishing runs `distribute.yml`, which checks the release's assets
+6. Publishing runs `distribute.yml`, which checks the release's assets
    against their attestations and then:
    - adds the chart to `index.yaml` on the `gh-pages` branch, served as the
      Helm repository `https://defilantech.github.io/socair` (as LLMKube's is
@@ -86,3 +114,10 @@ created.
 Keep `GO_VERSION` in the workflow pinned to an exact Go release. It is part of
 what makes a release reproducible, and `go version -m <binary>` reports it to
 anyone checking.
+
+## Tagging by hand
+
+If release-please cannot run, a maintainer can still tag a commit on `main`
+(`git tag -a v<version> -m "Socair <version>"` and `git push origin v<version>`):
+`release.yml` then creates the draft itself. Set `.release-please-manifest.json`
+to that version in the next pull request, so release-please counts from it.

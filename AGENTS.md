@@ -81,6 +81,7 @@ Real-corpus gates, run before and after a detection change (see "False positives
 - `vendor/` is committed on purpose for air-gap builds. After changing deps, run `go mod vendor`.
 - The CLI is a harness, not the product surface. Product behavior belongs in `internal/`.
 - Build output never goes in the tree: `go build -o bin/<name>` (ignored) or a scratch dir. A bare `go build` in `tools/socair-sigstore` writes a binary next to the source, which is how one was once committed.
+- Pull requests are squash-merged, and their title is the commit release-please reads: a conventional commit, `type(scope): what changed` (the `pr-title` check; types in `release-please-config.json`). Releases come from the release pull request it keeps open (`docs/releasing.md`).
 - Commits are signed off (`git commit -s`; the `dco` check enforces it) and carry no attribution trailers. AI assistance is disclosed in the PR description, as [CONTRIBUTING.md](CONTRIBUTING.md#ai-assisted-contributions) describes.
 
 ## Architecture

@@ -23,6 +23,7 @@ Fixes #
 - [ ] A detection change is measured on its real-corpus gate and recorded in `docs/false-positive-baseline.md`, and its benchmark case and `docs/detection-benchmark.md` are updated together
 - [ ] A rule change has a row in `docs/check-set.md`, and a `CheckSetVersion` bump if it can alter a verdict
 - [ ] A report shape change updates the Go model, the JSON schema, the TypeScript types, and the golden report together
+- [ ] The title is a conventional commit, `type(scope): what changed` (it becomes the squash commit and the changelog line)
 - [ ] Commit messages describe the change
 - [ ] All commits are signed off (`git commit -s`) per [DCO](https://developercertificate.org/)
 - [ ] AI assistance (if any) is disclosed above, per [CONTRIBUTING.md](../CONTRIBUTING.md#ai-assisted-contributions)

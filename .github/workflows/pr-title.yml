@@ -1,0 +1,32 @@
+name: pr-title
+
+# A pull request is squash-merged with its title as the commit's subject, and
+# release-please reads that subject to pick the next version and write the
+# changelog. A title that is not a conventional commit is left out of both, so
+# this check asks for one: `type(scope): what changed`, such as
+# `fix(chattemplate): a tuple trigger is no longer missed`. The types are the
+# changelog's sections in release-please-config.json.
+on:
+  pull_request:
+    types: [opened, edited, reopened, synchronize]
+
+permissions:
+  contents: read
+
+jobs:
+  pr-title:
+    runs-on: ubuntu-latest
+    steps:
+      - name: the title is a conventional commit
+        env:
+          TITLE: ${{ github.event.pull_request.title }}
+        run: |
+          re='^(feat|fix|perf|revert|docs|deps|chore|ci|test|refactor|style|build)(\([a-z0-9._/-]+\))?!?: [^ ].*'
+          if [[ "$TITLE" =~ $re ]]; then
+            echo "conventional: $TITLE"
+            exit 0
+          fi
+          echo "::error::the title \"$TITLE\" is not a conventional commit."
+          echo "Use type(scope): what changed, with type one of feat, fix, perf, revert, docs, deps, chore, ci, test, refactor, style, build."
+          echo "For example: fix(chattemplate): a tuple trigger is no longer missed"
+          exit 1

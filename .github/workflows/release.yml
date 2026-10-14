@@ -105,14 +105,29 @@ jobs:
           wc -l "meta/socair_${v}.intoto.jsonl"
       # A version with a suffix (0.2.0-rc.1) is a pre-release, so the draft
       # is marked as one: publishing locks the flag with the release.
-      - name: create the draft release
+      #
+      # Merging a release pull request (release-please.yml) creates the tag
+      # and a draft release whose notes are the CHANGELOG.md entry, so the
+      # assets go into that draft. A tag pushed by hand has no draft yet, so
+      # one is created with generated notes. A release that is already
+      # published is immutable, and the upload fails rather than change it.
+      - name: create or fill the draft release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           prerelease=()
           case "${GITHUB_REF_NAME#v}" in *-*) prerelease=(--prerelease) ;; esac
-          gh release create "${GITHUB_REF_NAME}" dist/* meta/* --draft --verify-tag \
-            "${prerelease[@]}" --title "Socair ${GITHUB_REF_NAME}" --generate-notes
+          if draft=$(gh release view "${GITHUB_REF_NAME}" --json isDraft --jq .isDraft 2>/dev/null); then
+            if [ "$draft" != true ]; then
+              echo "::error::release ${GITHUB_REF_NAME} is already published, so it cannot take assets"
+              exit 1
+            fi
+            gh release upload "${GITHUB_REF_NAME}" dist/* meta/*
+            gh release edit "${GITHUB_REF_NAME}" "${prerelease[@]}" --title "Socair ${GITHUB_REF_NAME}"
+          else
+            gh release create "${GITHUB_REF_NAME}" dist/* meta/* --draft --verify-tag \
+              "${prerelease[@]}" --title "Socair ${GITHUB_REF_NAME}" --generate-notes
+          fi
 
   # The container image (Dockerfile) for linux/amd64 and linux/arm64, pushed
   # to GHCR and attested like the binaries. It carries the release binaries

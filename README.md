@@ -93,8 +93,9 @@ on amd64 and arm64, a `SHA256SUMS` file, and a build-provenance attestation
 for every binary; releases after v0.1.0-rc.3 also hold an SBOM. Check the
 binary before you run it:
 
+<!-- x-release-please-start-version -->
 ```
-V=0.1.0-rc.3
+V=0.1.0-rc.4
 curl -LO https://github.com/defilantech/socair/releases/download/v$V/socair_${V}_linux_amd64
 curl -LO https://github.com/defilantech/socair/releases/download/v$V/SHA256SUMS
 sha256sum --check --ignore-missing SHA256SUMS
@@ -102,6 +103,7 @@ gh attestation verify socair_${V}_linux_amd64 --repo defilantech/socair \
   --signer-workflow defilantech/socair/.github/workflows/release.yml
 chmod +x socair_${V}_linux_amd64 && mv socair_${V}_linux_amd64 socair
 ```
+<!-- x-release-please-end -->
 
 Use `darwin` or `arm64` in the file name for the other platforms. The
 checksums come from the same release page as the binary, so they catch a
