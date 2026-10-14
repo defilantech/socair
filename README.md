@@ -164,6 +164,12 @@ registry and check it there ([docs/oci.md](docs/oci.md)):
 ./socair verify registry.example/models/tiny:q4 --trusted operator.pub
 ```
 
+A cluster running Kyverno can then refuse a pod that names a model artifact
+without a binding from your key in a promotion state you accept, with the
+policies in [policies/kyverno](policies/kyverno);
+[docs/admission.md](docs/admission.md) says which pod fields they read and
+what they do not check.
+
 ## The trust model
 
 - **Attestations.** The report is signed as an in-toto Statement v1 in a DSSE
@@ -214,6 +220,7 @@ checks that run the model on your own GPUs, is built here in the open.
 | [tier2.md](docs/tier2.md) | Tier 2, opt-in: measurements made by running the model, the node-class record, the probe-helper protocol, isolation, and the roadmap |
 | [airlock.md](docs/airlock.md) | The airlock: pull, ingest, promote, the trust policy, the log, the signed inventory export |
 | [oci.md](docs/oci.md) | Attestations on OCI model artifacts: attach and verify, the binding to the manifest digest, which layouts are matched, cosign and Kyverno |
+| [admission.md](docs/admission.md) | Kyverno policies that refuse a model pod without an authorized binding: what they check and what they do not, KServe, image volumes, the policy-controller gap |
 | [intake-host.md](docs/intake-host.md) | Running Socair as the model intake host for an on-prem GPU cluster |
 | [kubernetes.md](docs/kubernetes.md) | The Helm chart: the airlock and the wizard in a cluster, who can reach them, and handing promoted models to LLMKube |
 | [provenance-bundle.md](docs/provenance-bundle.md) | The inputs that move each row: mirrors, denylists, provenance, signatures, a license policy, acceptances |

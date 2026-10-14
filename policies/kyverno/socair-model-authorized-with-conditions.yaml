@@ -1,0 +1,117 @@
+# Admit a pod's model artifacts only when each carries a Socair binding,
+# signed by a trusted key, whose promotion state is "authorized", or
+# "authorized_with_conditions" with an acceptance that has not expired.
+#
+# Kyverno ImageValidatingPolicy, policies.kyverno.io/v1, tested with Kyverno
+# v1.19.1 (scripts/admission-e2e.sh). docs/admission.md says what it checks
+# and what it does not.
+#
+# Before applying, set the two values marked EDIT:
+#   - matchImageReferences: the registry repositories that hold models. Every
+#     reference under them, anywhere in a pod, is a model and must carry a
+#     binding. References elsewhere are not checked by this policy.
+#   - attestors.socair.cosign.key.data: the public key that signs bindings
+#     (the --key given to `socair attach`), the PEM block of its .pub file
+#     without the Socair-Issuer line. To trust more than one key, add an
+#     attestor per key and list each in verifyAttestationSignatures.
+apiVersion: policies.kyverno.io/v1
+kind: ImageValidatingPolicy
+metadata:
+  name: socair-model-authorized-with-conditions
+  annotations:
+    policies.kyverno.io/title: Socair model admission (authorized, or authorized with conditions)
+    policies.kyverno.io/description: >-
+      Refuses a pod whose model artifact has no Socair binding from a trusted
+      key for its manifest digest, or whose binding's promotion state is
+      neither authorized nor authorized with conditions under an acceptance
+      that has not expired.
+spec:
+  validationActions: [Deny]
+  failurePolicy: Fail
+  webhookConfiguration:
+    timeoutSeconds: 30
+  evaluation:
+    background:
+      enabled: false
+  # Pods only: every pod is checked here, whichever controller creates it.
+  autogen:
+    podControllers:
+      controllers: []
+  matchConstraints:
+    resourceRules:
+      - apiGroups: [""]
+        apiVersions: [v1]
+        operations: [CREATE, UPDATE]
+        # pods/ephemeralcontainers: kubectl debug adds a container through it.
+        resources: [pods, pods/ephemeralcontainers]
+  matchImageReferences:
+    - glob: "registry.example/models/*" # EDIT
+  # containers, initContainers, and ephemeralContainers are extracted by
+  # default. These add the other places a pod names an OCI model:
+  images:
+    # Image volumes (spec.volumes[].image), as KServe's oci+native:// mode and
+    # a plain Deployment mount a model.
+    - name: volumes
+      expression: >-
+        object.spec.?volumes.orValue([]).filter(v, has(v.image)).map(v, v.image.?reference.orValue(''))
+    # Any container's command or args entry of the form oci://<reference>: a
+    # container handed a model to pull, as KServe's oci+fetch:// mode hands
+    # one to its storage-initializer.
+    - name: ociArgs
+      expression: >-
+        [object.spec.?containers.orValue([]), object.spec.?initContainers.orValue([]),
+         object.spec.?ephemeralContainers.orValue([])].flatten()
+        .map(c, c.?command.orValue([]) + c.?args.orValue([])).flatten()
+        .filter(a, string(a).startsWith('oci://')).map(a, string(a).substring(6))
+  validationConfigurations:
+    mutateDigest: true # a container image's tag is replaced by the digest it resolves to, and that is verified
+    verifyDigest: true # a model reference must name a digest (after that replacement)
+    required: true # every matched image must have been verified
+  attestors:
+    - name: socair
+      cosign:
+        key:
+          data: | # EDIT
+            -----BEGIN PUBLIC KEY-----
+            REPLACE-WITH-THE-BINDING-SIGNER-PUBLIC-KEY
+            -----END PUBLIC KEY-----
+        # Socair signs offline and writes no transparency log entry.
+        ctlog:
+          insecureIgnoreTlog: true
+          insecureIgnoreSCT: true
+  attestations:
+    - name: binding
+      intoto:
+        type: https://socair.ai/oci-binding/v1
+  variables:
+    - name: models
+      expression: >-
+        images.containers + images.initContainers + images.ephemeralContainers +
+        images.volumes + images.ociArgs
+    # What each verified binding says. Read only after the first validation
+    # has verified every binding.
+    - name: bound
+      expression: >-
+        variables.models.map(m, {
+          'image': m,
+          'state': string(extractPayload(m, attestations.binding).predicate.attestation.promotion_state),
+          'expires': string(extractPayload(m, attestations.binding).predicate.attestation.?acceptance_expires.orValue(''))
+        })
+  validations:
+    - expression: >-
+        variables.models.all(m, verifyAttestationSignatures(m, attestations.binding, [attestors.socair]) > 0)
+      messageExpression: >-
+        'no Socair binding signed by a trusted key for this manifest digest: ' +
+        variables.models.filter(m, verifyAttestationSignatures(m, attestations.binding, [attestors.socair]) == 0).join(', ')
+    # authorized_with_conditions: `socair attach` binds it only when its
+    # acceptance is signed and verifies against the acceptor keys, and copies
+    # the acceptance's expiry into the binding. The expiry is checked at
+    # admission, against Kyverno's clock.
+    - expression: >-
+        variables.bound.all(b, b.state == 'authorized' ||
+          (b.state == 'authorized_with_conditions' && b.expires != '' && timestamp(b.expires) > time.now()))
+      messageExpression: >-
+        'this policy admits promotion state authorized, or authorized_with_conditions before its acceptance expires: ' +
+        variables.bound.filter(b, !(b.state == 'authorized' ||
+          (b.state == 'authorized_with_conditions' && b.expires != '' && timestamp(b.expires) > time.now())))
+        .map(b, b.image + ' is ' + b.state + (b.expires != '' ? ' (acceptance expires ' + b.expires + ')' : '')).join(', ')
