@@ -176,16 +176,47 @@ you accept, required); see `tools/socair-sigstore/README.md`. The helper
 vouches for the signature; the scanner still binds the signed manifest to the
 files.
 
+**What the verifier is given.** Socair starts it with no arguments and writes
+one request to its standard input: the bundle, the trust root's absolute
+path, and the identity policy. It runs with an empty environment. Nothing of
+Socair's reaches it: not `HF_TOKEN`, not a proxy setting, not `GODEBUG`. It
+verifies offline from the request and opens no file but the trust root, so it
+needs nothing more; the opt-in test against the real helper
+(`TestRealKeylessVerifier`) verifies the reference vector this way. These are
+the variables it, or a library it is built from (sigstore-go v1.3.0, Go
+1.27), reads, and why none is passed:
+
+| Variables | Read by | Why it is not passed |
+|---|---|---|
+| `HOME`, and `TMPDIR` when there is no home | sigstore-go's TUF client, for its cache ([`tuf.DefaultOptions`](https://github.com/sigstore/sigstore-go/blob/v1.3.0/pkg/tuf/options.go#L130-L148)) | Only the online trust-root fetch uses it. The verifier reads the trust root from its file ([`root.NewTrustedRootFromPath`](https://github.com/sigstore/sigstore-go/blob/v1.3.0/pkg/root/trusted_root.go#L356-L365)) |
+| `HTTP_PROXY`, `HTTPS_PROXY`, `NO_PROXY` | Go's HTTP client, which that fetch uses | The verifier makes no network request |
+| `SSL_CERT_FILE`, `SSL_CERT_DIR` | Go's `crypto/x509`, loading the system's roots ([root.go](https://github.com/golang/go/blob/go1.27.1/src/crypto/x509/root.go#L137-L151)) | Every chain is checked against the trust root's certificates, never the system's |
+| `GODEBUG` | The Go runtime, `crypto/x509`, and `crypto/rsa` ([GODEBUG](https://go.dev/doc/godebug)) | It can loosen what the verifier accepts (`x509negativeserial=1`, `rsa1024min=0`). The verifier runs with the defaults it was built with |
+| `GOGC`, `GOMEMLIMIT`, `GOMAXPROCS`, `GOTRACEBACK` | The Go runtime | Memory, scheduling, and crash-output tuning; the defaults serve |
+| `TZ`, `ZONEINFO` | Go's `time` package | They change only how a time reads in a failure's text |
+| `COSIGN_PASSWORD`; `GRPC_GO_LOG_*`, `SWAGGER_DEBUG`, `DEBUG`, `OTEL_*`, `GOPROTODEBUG` | Libraries linked into the helper: an encrypted private key's password, and logging, debug, and tracing switches | The verifier opens no private key and needs no logging or tracing |
+
+No setting adds a variable. If a later verifier needs one, it is added to
+`keylessEnvKeys` in `internal/engine/publisher.go` with its reason, and the
+test that pins the list (`TestKeylessVerifierGetsOnlyAllowedEnvironment`)
+names it; a credential is never added.
+
+**What Socair reads back.** The verifier's answer is one JSON verdict of a few
+hundred bytes (at most 349 on the reference vectors and their tampered
+copies). Socair reads up to 64 KiB of it. A longer answer is refused whole,
+never parsed in part, and leaves the signature present, not verified: "the
+keyless verifier's answer is over 65536 bytes". The bound matters because a
+verdict's detail can quote the bundle, which comes with the artifact.
+
 A verifier that does not answer leaves the signature present, not verified,
 and the provenance row and the signing state say why: it could not be started
 (named by its file name, with the cause), it did not answer within two
 minutes, or it failed, with its exit status and the last 400 bytes of its
-standard error. The verifier is handed the trust root's path and inherits
-Socair's environment, and its error text or its verdict's detail can repeat
-them. The trust root is named by its file name, the verifier and its
-directory by their names, and any environment variable whose value is one
-absolute path by the variable (`$HOME`, `$SOCAIR_SIGSTORE_IDENTITIES`),
-wherever they stand in what the verifier wrote.
+standard error. The verifier is handed the trust root's path, and its error
+text or its verdict's detail can repeat it. The trust root is named by its
+file name, and the verifier and its directory by their names, wherever they
+stand in what the verifier wrote. Should a variable it is given ever hold an
+absolute path, the path is named by the variable (`$NAME`).
 
 A verified signature proves the files are the ones the key holder signed. It
 is a statement of origin and integrity, never of safety: the other rows still

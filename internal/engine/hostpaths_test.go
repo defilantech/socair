@@ -231,9 +231,9 @@ func TestHelperOutputCarriesNoHostPath(t *testing.T) {
 		want                 []string
 	}{
 		{"verifier fails, echoing its paths", "socair-sigstore", "echo-fail",
-			[]string{"the keyless verifier failed: exit status 2: socair-sigstore: bad request: verifier socair-sigstore, trusted root trusted_root.json, HOME $HOME, TMPDIR $TMPDIR"}},
+			[]string{"the keyless verifier failed: exit status 2: socair-sigstore: bad request: verifier socair-sigstore, trusted root trusted_root.json, environment []"}},
 		{"verdict detail repeats its paths", "socair-sigstore", "echo-unverified",
-			[]string{"verifier socair-sigstore, trusted root trusted_root.json, HOME $HOME, TMPDIR $TMPDIR"}},
+			[]string{"verifier socair-sigstore, trusted root trusted_root.json, environment []"}},
 		{"verdict state is a path", "socair-sigstore", "echo-state",
 			[]string{`the keyless verifier answered "trusted_root.json"`}},
 		{"verifier times out", "socair-sigstore", "hang",
@@ -251,7 +251,7 @@ func TestHelperOutputCarriesNoHostPath(t *testing.T) {
 			keylessTimeout = time.Second
 		}
 		t.Setenv("SOCAIR_SIGSTORE_VERIFIER", filepath.Join(bin, c.verifier))
-		t.Setenv("SOCAIR_FAKE_SIGSTORE", c.mode)
+		fakeVerifier(t, bin, "socair-sigstore", c.mode)
 		d, err := Scan(keyless)
 		if err != nil {
 			t.Fatalf("%s: %v", c.name, err)
