@@ -215,3 +215,20 @@ func TestKeyFileHygiene(t *testing.T) {
 		t.Fatal("an empty keyring must be an error")
 	}
 }
+
+// TestPublicKeyGivenAsPrivate: `socair sign --key operator.pub` was told to
+// chmod 600 the public key, which cannot help. Falsification: drop the
+// public-key test and the chmod advice is back.
+func TestPublicKeyGivenAsPrivate(t *testing.T) {
+	_, _, prefix := newKey(t)
+	if _, err := LoadPrivateKey(prefix + ".pub"); err == nil || !strings.Contains(err.Error(), "is a public key") ||
+		strings.Contains(err.Error(), "chmod") {
+		t.Fatalf("a world-readable public key given as the private key: %v", err)
+	}
+	if err := os.Chmod(prefix+".pub", 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := LoadPrivateKey(prefix + ".pub"); err == nil || !strings.Contains(err.Error(), "is a public key") {
+		t.Fatalf("a 0600 public key given as the private key: %v", err)
+	}
+}
