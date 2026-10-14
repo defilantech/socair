@@ -66,6 +66,9 @@ func acceptorKeys(fs *flagSet) (attest.Keyring, error) {
 // a referrer.
 func attachCmd(args []string) error {
 	fs := parseFlags(args)
+	if err := fs.allow("acceptors", "attestation", "key", "model-root", "store", "trusted"); err != nil {
+		return err
+	}
 	if len(fs.pos) != 1 || fs.val("attestation") == "" || fs.val("key") == "" {
 		return errors.New(attachUsage)
 	}

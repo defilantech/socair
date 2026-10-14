@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
@@ -53,6 +54,9 @@ func airlockCmd(args []string) error {
 
 func airlockInit(args []string) error {
 	fs := parseFlags(args)
+	if err := fs.allow("store"); err != nil {
+		return err
+	}
 	root := storeRoot(fs)
 	if len(fs.pos) > 0 {
 		root = fs.pos[0]
@@ -67,6 +71,9 @@ func airlockInit(args []string) error {
 
 func airlockPull(args []string) error {
 	fs := parseFlags(args)
+	if err := fs.allow("exclude", "file", "include", "repo", "revision", "sha256", "store"); err != nil {
+		return err
+	}
 	repo, sha, file := fs.val("repo"), fs.val("sha256"), fs.val("file")
 	include, err := fs.patterns("include")
 	if err != nil {
@@ -119,6 +126,9 @@ func scanHint(staged string) string {
 
 func airlockIngest(args []string) error {
 	fs := parseFlags(args)
+	if err := fs.allow("cache", "file", "local", "repo", "revision", "scan", "store"); err != nil {
+		return err
+	}
 	s, err := airlock.Open(storeRoot(fs))
 	if err != nil {
 		return err
@@ -164,6 +174,9 @@ func airlockIngest(args []string) error {
 
 func airlockPromote(args []string) error {
 	fs := parseFlags(args)
+	if err := fs.allow("attestation", "report", "store"); err != nil {
+		return err
+	}
 	if fs.val("report") != "" {
 		return errors.New("promote takes a signed attestation, not a bare report: sign it with `socair sign`, then pass --attestation")
 	}
@@ -187,6 +200,9 @@ func airlockPromote(args []string) error {
 // airlockRecheck re-checks the clean store: socair airlock recheck [--rescan] [--store <p>].
 func airlockRecheck(args []string) error {
 	fs := parseFlags(args)
+	if err := fs.allow("rescan", "store"); err != nil {
+		return err
+	}
 	if len(fs.pos) > 0 || (fs.has("rescan") && !fs.bare["rescan"]) {
 		return errors.New("usage: socair airlock recheck [--rescan] [--store <path>]")
 	}
@@ -231,6 +247,9 @@ func airlockTrust(args []string) error {
 		return errors.New(usage)
 	}
 	fs := parseFlags(args[1:])
+	if err := fs.allow("acceptor", "name", "store"); err != nil {
+		return err
+	}
 	// "--acceptor key.pub" parses as a flag with a value, "key.pub
 	// --acceptor" as a bare flag; both mean the same.
 	acceptor := fs.has("acceptor")
@@ -270,6 +289,9 @@ func airlockTrust(args []string) error {
 
 func airlockLog(args []string) error {
 	fs := parseFlags(args)
+	if err := fs.allow("expect-head", "store", "verify"); err != nil {
+		return err
+	}
 	s, err := airlock.Open(storeRoot(fs))
 	if err != nil {
 		return err
@@ -413,12 +435,45 @@ func splitOutsideBrackets(s string) []string {
 	return append(parts, s[start:])
 }
 
+// allow refuses a flag the command does not take, so a mistyped flag
+// (--stroe for --store) is an error rather than quietly ignored and replaced
+// by its default. TestEveryCommandAllowsWhatItReads holds each command's
+// list to the flags it reads.
+func (f *flagSet) allow(keys ...string) error {
+	ok := map[string]bool{}
+	for _, k := range keys {
+		ok[k] = true
+	}
+	var bad []string
+	for k := range f.vals {
+		if !ok[k] {
+			bad = append(bad, "--"+k)
+		}
+	}
+	if len(bad) == 0 {
+		return nil
+	}
+	sort.Strings(bad)
+	takes := make([]string, len(keys))
+	for i, k := range keys {
+		takes[i] = "--" + k
+	}
+	sort.Strings(takes)
+	if len(takes) == 0 {
+		return fmt.Errorf("unknown flag %s: this command takes no flags", strings.Join(bad, ", "))
+	}
+	return fmt.Errorf("unknown flag %s: this command takes %s", strings.Join(bad, ", "), strings.Join(takes, ", "))
+}
+
 func (f *flagSet) val(key string) string { return f.vals[key] }
 func (f *flagSet) has(key string) bool   { return f.vals[key] != "" }
 
 // airlockExport writes a snapshot of the store: socair airlock export --out <dir> [--key <k>] [--store <p>].
 func airlockExport(args []string) error {
 	fs := parseFlags(args)
+	if err := fs.allow("key", "out", "store"); err != nil {
+		return err
+	}
 	if fs.val("out") == "" {
 		return errors.New("usage: socair airlock export --out <dir> [--key <operator.key>] [--store <path>]")
 	}

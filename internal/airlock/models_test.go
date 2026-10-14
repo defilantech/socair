@@ -41,6 +41,20 @@ func TestStageStagedAndScanned(t *testing.T) {
 	if m.Stage != StageScanned || m.Next.Action != "sign" || !strings.Contains(m.Next.Command, "socair sign") {
 		t.Fatalf("%+v", m)
 	}
+
+	// A scan with a LEAD is blocked before it is signed: signing would not
+	// move it toward promotion, so it is not offered. Falsification: offer
+	// sign for every scanned report and this fails.
+	lead := *d
+	lead.Checks = append([]report.CheckResult(nil), d.Checks...)
+	lead.Checks[0].Status = report.StatusLead
+	if err := s.SaveReport(id, &lead); err != nil {
+		t.Fatal(err)
+	}
+	m = modelByID(t, s, id, time.Now())
+	if m.Stage != StageBlocked || m.Next.Action != "none" || m.Next.Command != "" || !strings.Contains(m.StageReason, "FAIL or LEAD") {
+		t.Fatalf("a scanned report with a LEAD: %+v", m)
+	}
 }
 
 func TestStageReadyNeedsAcceptanceBlocked(t *testing.T) {

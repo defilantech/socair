@@ -267,9 +267,17 @@ func (s *Store) deriveStaged(m Model, dir, id string, at time.Time) (Model, *rep
 	if b, err := os.ReadFile(reportPath); err == nil {
 		var d report.Document
 		if json.Unmarshal(b, &d) == nil {
-			m.Stage = StageScanned
 			m.PromotionState = d.PromotionAuthorization.State
 			named(&m, &d)
+			if hasFailOrLead(&d) {
+				// Signing would not move it toward promotion, so signing is
+				// not offered as the next step; it would only file what the
+				// scan found.
+				m.Stage, m.StageReason = StageBlocked, "the scan found a FAIL or LEAD, which withholds it whatever is signed or accepted; "+
+					"it needs a person's review outside Socair. Signing the report files what was found, and does not promote it"
+				return m, &d
+			}
+			m.Stage = StageScanned
 			m.Next = Next{Action: "sign", Command: "socair sign --key OPERATOR_KEY --report " + shellQuote(reportPath)}
 			return m, &d
 		}

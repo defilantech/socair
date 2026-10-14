@@ -25,6 +25,9 @@ func keyCmd(args []string) error {
 		return errors.New(usage)
 	}
 	fs := parseFlags(args[1:])
+	if err := fs.allow("issuer", "out"); err != nil {
+		return err
+	}
 	prefix := fs.val("out")
 	if prefix == "" {
 		return errors.New(usage)
@@ -50,6 +53,9 @@ func keyCmd(args []string) error {
 // signCmd signs a report document into a DSSE attestation.
 func signCmd(args []string) error {
 	fs := parseFlags(args)
+	if err := fs.allow("acceptance", "acceptors", "attestation", "bom", "cyclonedx", "key", "out", "report", "store", "trusted"); err != nil {
+		return err
+	}
 	if fs.val("bom") != "" {
 		return signBOMCmd(fs)
 	}
@@ -95,6 +101,9 @@ func signCmd(args []string) error {
 // CycloneDX BOM instead (verifyBOMCmd).
 func verifyCmd(args []string) error {
 	fs := parseFlags(args)
+	if err := fs.allow("acceptors", "artifact", "bom", "cyclonedx", "store", "trusted"); err != nil {
+		return err
+	}
 	if fs.val("bom") != "" {
 		return verifyBOMCmd(fs)
 	}

@@ -162,10 +162,14 @@ func scanDir(dir string, start time.Time, refs *references, in Inputs, t2 *tier2
 		}
 	}
 	// The inventory runs after every pickle check, so it sees what each read.
+	// Each file's metadata is graded on its own, and the directory's listing
+	// once, as its own part: the files share it, and grading it with each
+	// file repeated its note, and its reads, once per file.
 	for _, f := range invFiles {
-		invParts = append(invParts, checks.Part{File: f.Path, Result: inventory.Inspect(at(f), inventory.Options{RepoMirror: root, Read: read})})
+		invParts = append(invParts, checks.Part{File: f.Path, Result: inventory.Inspect(at(f), inventory.Options{ArtifactOnly: true})})
 	}
-	invRow := checks.Merge("File inventory and payloads", "Hidden files, embedded payloads, unexpected executables", invParts)
+	invRow := checks.Merge("File inventory and payloads", "Hidden files, embedded payloads, unexpected executables",
+		append([]checks.Part{{File: "directory listing", Result: inventory.InspectRepo(root, read)}}, invParts...))
 	if len(invParts) == 0 {
 		invRow = inventory.InspectRepo(root, read)
 	}

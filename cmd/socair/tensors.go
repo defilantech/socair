@@ -20,10 +20,8 @@ var errNotIdentical = errors.New("not identical")
 //	socair tensors diff <artifact|manifest> <reference artifact|manifest> [--out c.json]
 func tensorsCmd(args []string) error {
 	fs := parseFlags(args)
-	for k := range fs.vals {
-		if k != "out" {
-			return fmt.Errorf("unknown flag --%s", k)
-		}
+	if err := fs.allow("out"); err != nil {
+		return err
 	}
 	if len(fs.pos) > 0 && fs.pos[0] == "diff" {
 		if len(fs.pos) != 3 {
