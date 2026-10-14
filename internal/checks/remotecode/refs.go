@@ -1,9 +1,8 @@
 package remotecode
 
 import (
-	"bytes"
-	"encoding/json"
 	"fmt"
+	"github.com/defilantech/socair/internal/checks/pyjson"
 	"path"
 	"sort"
 	"strings"
@@ -312,47 +311,8 @@ func sortedKeys(m map[string]any) []string {
 // (Nemotron-H's config.json holds Infinity), are read as values.
 func decodeJSON(raw []byte) (any, error) {
 	var v any
-	if err := json.Unmarshal(pythonConstants(raw), &v); err != nil {
+	if err := pyjson.Unmarshal(raw, &v); err != nil {
 		return nil, err
 	}
 	return v, nil
-}
-
-// pythonConstants replaces NaN, Infinity, and -Infinity outside strings with
-// null, so encoding/json reads what Python's json.loads reads. Anything else
-// that is not JSON stays as it is and fails to decode.
-func pythonConstants(raw []byte) []byte {
-	if !bytes.Contains(raw, []byte("NaN")) && !bytes.Contains(raw, []byte("Infinity")) {
-		return raw
-	}
-	out := make([]byte, 0, len(raw))
-	inString, escaped := false, false
-next:
-	for i := 0; i < len(raw); i++ {
-		c := raw[i]
-		if inString {
-			switch {
-			case escaped:
-				escaped = false
-			case c == '\\':
-				escaped = true
-			case c == '"':
-				inString = false
-			}
-			out = append(out, c)
-			continue
-		}
-		if c == '"' {
-			inString = true
-		}
-		for _, k := range [][]byte{[]byte("-Infinity"), []byte("Infinity"), []byte("NaN")} {
-			if bytes.HasPrefix(raw[i:], k) {
-				out = append(out, "null"...)
-				i += len(k) - 1
-				continue next
-			}
-		}
-		out = append(out, c)
-	}
-	return out
 }

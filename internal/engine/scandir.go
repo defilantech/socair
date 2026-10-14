@@ -1,9 +1,9 @@
 package engine
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/defilantech/socair/internal/checks/pyjson"
 	"net/url"
 	"os"
 	"path"
@@ -91,6 +91,9 @@ func scanDir(dir string, start time.Time, refs *references, in Inputs, t2 *tier2
 	if err != nil {
 		return nil, err
 	}
+	// The uploader's checksum lists are among the files, so the provenance
+	// row reads them, and the files they list, from the snapshot.
+	provOpts.Root, provOpts.Files = root, files
 	d.Scope.ReferenceData = refs.scope()
 	ident := dirLicense(root, files)
 	d.Artifact.License, d.Artifact.BaseModels = licenseIdentity(ident)
@@ -175,10 +178,14 @@ func scanDir(dir string, start time.Time, refs *references, in Inputs, t2 *tier2
 		}
 	}
 	// The inventory runs after every pickle check, so it sees what each read.
+	// Each file's metadata is graded on its own, and the directory's listing
+	// once, as its own part: the files share it, and grading it with each
+	// file repeated its note, and its reads, once per file.
 	for _, f := range invFiles {
-		invParts = append(invParts, checks.Part{File: f.Path, Result: inventory.Inspect(at(f), inventory.Options{RepoMirror: root, Read: read})})
+		invParts = append(invParts, checks.Part{File: f.Path, Result: inventory.Inspect(at(f), inventory.Options{ArtifactOnly: true})})
 	}
-	invRow := checks.Merge("File inventory and payloads", "Hidden files, embedded payloads, unexpected executables", invParts)
+	invRow := checks.Merge("File inventory and payloads", "Hidden files, embedded payloads, unexpected executables",
+		append([]checks.Part{{File: "directory listing", Result: inventory.InspectRepo(root, read)}}, invParts...))
 	if len(invParts) == 0 {
 		invRow = inventory.InspectRepo(root, read)
 	}
@@ -190,7 +197,7 @@ func scanDir(dir string, start time.Time, refs *references, in Inputs, t2 *tier2
 		}
 		invRow.Notes += "no pickle file: none is named as one or begins as one (a protocol 2 to 5 stream, or a zip holding a pickle), so no Pickle opcode scan row"
 		if len(irBin) > 0 {
-			invRow.Notes += " (an OpenVINO IR's .bin is its tensor data, read through its .xml, not a pickle by its name)"
+			invRow.Notes += " (an OpenVINO IR's .bin whose bytes hold no pickle of any protocol and no archive is its tensor data, read through its .xml, not a pickle by its name)"
 		}
 	}
 
@@ -335,7 +342,7 @@ func readConfig(root string, files []modeldir.File) modelConfig {
 		Architectures []string `json:"architectures"`
 		ModelType     string   `json:"model_type"`
 	}
-	if json.Unmarshal(b, &c) != nil {
+	if pyjson.Unmarshal(b, &c) != nil {
 		return modelConfig{}
 	}
 	m := modelConfig{name: c.NameOrPath, architecture: c.ModelType}
@@ -353,7 +360,7 @@ func readAdapterBase(p string) string {
 	var c struct {
 		Base string `json:"base_model_name_or_path"`
 	}
-	if json.Unmarshal(b, &c) != nil {
+	if pyjson.Unmarshal(b, &c) != nil {
 		return ""
 	}
 	return c.Base

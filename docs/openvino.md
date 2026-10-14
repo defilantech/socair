@@ -97,17 +97,16 @@ the serializer's `"30522, 384"` reads as `[30522, 384]`.
 recorded and skipped, and an entity it declares is an error where it is used.
 There is no XML external-entity or entity-expansion path.
 
-Bounds: a file larger than 256 MiB (for scale, the language model of
-`OpenVINO/Qwen3.8-27B-int4-ov` is a 9.7 MB XML (the hub's listing on
-2026-10-14), and
-the largest of the 46 IRs measured below, `OpenVINO/phi-2-int8-ov`'s model,
-is 3.3 MB), elements nested more than 256
-deep, more than 2^23 elements, 4,096 attributes on one element, 16 MiB in one
-attribute value, text, or comment, 2^20 layers, 2^22 edges, or 2^16 graphs.
-Past any of these the IR is NOT_TESTED. Text past 64 MiB or 2^20 distinct
-values is not kept, which leaves the File inventory row NOT_TESTED. OpenVINO
-sets none of these limits. The reader is fuzzed by `FuzzRead`
-(`internal/openvino`), which CI's fuzz job runs with the other parsers.
+Bounds: a file larger than 256 MiB, elements nested more than 256 deep, more
+than 2^23 elements, 4,096 attributes on one element, 16 MiB in one attribute
+value, text, or comment, 2^20 layers, 2^22 edges, or 2^16 graphs. Past any of
+these the IR is NOT_TESTED. Text past 64 MiB or 2^20 distinct values is not
+kept, which leaves the File inventory row NOT_TESTED. OpenVINO sets none of
+these limits. For scale: the largest of the 46 IRs measured below,
+`OpenVINO/phi-2-int8-ov`'s model, is a 3.3 MB XML, and the language model of
+`OpenVINO/Qwen3.8-27B-int4-ov` is 9.7 MB (the hub's listing on 2026-10-14).
+The reader is fuzzed by `FuzzRead` (`internal/openvino`), which CI's fuzz job
+runs with the other parsers.
 
 ## Format and structure
 
@@ -232,10 +231,10 @@ any protocol from its first byte (one that completes a pickle, or imports a
 global, within its first MiB). That is wider than the test every file gets
 by its bytes (`pickle.Sniff`, which claims only protocols 2 to 5 and zips
 holding a pickle, since it applies to files of any name), because the name
-matters here: a loader that reads `pytorch_model.bin` as a torch checkpoint
-runs a protocol 0 pickle, or the pickle in a legacy tar, whatever `.xml` sits
-beside it, and an IR whose `u8` Const covers that file is otherwise well
-formed. So a `.bin` that holds any of these goes to the pickle row by its
+matters here: a loader that reads `pytorch_model.bin` by its name as a torch
+checkpoint unpickles a protocol 0 pickle there, or the pickle in a legacy
+tar, whatever `.xml` sits beside it, and an IR whose `u8` Const covers that
+file is otherwise well formed. So a `.bin` that holds any of these goes to the pickle row by its
 name, as before, and the `.xml` beside it is still read as an IR. The
 `openvino-bin-pickle` benchmark case pins this. Raw tensor data that happens
 to walk as a pickle (a first byte that is a push opcode, then a STOP) goes to
@@ -297,4 +296,7 @@ and IR versions 7 and 12; it loads a larger size, bytes after the last Const,
 a partly overlapping range, a layer no output depends on (even of an unknown
 type), a repeated attribute (the first wins), a repeated layer id (the last
 wins), a repeated `<data>` or `<layers>` (the first wins), a root spelled
-`NET`, an unknown element, a DOCTYPE, and a shape of `4x` (as `[4]`).
+`NET`, an unknown element, a DOCTYPE, a shape of `4x` (as `[4]`), and a
+`Const` whose `<data>` has a `value` attribute, whose data it takes from that
+text even when its range runs past the `.bin` or there is no `.bin` at all.
+2024.6.0's deserializer takes a `value` attribute first too.

@@ -1456,17 +1456,189 @@ also ships ONNX and OpenVINO copies the fingerprints do not read).
 
 **Speed.** Fingerprinting the 3.6 GB safetensors directory took 7.8 s on one
 core (about 460 MB/s): the raw-bytes hash and the values hash in one pass.
+## Uploader checksum lists (2026-10-14, check set tier1/0.10)
+
+The provenance row now compares an artifact with its uploader's own SHA-256
+lists (#263, [provenance-bundle.md](provenance-bundle.md#uploader-checksum-lists)).
+A disagreement is a LEAD, which no acceptance clears, so a false positive
+withholds a repository for good. This measured which names to read, how to
+resolve the names inside them, and what disagrees in practice, with no
+weights downloaded.
+
+**Which repositories ship a list.** The Hub's listing of the 150,000
+most-downloaded models on 2026-10-14
+(`/api/models?sort=downloads&direction=-1&expand[]=siblings`, file names
+only) holds 2,096 repositories with a file whose name suggests a checksum
+list. Repositories shipping each kind (one may ship several): `SHA256SUMS`,
+1,334; `SHA256SUMS.txt` or `sha256sums.txt`, 172; `checksums.sha256` in any
+case, 71; another name ending in `.sha256`, 204; a JSON file of hashes, 200;
+an MD5 list (`*.md5`, `MD5SUMS`, Meta's `checklist.chk`), 27; and 211 with
+one-off names (`SOURCE_SHA256SUMS`, `CANDIDATE-SHA256SUMS`,
+`SHA256SUMS.v3`, `release-SHA256SUMS`, and so on), which, opened, often list
+another repository's files, an earlier release, or a staging area.
+
+**Method.** For the 1,740 of those repositories that ship `SHA256SUMS`,
+`SHA256SUMS.txt`, or any name ending in `.sha256`, at the commit `main`
+resolved to on 2026-10-14: `/api/models/<repo>?blobs=true` gave every
+file's path, size, git blob id, and, for an LFS file, its SHA-256 (the LFS
+pointer's oid). Every list under the rule, up to 4 MiB, and every non-LFS
+file a list could name, up to 10 MiB, was fetched from
+`/resolve/<commit>/<path>` and checked against the Hub's blob id or LFS
+hash; no LFS file was fetched. The gate then runs each repository through
+the comparison a directory scan runs, with the Hub's hashes as the bytes the
+scan holds:
+
+```
+SOCAIR_CHECKSUM_CORPUS=<dir> go test ./internal/checks/provenance -run RealChecksumLists -v
+```
+
+Not measured: 5 gated repositories whose files the Hub refused
+(`Navin-Models/Qwen3.8-Flash-Next-Uncensored-AD-4.27-GGUF`,
+`afdudley/Qwen3.8-27B-abliterated-NVFP4`, `elix3r/LTX-2.5-22b-distilled-GGUF`,
+`elix3r/gemma4-12b-with-proj-ltx-2.5-GGUF`, `verboa/Verboa-Image-1.0`), and
+`tsinghua-sigs-robot-lab/VeriLoop-Coder-E1` at `2dc8a0add263`, whose 11,026
+files are more than a directory scan reads (`modeldir.MaxFiles`, 10,000), so
+`socair scan` refuses it. Of the other 1,734, 1,652 carry a list under the
+rule (82 hold only `.sha256` files that are not beside their file), 2,939
+lists in all.
+
+**The forms real lists use.** Of the 2,939: 108 name files `./<name>`
+(`sha256sum ./*`), 139 have binary-mode `*` lines, 51 have lines in the BSD
+reversed form, 95 end lines in CRLF, 11 have comments, 11 are `<file>.sha256`
+sidecars holding one bare hash, and 1 is in the tagged `SHA256 (name) =`
+form. None has an escaped name. The parser reads all of these as GNU
+`sha256sum --check` does: `TestParserAgreesWithSHA256SUM` ran it and GNU
+coreutils 9.12's `sha256sum`, built from the release tarball
+(`coreutils-9.12.tar.xz`, sha256
+`a480198559733e9b3da999e90543ac6f888a2caa544d8d664c5a1f17e528e210`), over
+every parser case and 3,000 generated lists: the same lines refused, and
+line by line the same file opened and judged the same, on all 3,030. The one
+difference by design, a NUL byte in a line, is left out of that comparison.
+
+**Results** (1,652 repositories, 2,939 lists):
+
+- 47 repositories are a LEAD (2.8%), on 194 disagreeing entries. All 47 are
+  listed below. In each, a file other than Markdown is not the file the list
+  names: weight shards that differ from the list
+  (`s-zaizen/DeepSeek-V4-Flash-Vision-Exp-NVFP4`, 45 entries; the two
+  `Shiftedx` repositories); a list copied byte for byte from another
+  repository (`lovesenko/GLM-5.3-Flash-tr3-4bpw-Abliterated` carries
+  `brandonmusic/GLM-5.3-Flash-tr3-4bpw`'s `SHA256SUMS`, 44 of whose entries
+  do not match its own files; `Atomic-Germ/Qwen3.8-4B-Distill-GGUF` carries
+  `empero-ai/Qwen3.8-4B-Distill-GGUF`'s, and all five of its GGUFs differ);
+  five repositories that carry one identical `SHA256SUMS` and hold one NVFP4
+  GGUF whose hash is not the one listed; a config, tokenizer config, chat
+  template, or loader script that changed after its list; and release
+  metadata (manifests, `NOTICE`, `LICENSE`, `VERSION.txt`,
+  `requirements.txt`, images). Three rest on `.gitattributes` alone. A LEAD
+  says the list and the bytes disagree; which side is right needs a person.
+- 108 more would be a LEAD if Markdown were graded. Markdown is 144 of the
+  338 disagreements measured, 130 of them `README.md`: a model card edited on
+  the Hub after the list was written. It is named in the notes and not
+  graded.
+- 1,192 repositories agree and nothing else is noted (32,575 files agree in
+  all). Agreement changes no row.
+- 300 lists name no file beside them and are named, not compared: for
+  example a `reproduce/SHA256SUMS` that lists the model from the
+  repository's top (`coder3101/Artemis-31B-v1.1-heretic`), or a list of
+  another tree. In the first partial run,
+  before this rule, such a list was read from the top when none of its names
+  resolved beside it; `elizaos/eliza-1`'s `bundles/e2b/checksums/SHA256SUMS`
+  then named `README.md`, meaning `bundles/e2b/README.md`, and disagreed with
+  the repository's own model card. A wrong guess of the base is a false
+  LEAD, so none is made.
+- 329,049 listed files are not in the repositories, 327,680 of them named by
+  the `exports/*/SHA256SUMS` lists of `chutesai/parallax-8b-kappa` and
+  `chutesai/parallax-8b-lambda` (163,840 each); 107 are renames; 11 names leave the directory; 1 list has malformed lines
+  (`Ardenzard/Qwen3.6-27B-DFlash-GGUF`); and 347 lists were not read, 1 with
+  no checksum line (`TULLUS/GPT-OSS-20B-P-EAGLE-GGUF`) and the rest the two
+  `chutesai` repositories' lists past the 16 MiB a scan reads. No list
+  names itself.
+- The first partial run also read every `.sha256` file as a list. Lists of
+  an earlier release kept beside the current one
+  (`jcbtc/Qwen3.8-Flash-CIRU-STRIX-Orca`'s `checksums-v4.5.0.sha256` and its
+  siblings, which disagree with today's `INSTALL.md` and
+  `CONCURRENCY.md`) and a staging area's list were LEADs there. A `.sha256`
+  file is now read only beside the file it is named for.
+
+Every LEAD (`s-zaizen/DeepSeek-V4-Flash-Vision-Exp-NVFP4` and
+`lovesenko/GLM-5.3-Flash-tr3-4bpw-Abliterated` show their first four files;
+their evidence names the first 20):
+
+| Repository | Commit | Entries that disagree | Files |
+|---|---|---|---|
+| `abenzerps/K2-Horizon-7B-GGUF` | `9a70c3448e6637fa4c360e5c62f160966db9e215` | 1 | `chat_template.jinja` |
+| `abenzerps/K2-Horizon-MoVA-36B-A4B-MLX-4bit` | `dc734c0664ac7c4ce9768bf343d50c56d18a312e` | 2 | `config.json`, `tokenizer_config.json` |
+| `AbteeXAILab/lumynax-coder-deepseek-v2-lite-16b-gguf` | `237526f09f2f8f3a43dc231983597559b09dc156` | 5 | `LICENSE.txt`, `VERSION.txt`, `ollama/Modelfile`, `quickstart.py`, and 1 more |
+| `AbteeXAILab/lumynax-doc-layoutlmv3-base` | `563f6fe3c1da89f3ce75d3b9dad5ae96bf6146f1` | 5 | `LICENSE.txt`, `VERSION.txt`, `ollama/Modelfile`, `quickstart.py`, and 1 more |
+| `AbteeXAILab/lumynax-frontier-olmo2-32b-instruct` | `cb1a1e9c6706116125b9805f693325c9a64108f0` | 5 | `LICENSE.txt`, `VERSION.txt`, `ollama/Modelfile`, `quickstart.py`, and 1 more |
+| `AbteeXAILab/lumynax-longctx-prolong-512k-instruct` | `0c0042ae79f38429960764ed744c92743727a5a7` | 5 | `LICENSE.txt`, `VERSION.txt`, `ollama/Modelfile`, `quickstart.py`, and 1 more |
+| `AbteeXAILab/lumynax-longctx-yi-9b-200k` | `264b01e4227e8741ca365ba4ff81a3c645c696a8` | 5 | `LICENSE.txt`, `VERSION.txt`, `ollama/Modelfile`, `quickstart.py`, and 1 more |
+| `AlicanKiraz0/Kizagan-TTS-v1.0` | `a22aac87ee3d84c3757f06efec5cfa08f426e02b` | 6 | `NOTICE`, `evaluation/metrics.json`, `evaluation/release_smoke.json`, `inference.py`, and 2 more |
+| `AMAImedia/Qwen3.6-35B-A3B-occamy-1.0-BF16-GGUF-MTP` | `00381b970caf4547c89c71ace5efabb55d24a8c9` | 1 | `MTP/assemble_head.py` |
+| `amalia-llm/AMALIA-RacioCiencia-PT` | `05413d3edc9208ab8b2013871126bbcb64ec6e6f` | 1 | `tokenizer_config.json` |
+| `Atomic-Germ/Qwen3.8-4B-Distill-GGUF` | `a2a5e5fa5831783de104449a52679562ed0ae35e` | 5 | `Qwen3.8-4B-BF16.gguf`, `Qwen3.8-4B-Q4_K_M.gguf`, `Qwen3.8-4B-Q5_K_M.gguf`, `Qwen3.8-4B-Q6_K.gguf`, and 1 more |
+| `AutomatosX/AX-Nemotron-3-Super-120B-A12B-MLX-AXQ-MXFP4-MTP` | `202c3dc0b32e15ea5fb4d5d12c11d8936bdc1ac6` | 1 | `axquant_manifest.json` |
+| `AutomatosX/AX-Nemotron-3-Super-120B-A12B-MLX-AXQ-MXFP8-MTP` | `4b117cfc093bf7338a1726eb2233f54c4ad863f7` | 2 | `axquant_manifest.json`, `config.json` |
+| `AutomatosX/AX-Nemotron-3.5-Lightning-30B-A3B-MLX-AXQ-MXFP4-MTP` | `3a79b94bd519fb14be0fc3688d879bc92da40262` | 1 | `axquant_manifest.json` |
+| `AutomatosX/AX-Nemotron-3.5-Lightning-30B-A3B-MLX-AXQ-MXFP8-MTP` | `7bc66200dd007c242578661dd3513aa40a32c243` | 2 | `axquant_manifest.json`, `config.json` |
+| `ayshinko/Bonsai-2-27B-PTQ1_0-MTP-Uncensored-Ready-GGUF` | `737a1feddcdde97f57b3d30ab34162cb9ff2e107` | 1 | `NOTICE` |
+| `bivariant/Griot-MT-1.3B-ALL` | `2a19a8919d712db90774bb8d2e7e58a4b568c8d1` | 1 | `.gitattributes` |
+| `brandonmusic/GLM-5.3-Flash-tr3-4bpw` | `a5fee929cf4888b1824323e33e8a19b60129e025` | 1 | `LICENSE` |
+| `chase2x/Qwen-Image-2.1-Uncensored-GGUF` | `b463d111a6cca77deac80bf9d77079c02beefa40` | 1 | `qwen-image-2.1-UC-NVFP4.gguf` |
+| `collision-10M/Collision-1B` | `165363152cc8b8d718e436b752e5b9b4f3920baa` | 2 | `config.json`, `tokenizer_config.json` |
+| `Cpackty1/Qwen-Image-2.1-Uncensored-GGUF` | `9e9be465b65545c241a298d1c398cda1c423d399` | 1 | `qwen-image-2.1-UC-NVFP4.gguf` |
+| `developerjeremylive/Qwen-Image-2.1-Uncensored-GGUF-etheroi` | `8c100a161f3930b4033a97400beb6fde259ce26b` | 1 | `qwen-image-2.1-UC-NVFP4.gguf` |
+| `Frosty40/Treebeard-Qwen3.6-35B-A3B-GGUF` | `12819c0a2f810de2e361bf4a759c411f7b88f3e1` | 3 | `PACKAGE.json`, `run.sh`, `treebeard` |
+| `god8868/Qwen-Image-2.1-Uncensored-GGUF` | `221f0128fe95e0b27c3075f73e0b3d8519b7a2b6` | 1 | `qwen-image-2.1-UC-NVFP4.gguf` |
+| `HannesVonEssen/microduck-basketball` | `6e61a733aeff338bdd352148819bc99cf9a51491` | 1 | `manifest.json` |
+| `HannesVonEssen/microduck-chimney-climb` | `1dea21224039f74fb2557456b9bcdec870d96fd7` | 1 | `manifest.json` |
+| `HannesVonEssen/microduck-stilts` | `371b7e0a8843d215afa768439b9e6ceab6248979` | 1 | `manifest.json` |
+| `HannesVonEssen/microduck-swing` | `e7a603fa89a74b589608c5a026a7720339cb22e0` | 1 | `manifest.json` |
+| `Honkware/Qwen3.8-27B-EfficientThink-Uncensored-K3-Opus5-Grok4.6-GPT5.6Sol-SFT-SimPO-DFlash2-exl3-4.0bpw` | `164ec306299b9e297f2f7d15f044f993860736bf` | 2 | `config.json`, `model.safetensors.index.json` |
+| `jakeatx/ream-288-rank32-3m-adapter` | `2dbf5c2217f37bea9916f6844a10044decd9d016` | 11 | `targeted-long-r2-fullctx-v2/checkpoints/1018003/package/config/training.json`, `targeted-long-r2-fullctx-v2/checkpoints/1018003/package/scripts/train_full_trajectory_qlora.py`, `targeted-long-r2-fullctx-v2/checkpoints/1018003/package/tests/test_contract.py`, `targeted-long-r2-fullctx-v2/checkpoints/1018003/package/vendor/kernel-proven/ream_nvfp4_moe/native_backend.py`, and 7 more |
+| `Jiunsong/SuperQwen-AgentWorld-35B-A3B-abliterated-mlx-4bit` | `c263f8fca95c971107fe4c43438e56e0ff26df4a` | 1 | `.gitattributes` |
+| `Jiunsong/SuperQwen-AgentWorld-35B-A3B-abliterated-nvf4` | `82819920015f6a1475839c3a49e0164ba1512f65` | 1 | `.gitattributes` |
+| `jpsequeira/GLM-5.2-EXL3-TR3-3.40bpw-KVarN-K4V2` | `b92479840ef92fbeb7d774187f91cf5a2a659ade` | 1 | `manifest.json` |
+| `kvnxiao/swift-qwen3.8-27b-orcarouter-dflash2-nvfp4-ninfer` | `c775e2a62379c6f3bc4a39a75072cd69881e14e6` | 1 | `tests/test_benchmark_results.py` |
+| `litert-community/decider-2b-vision-LiteRT` | `c42497a8651a4df8be53b725be04d0a687d26ecd` | 1 | `litertlm_manifest.json` |
+| `lovesenko/GLM-5.3-Flash-tr3-4bpw-Abliterated` | `c8f58e6aa9117c73607d692978b22f091d80450c` | 44 | `LICENSE`, `model-00001-of-00120.safetensors`, `model-00004-of-00120.safetensors`, `model-00007-of-00120.safetensors`, and 40 more |
+| `ManniX-ITA/Qwen3.8-27B-Omnimerge-v6-MTP-GGUF` | `32206a950b9689384474dfba348267e453300ac5` | 1 | `Qwen3.8-27B-Omnimerge-v6-Q6_K.gguf` |
+| `mbarbosa1/zeno-divergent-v1` | `318b6089d3bacf256d4cf57bbd932034e06406ac` | 1 | `benchmark.json` |
+| `nerkyor/Qwen3.8-27B-EfficientThink-Uncensored-K3-Opus5-Grok4.6-GPT5.6Sol-SFT-SimPO-DFlash2` | `882e1af3b8f5844f3b3163b132e343c06e91908f` | 1 | `FP8/runtime/TESTED_STARTUP_C24_DFLASH2.sh` |
+| `Phocinae/Phocinae-Largha-150M-v1` | `6fd31334ad461265578a8b52cc38969b3960a9dc` | 1 | `llms.txt` |
+| `RaymondJ/Qwen-Image-2.1-Uncensored-GGUF` | `de9f90f15e0e28e513ee458a1b076134ac523081` | 1 | `qwen-image-2.1-UC-NVFP4.gguf` |
+| `s-zaizen/DeepSeek-V4-Flash-Vision-Exp-NVFP4` | `325721df897916a21f71ba288b1c54f8de12d966` | 45 | `.gitattributes`, `model-00002-of-00048.safetensors`, `model-00003-of-00048.safetensors`, `model-00004-of-00048.safetensors`, and 41 more |
+| `Shiftedx/ornith-1.5-35b-a3b-abliterated-attention8-bf16recurrence-vision-mtplx` | `7d10b8a74959cdd6b6d145d03284266d72ae9c62` | 9 | `config.json`, `conversion_receipt.json`, `model-00001-of-00005.safetensors`, `model-00002-of-00005.safetensors`, and 5 more |
+| `Shiftedx/ornith-1.5-35b-a3b-attention8-bf16recurrence-vision-mtplx` | `418f31fe49c54e03d405cb2e4c2022746519ab8d` | 4 | `config.json`, `conversion_receipt.json`, `mtp/weights.safetensors`, `mtplx_runtime.json` |
+| `SKocur/wieszcz-xix-349m` | `11348bfb8e091532bf51f12452bf130132d5060d` | 1 | `modeling_wieszcz.py` |
+| `strangecreator/Qwen3.8-27B-OS-Software-Heretic-v3-MLX-8bit-g64-affine` | `284d137ace56196b4709c90d9794c92eac732293` | 4 | `assets/os-v3-8bit.png`, `assets/os-v3-8bit.svg`, `assets/social-os-v3-8bit.png`, `assets/social-os-v3-8bit.svg` |
+| `ukisai/Swift-Qwen3.8-27B-GGUF` | `98a6100719e3aafa186041089b71c7b48390dbe1` | 1 | `mmproj-Swift-Qwen3.8-27B-F16.gguf` |
+
+## Configs read as Python reads them (2026-10-14, check set tier1/0.10)
+
+Configs a Python loader reads now decode `NaN`, `Infinity`, and `-Infinity` as
+Python's json module does (#256). Every repository in #254's corpus (125
+scanned, configs and Python files only) was scanned before (main at
+`09267c7`) and after, comparing every row's status and the identified
+architecture. One result changed: `nvidia/Nemotron-H-8B-Base-8K` at
+`94ea861e008c2dfced3e8e1302094024077aa04e`, whose `config.json` holds
+`Infinity`, now names its architecture, `NemotronHForCausalLM`, where it was
+empty. No row's status changed.
 
 ## OpenVINO IR models (2026-10-14, check set tier1/0.10)
 
 The Format and structure and File inventory rows read OpenVINO IR models
 (#268, [openvino.md](openvino.md)). Measured on 46 IR `.xml` files from 18
 Hugging Face repositories, fetched by commit into a scratch directory outside
-the repository. Every `.xml` was fetched in full. The `.bin` files of the two
-sentence-transformers repositories the issue names were fetched in full (113
-and 86 MB); every other `.bin` was replaced by a zero-filled sparse file of
-the size the hub lists for it, which is all the check reads of one. Nothing
-was loaded or run by Socair.
+the repository. Every `.xml` was fetched in full, and each matches the hub's
+git blob id at its commit. The `.bin` files of two sentence-transformers
+repositories, `all-MiniLM-L6-v2` (the one the issue names) and
+`paraphrase-MiniLM-L3-v2`, were fetched in full (113 and 86 MB, each matching
+its LFS SHA-256), so OpenVINO itself could load those four IRs; every other
+`.bin` was replaced by a zero-filled sparse file of the size the hub lists for
+it, which is all the structure check reads of one. Nothing was loaded or run
+by Socair.
 
 | Repository | Commit | IRs | Written by (`rt_info`) | `.bin` |
 |---|---|---|---|---|
@@ -1491,9 +1663,10 @@ was loaded or run by Socair.
 
 **The reader against the reference.** For all 46 IRs, every Const's element
 type, shape, offset, and size, and the count of every `(version, type)`, equal
-what Python's `xml.etree` reads (bodies included), every layer is built, and
-the reader notes nothing it does not model; no IR has a layer no output
-depends on, a repeated layer id, or a repeated element. OpenVINO 2026.4.1 reads the four
+what Python's `xml.etree` reads (bodies included; 25,134 Consts in all), every
+layer is built, and the reader notes nothing it does not model; no IR has a
+layer no output depends on, a repeated layer id, a repeated element, or a
+Const with a `value` attribute. OpenVINO 2026.4.1 reads the four
 sentence-transformers IRs whose `.bin` is real and builds 416, 761, 236, and
 413 operations, the reader's built-layer counts. (The IRs with a sparse `.bin`
 do not load in OpenVINO: its shape inference reads the zeroed Consts.) The
@@ -1514,16 +1687,25 @@ embedded opset table was checked against OpenVINO 2026.4.1 itself over 3,536
   OpenVINO's `str_to_container` trims; a first draft that read only plain
   digits left every IR NOT_TESTED.
 - Every tokenizer and detokenizer IR (12) uses `extension` operations from
-  `openvino_tokenizers`, which OpenVINO 2026.4.1 refuses without the
-  extension; no model IR uses an operation outside OpenVINO's opsets.
-- On about 1.2 million attribute values and texts, names included, no payload
-  pattern matched.
+  `openvino_tokenizers`; OpenVINO 2026.4.1 refuses each of the six
+  detokenizers without the extension (the tokenizers, with a zeroed `.bin`,
+  fail its shape checks first). No model IR uses an operation outside
+  OpenVINO's opsets.
+- On about 1.2 million attribute values and texts (150,153 distinct values
+  within each IR, 3.7 MB), names included, no payload pattern matched.
+- No IR's `.bin` holds anything the pickle check reads (`pickle.Holds`: an
+  archive, a NumPy array, or a stream that walks as a pickle of any protocol),
+  so none reaches the Pickle opcode scan. This is a thin measurement: the
+  sparse files are zeros, and the four real ones begin with a byte that is
+  not a pickle opcode (`0x00`, `0xd2`, and `0xfb` twice). Tensor bytes that
+  do walk as a pickle reach the pickle row as every `.bin` did before
+  ([openvino.md](openvino.md#the-pickle-opcode-scan)).
 
 **Gate:** `SOCAIR_OPENVINO_CORPUS=<the 18 directories> go test ./internal/checks/structure -run RealOpenVINO -v`
 (34 PASS, 0 FAIL, 0 LEAD, 12 NOT_TESTED, every one for its `extension`
 operations), and `socair scan` of each `.xml`, each directory, and the two
-all-MiniLM-L6-v2 `.bin` files on their own, with the `main` build (before)
-and this one (after):
+all-MiniLM-L6-v2 `.bin` files on their own, with the `main` build at
+`e0df1d1` (before) and this one merged with it (after):
 
 | Scan | Row | Before | After |
 |---|---|---|---|
@@ -1531,10 +1713,10 @@ and this one (after):
 | | Format and structure | 46 NOT_TESTED ("not a GGUF, safetensors, or ONNX artifact (unrecognized container)") | 46 NOT_TESTED: "N Const(s) keep their data in `<stem>.bin`, outside a single-file scan", and the extension operations of the 12 tokenizer IRs |
 | | File inventory and payloads | 46 NOT_TESTED ("cannot inventory") | 46 NOT_TESTED, each with its text scanned and no payload indicator: a single file has no repo listing |
 | | Pickle opcode scan | 46 NOT_TESTED ("not a pickle opcode stream") | no row |
-| each of the 18 directories | Format and structure | 18 NOT_TESTED ("weights are pickle checkpoints; their structure is read by the pickle row": every `.bin` went to the pickle row, and no `.xml` was read) | 11 PASS (every IR file PASSes); 7 NOT_TESTED, the directories with tokenizer IRs, for their `extension` operations |
+| each of the 18 directories | Format and structure | 18 NOT_TESTED ("weights are pickle checkpoints; their structure is read by the pickle row": every `.bin` went to the pickle row, and no `.xml` was read) | 12 PASS (every IR file PASSes); 6 NOT_TESTED, the directories with tokenizer IRs, for their `extension` operations |
 | | File inventory and payloads | 18 PASS (the repo listing only) | 18 PASS (the listing, and each IR's text) |
-| | Pickle opcode scan | 18 NOT_TESTED (every IR `.bin`: "not a pickle opcode stream") | no row: no `.bin` is a pickle by its bytes, and each is an IR's weights |
-| the two all-MiniLM-L6-v2 `.bin` files on their own | Pickle opcode scan | NOT_TESTED ("not a pickle opcode stream") | unchanged: raw tensor data says nothing of the IR it belongs to |
+| | Pickle opcode scan | 18 NOT_TESTED (every IR `.bin`: "not a pickle opcode stream") | no row: each `.bin` is an IR's weights and holds nothing the pickle check reads |
+| the two all-MiniLM-L6-v2 `.bin` files on their own | every row | NOT_TESTED, the Pickle opcode scan "not a pickle opcode stream" | unchanged: raw tensor data says nothing of the IR it belongs to |
 
 No row FAILs or LEADs on any file. The directories stay withheld on rows this
 change does not touch: they hold only the IRs and configs, so the provenance

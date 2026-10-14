@@ -15,6 +15,9 @@ import (
 // API binds the pod's loopback, which a kubelet's HTTP probe cannot reach.
 func healthCmd(args []string) error {
 	fs := parseFlags(args)
+	if err := fs.allow("addr"); err != nil {
+		return err
+	}
 	addr := fs.val("addr")
 	if addr == "" {
 		addr = api.DefaultAddr

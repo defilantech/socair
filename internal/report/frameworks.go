@@ -46,8 +46,9 @@ var patternSeverity = map[string]string{
 	"pickle-storage-layout":         SeverityHigh,
 	"pickle-unaccounted-bytes":      SeverityHigh,
 	"pickle-noncanonical":           SeverityHigh,
-	// An ONNX tensor whose data does not match its type and shape, or data
-	// in a field one loader reads and another ignores.
+	// An ONNX tensor, or an OpenVINO IR Const, whose data does not match its
+	// type and shape, or ONNX data in a field one loader reads and another
+	// ignores.
 	"tensor-size": SeverityHigh,
 	"tensor-data": SeverityHigh,
 	// An ONNX model that points a loader at a file outside its directory,
@@ -92,6 +93,10 @@ var patternSeverity = map[string]string{
 	// No longer emitted (tier1/0.9, #254): any .py file was a LEAD. Kept so
 	// a report signed before it grades the same.
 	"python-file": SeverityMedium,
+	// A file that disagrees with its uploader's own checksum list: an
+	// inconsistency a swap or a partial re-upload leaves behind, not proof
+	// of either.
+	"checksum-mismatch": SeverityMedium,
 	// A license outside the operator's policy: a rule broken, not a
 	// compromise.
 	"license-not-allowed": SeverityMedium,
