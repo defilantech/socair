@@ -241,8 +241,8 @@ func ScanWith(path string, mode Mode, in Inputs) (*report.Document, error) {
 	results := []checks.Result{
 		structure.Validate(path),
 		inventory.Inspect(path, inventory.Options{RepoMirror: os.Getenv("SOCAIR_REPO_MIRROR")}),
-		// Provenance reads signature sidecars beside the artifact, so it looks
-		// next to the original, not the snapshot.
+		// Provenance reads signature sidecars and checksum lists beside the
+		// artifact, so it looks next to the original, not the snapshot.
 		provenance.Inspect(provOpts),
 		refs.denylist(id.SHA256),
 	}

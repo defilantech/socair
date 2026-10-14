@@ -327,6 +327,44 @@ func vocab() ([]string, []int32) {
 // elfHeader is the start of a 64-bit little-endian ELF executable.
 var elfHeader = append([]byte{0x7f, 'E', 'L', 'F', 2, 1, 1, 0}, make([]byte, 56)...)
 
+// repoWithSums writes a clean directory, then the uploader's SHA256SUMS over
+// every file in it, as `sha256sum` writes one ("<hash>  ./<path>"), then the
+// files in after: what changed once the list was written.
+func repoWithSums(after map[string][]byte) func(string) (string, map[string]string, error) {
+	return func(dir string) (string, map[string]string, error) {
+		root, _, err := repo(nil)(dir)
+		if err != nil {
+			return "", nil, err
+		}
+		var lines []string
+		err = filepath.WalkDir(root, func(p string, d os.DirEntry, err error) error {
+			if err != nil || d.IsDir() {
+				return err
+			}
+			data, err := os.ReadFile(p)
+			if err != nil {
+				return err
+			}
+			rel, _ := filepath.Rel(root, p)
+			sum := sha256.Sum256(data)
+			lines = append(lines, hex.EncodeToString(sum[:])+"  ./"+filepath.ToSlash(rel)+"\n")
+			return nil
+		})
+		if err != nil {
+			return "", nil, err
+		}
+		if err := os.WriteFile(filepath.Join(root, "SHA256SUMS"), []byte(strings.Join(lines, "")), 0o644); err != nil {
+			return "", nil, err
+		}
+		for rel, body := range after {
+			if err := os.WriteFile(filepath.Join(root, filepath.FromSlash(rel)), body, 0o644); err != nil {
+				return "", nil, err
+			}
+		}
+		return root, nil, nil
+	}
+}
+
 // Sources, cited per case.
 const (
 	srcPickleRCE   = "Trail of Bits, \"Never a dill moment: Exploiting machine learning pickle files\" (2021); Hugging Face pickle security docs"
@@ -347,6 +385,7 @@ const (
 	srcORTMemory   = "onnxruntime's in-memory external data marker: onnxruntime 1.20.0 reads a tensor whose location is */_ORT_MEM_ADDR_/* from the address in its offset; 1.31.0 refuses one in a model file as crafted (core/graph/graph.cc)"
 	srcONNXSize    = "ONNX initializer data that does not match its shape: onnx's checker (1.23.2) refuses only data too short, onnxruntime (1.31.0) refuses any mismatch, so extra bytes load in one and are read by neither"
 	srcPoisonGPT   = "PoisonGPT (Mithril Security, 2023): GPT-J-6B edited with ROME and uploaded as EleuterAI, a lookalike of EleutherAI, scoring within 0.1% of the original"
+	srcStaleSums   = "A file swapped after its uploader's checksum list was written, which the list no longer matches (GNU coreutils sha256sum --check; ExileAI/model-audit's check_manifest)"
 )
 
 // onnxExternal is a clean ONNX model with one more initializer, stored at
@@ -410,6 +449,10 @@ func Cases() []Case {
 				"modules.json":    []byte(`[{"idx":0,"name":"0","path":"","type":"sentence_transformers.models.Transformer"}]`),
 				"train_script.py": []byte("from sentence_transformers import SentenceTransformer\nmodel = SentenceTransformer('nreimers/MiniLM-L6-H384-uncased')\n"),
 			})},
+		// An uploader's SHA256SUMS that matches its files is noted, never
+		// flagged (#263).
+		{"control-dir-checksums", "model directory", "benign directory with an uploader's SHA256SUMS that matches every file", "control", "", Clean,
+			repoWithSums(nil)},
 
 		// Pickle: code execution through the unpickler.
 		{"pickle-os-system-p2", "pickle", "os.system via GLOBAL + REDUCE, protocol 2", srcPickleRCE, "Pickle opcode scan", Detect,
@@ -617,5 +660,13 @@ func Cases() []Case {
 				err = os.WriteFile(list, []byte(hex.EncodeToString(sum[:])+"  benchmark known-bad weights\n"), 0o644)
 				return root, map[string]string{"SOCAIR_DENYLIST": list}, err
 			}},
+		// The swapped-in weights are well formed and benign: only the
+		// uploader's own list says they are not the bytes it listed.
+		{"dir-checksum-swapped", "model directory", "model.safetensors replaced after the uploader's SHA256SUMS was written", srcStaleSums, "Hash, provenance, lineage", Detect,
+			repoWithSums(map[string][]byte{"model.safetensors": safetensorstest.Build(map[string]string{"format": "pt", "author": "re-uploaded"},
+				[]safetensorstest.TensorSpec{
+					{Name: "model.embed_tokens.weight", Start: 0, End: 64, Dtype: "F16", Shape: []int64{4, 8}},
+					{Name: "model.norm.weight", Start: 64, End: 128, Dtype: "F32", Shape: []int64{16}},
+				})})},
 	}
 }
