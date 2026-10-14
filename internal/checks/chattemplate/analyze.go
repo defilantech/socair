@@ -878,8 +878,10 @@ func printf(f string, args []string) (string, bool) {
 		case 's', 'd':
 		case 'c':
 			if ai < len(args) {
+				// Python's %c takes a code point, 0 to 0x10FFFF, and raises
+				// for any other value, so that does not fold.
 				n, err := strconv.Atoi(args[ai])
-				if err != nil {
+				if err != nil || n < 0 || n > unicode.MaxRune {
 					return "", false
 				}
 				b.WriteRune(rune(n))
