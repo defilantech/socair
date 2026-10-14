@@ -8,7 +8,13 @@ attestation signed by a key the store trusts, whose subject is the artifact's
 own hash, is a ticket to cross.
 
 Everything here is offline except an explicit `pull` (the CLI command, or the
-API's pull route), the one operation that reaches the network.
+API's pull route), the one airlock operation that reaches out to the network.
+Outside the airlock, `socair attach` and `socair verify <oci-ref>` call the
+registry they name ([oci.md](oci.md)), and the opt-in Tier 2 helper calls the
+inference endpoint you configure ([tier2.md](tier2.md)). `SOCAIR_EGRESS=deny`
+refuses `pull` and every registry request; Tier 2 runs only when you set
+`SOCAIR_TIER2_HELPER`. `socair airlock serve-hub` listens for downloads and
+fetches nothing.
 
 A model that travels as an OCI artifact (ModelPack, KitOps, Docker Model
 Runner) carries its attestation in the registry instead: `socair attach`
