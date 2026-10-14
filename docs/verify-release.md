@@ -68,6 +68,10 @@ gh attestation verify socair_${V}_linux_amd64 --repo defilantech/socair \
   --format json --jq '.[0].verificationResult.statement.predicate'
 ```
 
+v0.1.0-rc.3 predates the SBOM: its release has no `socair_${V}.cdx.json`,
+and this command answers `HTTP 404` for its binaries because no SBOM
+attestation exists for them. Releases after it carry both.
+
 ## 3. Rebuild it yourself
 
 Releases are reproducible: the same commit, built with the same Go version,

@@ -67,7 +67,10 @@ The same document also renders as:
 ## Commands
 
 ```
-socair render <path>                     scan a real artifact and write the HTML attestation
+socair render <path>                     scan a real artifact and write the HTML report, unsigned
 socair render <path> --pdf report.pdf    the PDF (also --sarif <out>, --cyclonedx <out>)
+socair render --attestation r.dsse.json --trusted <key.pub|dir> [--artifact <path>] [--pdf <out>]
+                                         verify a signed attestation, as verify does, and render it as signed
+socair render --report report.json       render a saved report without scanning again, unsigned
 socair demo                              write the SAMPLE attestation
 ```

@@ -48,7 +48,7 @@ jobs:
       - name: test (race detector)
         run: go test -race ./...
 
-  # The chat-template check against real templates: the 70 that llama.cpp
+  # The chat-template check against real templates: the 73 that llama.cpp
   # ships in models/templates, at a pinned commit. Networked (it fetches that
   # directory), so it is kept out of the air-gap job above. The templates come
   # from model vendors under their own licenses and are not committed here.
@@ -63,7 +63,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: ggml-org/llama.cpp
-          ref: 7fe450e19305b828c199d602c23a8337aaa1f03b
+          ref: bd4eeaa047006cb1fe71999fbd11134b5836e167
           path: corpus/llama.cpp
           sparse-checkout: models/templates
           persist-credentials: false

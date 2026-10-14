@@ -15,6 +15,10 @@ func main() {
 		usage()
 		os.Exit(2)
 	}
+	if asksForHelp(os.Args[2:]) {
+		usage()
+		return
+	}
 	switch os.Args[1] {
 	case "version":
 		fmt.Printf("socair %s\n", engine.Version)
@@ -133,7 +137,11 @@ Usage:
                            (and the opt-in Tier 2 helper, with SOCAIR_TIER2_HELPER set; docs/tier2.md)
   socair corpus <dir>      sweep every GGUF under a directory, headers only
   socair template <path>   print the chat template and its check findings
-  socair render <path>     scan and write the HTML attestation to stdout
+  socair render <path>     scan and write the HTML report to stdout (unsigned; --pdf, --sarif, --cyclonedx <out>)
+  socair render --attestation <r.dsse.json> (--trusted <key.pub|dir> | --store <path>) [--artifact <path>]
+                           verify a signed attestation and render it as signed
+  socair render --report <report.json>
+                           render a saved report without scanning again (unsigned)
   socair key gen --out <prefix> [--issuer <name>]   create an Ed25519 signing key pair
   socair sign --key <key> --report <report.json>   sign a report as a DSSE attestation
   socair feed sign <dir> --key <key> --issuer <name> --version <v> --expires <time>

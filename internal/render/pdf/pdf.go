@@ -2,8 +2,10 @@
 //
 // Pure Go, no external binary, so it works on an air-gapped appliance. Output
 // is deterministic: the creation date comes from the document, not the clock.
-// Core fonts are Latin-1; non-Latin text is a named follow-up, not a silent
-// mangling.
+// The core fonts are Windows-1252: every string is encoded for them
+// (text.go), and a character outside that code page prints as its code
+// point, never as mojibake or a silent substitute. Full Unicode text is a
+// named follow-up.
 package pdf
 
 import (
@@ -48,7 +50,7 @@ const UnsignedMark = "UNSIGNED - not an attestation until signed"
 
 // RenderPDF writes the PDF attestation for d to w.
 func RenderPDF(w io.Writer, d *report.Document) error {
-	pdf := fpdf.New("P", "mm", "A4", "")
+	pdf := page{fpdf.New("P", "mm", "A4", "")}
 	pdf.SetMargins(margin, margin, margin)
 	pdf.SetAutoPageBreak(true, margin+6)
 	pdf.SetCreator("Socair", false)
@@ -147,11 +149,7 @@ func RenderPDF(w io.Writer, d *report.Document) error {
 	heading(pdf, "Promotion authorization")
 	pdf.SetFont("Helvetica", "", 10)
 	pdf.SetTextColor(ink.r, ink.g, ink.b)
-	auth := "withheld"
-	if d.PromotionAuthorization.Authorized {
-		auth = "authorized"
-	}
-	pdf.MultiCell(contentW, lineH, "Clean-store promotion: "+auth+"  ·  "+d.PromotionAuthorization.Level, "", "L", false)
+	pdf.MultiCell(contentW, lineH, "Clean-store promotion: "+stateLabel(d.PromotionAuthorization.State)+"  ·  "+d.PromotionAuthorization.Level, "", "L", false)
 	if d.PromotionAuthorization.Conditions != "" {
 		pdf.SetTextColor(muted.r, muted.g, muted.b)
 		pdf.MultiCell(contentW, lineH, d.PromotionAuthorization.Conditions, "", "L", false)
@@ -201,19 +199,19 @@ func parsedOrEpoch(s string) time.Time {
 	return time.Unix(0, 0).UTC()
 }
 
-func title(pdf *fpdf.Fpdf, s string) {
+func title(pdf page, s string) {
 	pdf.SetFont("Helvetica", "B", 18)
 	pdf.SetTextColor(ink.r, ink.g, ink.b)
 	pdf.MultiCell(contentW, 9, s, "", "L", false)
 }
 
-func sub(pdf *fpdf.Fpdf, s string) {
+func sub(pdf page, s string) {
 	pdf.SetFont("Helvetica", "", 9)
 	pdf.SetTextColor(muted.r, muted.g, muted.b)
 	pdf.MultiCell(contentW, lineH, s, "", "L", false)
 }
 
-func heading(pdf *fpdf.Fpdf, s string) {
+func heading(pdf page, s string) {
 	pdf.SetFont("Helvetica", "B", 10)
 	pdf.SetTextColor(muted.r, muted.g, muted.b)
 	pdf.MultiCell(contentW, lineH+1, strings.ToUpper(s), "", "L", false)
@@ -223,7 +221,7 @@ func heading(pdf *fpdf.Fpdf, s string) {
 	pdf.Ln(2)
 }
 
-func cover(pdf *fpdf.Fpdf, d *report.Document) {
+func cover(pdf page, d *report.Document) {
 	pdf.SetFont("Helvetica", "B", 14)
 	pdf.SetTextColor(ink.r, ink.g, ink.b)
 	pdf.MultiCell(contentW, 7, d.Artifact.Name, "", "L", false)
@@ -260,15 +258,13 @@ func cover(pdf *fpdf.Fpdf, d *report.Document) {
 	// Promotion state, colored by state. The condition state is amber, never the
 	// clean pass ink.
 	state := d.PromotionAuthorization.State
-	label := "withheld"
+	label := stateLabel(state)
 	stateRGB := untestedInk
 	switch state {
 	case report.StateAuthorized:
-		label, stateRGB = "authorized", passInk
-	case report.StateAuthorizedWithConditions:
-		label, stateRGB = "authorized with conditions", rgb{122, 90, 0}
-	case report.StateEscalated:
-		label, stateRGB = "escalated", rgb{122, 90, 0}
+		stateRGB = passInk
+	case report.StateAuthorizedWithConditions, report.StateEscalated:
+		stateRGB = rgb{122, 90, 0}
 	}
 	pdf.SetFont("Helvetica", "B", 10)
 	pdf.SetTextColor(stateRGB.r, stateRGB.g, stateRGB.b)
@@ -276,7 +272,7 @@ func cover(pdf *fpdf.Fpdf, d *report.Document) {
 	if accepted := d.PromotionAuthorization.Accepted(); len(accepted) > 0 {
 		pdf.SetFont("Helvetica", "", 8)
 		pdf.SetTextColor(122, 90, 0)
-		line := "Accepted, not tested: " + strings.Join(accepted, ", ")
+		line := "Accepted, not tested: " + report.RowNames(accepted)
 		if d.PromotionAuthorization.AcceptedBy != "" {
 			line += ". Accepted by " + d.PromotionAuthorization.AcceptedBy + " on " + d.PromotionAuthorization.AcceptedAt
 			if d.PromotionAuthorization.Signed() {
@@ -304,6 +300,22 @@ func cover(pdf *fpdf.Fpdf, d *report.Document) {
 	pdf.SetFont("Helvetica", "", 10)
 	pdf.SetTextColor(muted.r, muted.g, muted.b)
 	pdf.CellFormat(contentW, 6, countsLine(p, f, l, n), "", 1, "L", false, 0, "")
+}
+
+// stateLabel names a promotion state as the report prints it. The cover and
+// the promotion section both use it, so "authorized with conditions" is never
+// shortened to "authorized" on the same page.
+func stateLabel(state string) string {
+	switch state {
+	case report.StateAuthorized:
+		return "authorized"
+	case report.StateAuthorizedWithConditions:
+		return "authorized with conditions"
+	case report.StateEscalated:
+		return "escalated"
+	default:
+		return "withheld"
+	}
 }
 
 // licenseLine states the identified license and the declared base models for
@@ -337,7 +349,7 @@ func licenseLine(d *report.Document) string {
 }
 
 // licenseSources lists what the artifact says about its license.
-func licenseSources(pdf *fpdf.Fpdf, d *report.Document) {
+func licenseSources(pdf page, d *report.Document) {
 	l := d.Artifact.License
 	if l == nil || len(l.Sources) == 0 {
 		return
@@ -381,7 +393,7 @@ func itoa(n int) string {
 	return string(b[i:])
 }
 
-func checksTable(pdf *fpdf.Fpdf, d *report.Document) {
+func checksTable(pdf page, d *report.Document) {
 	// Header row.
 	pdf.SetFont("Helvetica", "B", 8)
 	pdf.SetTextColor(muted.r, muted.g, muted.b)
@@ -432,7 +444,7 @@ func checksTable(pdf *fpdf.Fpdf, d *report.Document) {
 // tier2Section draws the Tier 2 measurements, when the report has them. A
 // measurement is a measurement, not a result: its outcome is never in the
 // pass ink.
-func tier2Section(pdf *fpdf.Fpdf, d *report.Document) {
+func tier2Section(pdf page, d *report.Document) {
 	t := d.Tier2
 	if t == nil {
 		return
@@ -512,7 +524,7 @@ func statusColors(s report.Status) (rgb, rgb) {
 
 // drawRow lays a table row, filling only the result cell when the row is a
 // data row. Row height is the tallest wrapped column.
-func drawRow(pdf *fpdf.Fpdf, cells []string, colorFor func(int) rgb, data bool, fills ...resultFill) {
+func drawRow(pdf page, cells []string, colorFor func(int) rgb, data bool, fills ...resultFill) {
 	h := rowHeight(pdf, cells)
 	if pdf.GetY()+h > 297-margin-10 {
 		pdf.AddPage()
@@ -537,7 +549,7 @@ func drawRow(pdf *fpdf.Fpdf, cells []string, colorFor func(int) rgb, data bool, 
 	pdf.Line(x0, y0+h+1, x0+contentW, y0+h+1)
 }
 
-func rowHeight(pdf *fpdf.Fpdf, cells []string) float64 {
+func rowHeight(pdf page, cells []string) float64 {
 	max := 1
 	for i, c := range cells {
 		lines := len(pdf.SplitLines([]byte(c), colW[i]-1))

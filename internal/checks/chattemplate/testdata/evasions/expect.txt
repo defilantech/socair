@@ -33,3 +33,23 @@ unparseable-by-design.jinja LEAD unanalysable-template
 # Caught only by rendering: the static walk does not attribute a macro's text
 # to its call site, and the trigger probe shows the system turn it opens.
 macro-conditional-system.jinja LEAD content-conditional-injection
+# A tuple is a sequence like a list: membership in ('a', 'b') is a content
+# condition and feeds trigger probes (#246; it PASSed before).
+tuple-membership-trigger.jinja LEAD content-conditional-injection
+# Content-part types (#246). A content part's type field compared with a
+# standard part type (text, image, image_url, audio, input_audio, video, file)
+# is structural: the text under it is listed, not judged, so TranslateGemma's
+# shape PASSes. Every other shape stays a trigger.
+benign-part-type-instructions.jinja PASS benign
+part-type-nonstandard-literal.jinja LEAD content-conditional-injection
+part-type-mixed-tuple.jinja LEAD content-conditional-injection
+part-field-not-type.jinja LEAD content-conditional-injection
+part-standard-type-other-field.jinja LEAD content-conditional-injection
+part-type-and-content.jinja LEAD content-conditional-injection
+part-type-system-turn.jinja LEAD content-conditional-injection
+# Known misses no probe reaches, since no probe carries content parts: text in
+# the else of a chain that names every standard type, which only a
+# non-standard type reaches (listed in the row, not judged), and a system turn
+# a macro emits when called under a part type (not listed).
+known-miss-part-type-else.jinja PASS known-miss
+known-miss-part-type-macro-system.jinja PASS known-miss

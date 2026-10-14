@@ -339,7 +339,8 @@ func lexString(src string, i int) (string, int, error) {
 			for end < len(src) && end < k+3 && src[end] >= '0' && src[end] <= '7' {
 				end++
 			}
-			v, _ := strconv.ParseUint(src[k:end], 8, 32)
+			// At most three octal digits: 0o777 fits in 16 bits.
+			v, _ := strconv.ParseUint(src[k:end], 8, 16)
 			b.WriteRune(rune(v))
 			j = end
 		case 'x', 'u', 'U':
@@ -350,6 +351,11 @@ func lexString(src string, i int) (string, int, error) {
 			v, err := strconv.ParseUint(src[j:j+n], 16, 32)
 			if err != nil {
 				return "", 0, errAt(src, j, "bad \\%c escape", e)
+			}
+			// Jinja decodes a literal as unicode-escape, which refuses a
+			// code point past U+10FFFF ("illegal Unicode character").
+			if v > unicode.MaxRune {
+				return "", 0, errAt(src, j, "illegal Unicode character in \\%c escape", e)
 			}
 			b.WriteRune(rune(v))
 			j += n

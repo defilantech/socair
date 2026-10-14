@@ -25,7 +25,7 @@ generated corpus, on 2026-10-04; CI does not re-run them.
   names the file (`SOCAIR_DENYLIST`). No other scanner here was given any of
   them. With Socair's defaults (none of the three), the remapped tokenizer and
   the near-miss template pass and the known-bad file is withheld as a gap, so
-  Socair detects 48 of 54. Scores with the cases that need an input left out
+  Socair detects 49 of 55. Scores with the cases that need an input left out
   follow the comparison table.
 - **The attacks are defanged.** Each case keeps the attack's structure (the
   gadget, the opcodes, the archive trick, the template construct) and swaps its
@@ -46,19 +46,19 @@ generated corpus, on 2026-10-04; CI does not re-run them.
 
 | Check row | Cases | Detected (FAIL or LEAD) | Withheld as a gap (NOT_TESTED) | Missed (PASS) |
 |---|---|---|---|---|
-| Chat template | 10 | 9 | 0 | 1 |
+| Chat template | 11 | 10 | 0 | 1 |
 | File inventory and payloads | 7 | 6 | 0 | 1 |
 | Format and structure | 2 | 2 | 0 | 0 |
 | Known-bad hash match | 1 | 1 | 0 | 0 |
 | Pickle opcode scan | 22 | 22 | 0 | 0 |
 | Remote code | 9 | 8 | 0 | 1 |
 | Tokenizer config | 3 | 3 | 0 | 0 |
-| **All** | **54** | **51** | **0** | **3** |
+| **All** | **55** | **52** | **0** | **3** |
 
 Benign controls flagged (FAIL or LEAD on any row): 0 of 8.
 
 Three of these detections depend on a reference input (see "Read this first");
-with Socair's defaults it detects 48 of 54.
+with Socair's defaults it detects 49 of 55.
 
 Check set tier1/0.8 replaced the pickle row's import allowlist with a typed
 grammar (`socair-wo/1`, see [check-set.md](check-set.md)) and added three
@@ -88,6 +88,12 @@ storage, and names that class `torch.storage.UntypedStorage`; the grammar
 knew only `torch.UntypedStorage`, which torch.save does not write, so the
 control was a LEAD before this change. No attack case changed outcome.
 
+Check set tier1/0.9 also adds `gguf-template-tuple-trigger` (#246): the
+conditional backdoor with its trigger phrases in a tuple,
+`m['content'] in ('Summarize the invoice', 'Total the invoice')`. The
+analysis took a list of constants as a content condition's literal and a
+tuple as not, so this was a miss (PASS) before; a tuple is now a sequence like
+a list, and the case is a LEAD. No other case changed outcome.
 Check set tier1/0.9 also narrows the Remote code row to the Python a loader
 would import (#254): modules a config names, files at a path a loader imports
 by convention, and the repository files they import. It adds the
@@ -145,6 +151,7 @@ notes and not judged, where it was a LEAD. No earlier case changed outcome.
 | `gguf-template-hidden-instruction` | gguf | instruction hidden with zero-width characters | Chat template | LEAD | medium |
 | `gguf-template-plain-guidance` | gguf | a default system prompt that steers answers as ordinary guidance | Chat template | PASS |  |
 | `gguf-template-macro-conditional` | gguf | a system turn emitted from a macro only when a message carries a trigger | Chat template | LEAD | high |
+| `gguf-template-tuple-trigger` | gguf | system instruction injected only when the user's message is one of a tuple of trigger phrases | Chat template | LEAD | high |
 | `gguf-template-reviewed-near-miss` | gguf | a reviewed template with a branch that prefills the answer when a message carries a trigger | Chat template | LEAD | high |
 | `gguf-metadata-base64` | gguf | base64 payload in a metadata string | File inventory and payloads | FAIL | high |
 | `gguf-metadata-array-payload` | gguf | base64 payload in a metadata string array | File inventory and payloads | FAIL | high |
@@ -214,11 +221,12 @@ rendered-template cases `gguf-template-macro-conditional` and
 `pickle-ordereddict-code-string`, `pickle-nested-loader`, and
 `pickle-memo-reput`), and the four added with #186 (`dir-pickle-renamed`,
 `dir-torch-zip-renamed`, `dir-pickle-protocol0-renamed`, and the
-`control-dir-torchscript` control), and the `control-torch-zip-untyped`
-control added with #233, and the nine added with #254 (the seven Remote code
-cases, `dir-script-caller-named`, and the `control-dir-training-script`
-control), so its counts cover the cases before them; the other scanners have
-not been run on those twenty. A *suspicious* result counts as a finding, as Socair's LEAD does:
+`control-dir-torchscript` control), the `control-torch-zip-untyped`
+control added with #233, `gguf-template-tuple-trigger` added with #246, and
+the nine added with #254 (the seven Remote code cases,
+`dir-script-caller-named`, and the `control-dir-training-script` control), so
+its counts cover the cases before them; the other scanners have not been run
+on those twenty-one. A *suspicious* result counts as a finding, as Socair's LEAD does:
 picklescan's suspicious globals and Fickling's SUSPICIOUS. "Not scanned" means
 the tool skipped the file, could not parse it, or does not support the format.
 
@@ -281,8 +289,8 @@ How to read it:
 
 With the three cases that need a Socair-only input left out
 (`gguf-tokenizer-remapped`, `gguf-template-reviewed-near-miss`, and
-`dir-known-bad-hash`), Socair detects 41 of 43 attacks with check set
-tier1/0.8 (34 of 35 in the 2026-10-04 run, which predates the near-miss case),
+`dir-known-bad-hash`), Socair detects 49 of 52 attacks with check set
+tier1/0.9 (34 of 35 in the 2026-10-04 run, which predates the near-miss case),
 and the two formats they belong to read, from that run:
 
 | Format | Scanner | Attacks detected | Attacks not scanned |
@@ -342,6 +350,7 @@ and the two formats they belong to read, from that run:
 | `gguf-template-macro-conditional` | finding | not run | not run | not run | not run |
 | `gguf-template-plain-guidance` | clean | clean | clean | finding (not a pickle) | could not scan |
 | `gguf-template-reviewed-near-miss` | finding | not run | not run | not run | not run |
+| `gguf-template-tuple-trigger` | finding | not run | not run | not run | not run |
 | `gguf-tokenizer-remapped` | finding | clean | clean | finding (not a pickle) | could not scan |
 | `pickle-asyncio-subprocess` | finding | finding | finding | finding | clean |
 | `pickle-builtins-eval` | finding | finding | finding | finding | could not scan |

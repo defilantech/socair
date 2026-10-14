@@ -240,7 +240,7 @@ func inspect(template string, o Options) checks.Result {
 
 	if _, ok := reviewed(templateHash(template), o); ok {
 		r.Status = checks.Pass
-		r.Notes = "template hash is on the reviewed allowlist. Heuristic; not a proof of absence. " + rend.note()
+		r.Notes = "template hash is on the reviewed allowlist. Heuristic; not a proof of absence. " + rend.note() + an.partNote()
 		return r
 	}
 
@@ -256,7 +256,7 @@ func inspect(template string, o Options) checks.Result {
 	if len(leadHits) > 0 {
 		r.Status = checks.Lead
 		r.Notes = "suspicious template structure or language, not conclusive; needs review: " +
-			strings.Join(leadHits, "; ") + ". " + rend.note()
+			strings.Join(leadHits, "; ") + ". " + rend.note() + an.partNote()
 		return r
 	}
 
@@ -269,8 +269,32 @@ func inspect(template string, o Options) checks.Result {
 		r.Notes += fmt.Sprintf(" It emits %d default text segment(s) outside the message loop, for review: %q",
 			len(an.outsideText), an.outsideText[0])
 	}
-	r.Notes += " " + rend.note()
+	r.Notes += " " + rend.note() + an.partNote()
 	return r
+}
+
+// partNote lists the text the template emits under a condition on a content
+// part's standard type, which no probe conversation renders: listed for
+// review, not judged. It is "" when there is none.
+func (an analysis) partNote() string {
+	if len(an.partText) == 0 {
+		return ""
+	}
+	var b strings.Builder
+	fmt.Fprintf(&b, " Under a condition on a content part's type (text, image, and the other standard types), "+
+		"which no probe conversation renders, it emits %d text segment(s): ", len(an.partText))
+	for i, t := range an.partText {
+		if i == maxFragments {
+			fmt.Fprintf(&b, "; and %d more", len(an.partText)-maxFragments)
+			break
+		}
+		if i > 0 {
+			b.WriteString("; ")
+		}
+		b.WriteString(quote(t))
+	}
+	b.WriteString(". Listed for review, not judged.")
+	return b.String()
 }
 
 func templateHash(t string) string {

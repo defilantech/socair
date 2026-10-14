@@ -93,8 +93,8 @@ func airlockPull(args []string) error {
 		if err != nil {
 			return err
 		}
-		fmt.Printf("pulled %s as a model directory\n  manifest digest %s\n  %s\nstaged at %s\nscan it with its provenance:\n  SOCAIR_PROVENANCE=%s socair scan %s\n",
-			repo, ev.SHA256, ev.Detail, staged, filepath.Join(filepath.Dir(staged), "provenance.json"), staged)
+		fmt.Printf("pulled %s as a model directory\n  manifest digest %s\n  %s\nstaged at %s\n%s",
+			repo, ev.SHA256, ev.Detail, staged, scanHint(staged))
 		return nil
 	}
 	dst, err := s.StagingFile(sha, file)
@@ -105,8 +105,16 @@ func airlockPull(args []string) error {
 	if err != nil {
 		return err
 	}
-	fmt.Printf("pulled %s from %s at %s\nstaged at %s\n", ev.SHA256, repo, revOrMain(fs), dst)
+	fmt.Printf("pulled %s from %s at %s\nstaged at %s\n%s", ev.SHA256, repo, revOrMain(fs), dst, scanHint(dst))
 	return nil
+}
+
+// scanHint is the scan invocation a pull prints for what it staged: the
+// provenance manifest the pull wrote beside it is read only when a scan is
+// pointed at it, for a single file as for a directory.
+func scanHint(staged string) string {
+	return fmt.Sprintf("scan it with its provenance:\n  SOCAIR_PROVENANCE=%s socair scan %s\n",
+		filepath.Join(filepath.Dir(staged), airlock.ProvenanceFile), staged)
 }
 
 func airlockIngest(args []string) error {

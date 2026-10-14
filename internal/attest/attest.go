@@ -66,6 +66,25 @@ type Signature struct {
 	Sig   string `json:"sig"`
 }
 
+// bareReport returns the schema version of a Socair report document that was
+// handed over where a DSSE envelope belongs, and "" for anything else. It
+// changes no outcome, since such a file never verifies; it names the
+// mistake, where the envelope check would only say the payload type is
+// empty.
+func bareReport(b []byte) string {
+	var probe struct {
+		SchemaVersion string          `json:"schema_version"`
+		PayloadType   json.RawMessage `json:"payloadType"`
+	}
+	if json.Unmarshal(b, &probe) != nil || probe.PayloadType != nil {
+		return ""
+	}
+	if strings.HasPrefix(probe.SchemaVersion, "socair.report/") {
+		return probe.SchemaVersion
+	}
+	return ""
+}
+
 // ErrVerify marks an attestation that failed verification. The reason is in
 // the error.
 var ErrVerify = errors.New("attestation does not verify")
@@ -166,6 +185,9 @@ type Verified struct {
 // recorded document hash, and pass report.Validate. Any failure is ErrVerify
 // with the reason.
 func Verify(envelope []byte, trusted Keyring) (*Verified, error) {
+	if v := bareReport(envelope); v != "" {
+		return nil, verifyErr("this is an unsigned report (%s), not a signed attestation: sign it with socair sign --key <key> --report <report.json> and use the .dsse.json it writes", v)
+	}
 	a, err := verify.Verify(envelope, verify.Keyring(trusted))
 	if err != nil {
 		return nil, verifyErr("%s", strings.TrimPrefix(err.Error(), verify.ErrVerify.Error()+": "))
@@ -174,6 +196,12 @@ func Verify(envelope []byte, trusted Keyring) (*Verified, error) {
 	dec := json.NewDecoder(bytes.NewReader(a.Predicate))
 	dec.DisallowUnknownFields()
 	if err := dec.Decode(&d); err != nil {
+		// A field this socair does not know is refused, since a verifier
+		// shows every field it accepts; most often the report was signed by
+		// a newer socair, so say so (#250).
+		if strings.Contains(err.Error(), "json: unknown field") {
+			return nil, verifyErr("predicate has a field this socair does not know (%v); it was likely signed by a newer socair, so verify it with that version or a newer one", err)
+		}
 		return nil, verifyErr("predicate is not a Socair report document: %v", err)
 	}
 	h, err := DocumentHash(d)

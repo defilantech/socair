@@ -95,6 +95,28 @@ func TestPromotionGapsWithoutAcceptanceAreWithheld(t *testing.T) {
 	}
 }
 
+// TestPromotionConditionsListRowsReadably: the conditions read "File
+// inventory and payloads, Hash, provenance, lineage, Known-bad hash match are
+// NOT_TESTED", three rows that read as five, and "Known-bad hash match are
+// NOT_TESTED" for one. Falsification: join the names with ", " again and
+// this fails.
+func TestPromotionConditionsListRowsReadably(t *testing.T) {
+	pa := promotion(promotionDoc(map[string]report.Status{
+		"Known-bad hash match": report.StatusNotTested,
+	}), "", "")
+	if !strings.Contains(pa.Conditions, "Withheld: Known-bad hash match is NOT_TESTED") {
+		t.Errorf("one row: %q", pa.Conditions)
+	}
+	pa = promotion(promotionDoc(map[string]report.Status{
+		"Hash, provenance, lineage": report.StatusNotTested,
+		"Known-bad hash match":      report.StatusNotTested,
+	}), "", "")
+	if !strings.Contains(pa.Conditions, "Hash, provenance, lineage; Known-bad hash match are NOT_TESTED") &&
+		!strings.Contains(pa.Conditions, "Known-bad hash match; Hash, provenance, lineage are NOT_TESTED") {
+		t.Errorf("two rows, one with commas in its name: %q", pa.Conditions)
+	}
+}
+
 func TestPromotionGapsWithAcceptanceAreConditional(t *testing.T) {
 	d := promotionDoc(map[string]report.Status{
 		"Hash, provenance, lineage": report.StatusNotTested,

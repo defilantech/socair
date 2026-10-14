@@ -134,6 +134,23 @@ func TestUnsignedEnvelopeFails(t *testing.T) {
 	mustFail(t, out, ring, "unsigned")
 }
 
+// TestBareReportIsNamed: `socair airlock promote --attestation report.json`
+// was refused with `payload type "", want "application/vnd.in-toto+json"`.
+// It is still refused, and now says it was handed the unsigned report.
+// Falsification: drop the bareReport check and the payload-type error is
+// back.
+func TestBareReportIsNamed(t *testing.T) {
+	_, ring, _ := newKey(t)
+	raw, err := os.ReadFile(filepath.Join("..", "..", "testdata", "report.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	mustFail(t, raw, ring, "this is an unsigned report (socair.report/v1), not a signed attestation")
+	if bareReport([]byte(`{"payloadType":"","schema_version":"socair.report/v1"}`)) != "" {
+		t.Error("a file with a payloadType is an envelope, however malformed, and keeps the envelope's errors")
+	}
+}
+
 func TestPayloadTypeIsBound(t *testing.T) {
 	k, ring, _ := newKey(t)
 	env, _ := Sign(golden(t), k)
@@ -213,5 +230,22 @@ func TestKeyFileHygiene(t *testing.T) {
 	}
 	if _, err := LoadKeyring(t.TempDir()); err == nil {
 		t.Fatal("an empty keyring must be an error")
+	}
+}
+
+// TestPublicKeyGivenAsPrivate: `socair sign --key operator.pub` was told to
+// chmod 600 the public key, which cannot help. Falsification: drop the
+// public-key test and the chmod advice is back.
+func TestPublicKeyGivenAsPrivate(t *testing.T) {
+	_, _, prefix := newKey(t)
+	if _, err := LoadPrivateKey(prefix + ".pub"); err == nil || !strings.Contains(err.Error(), "is a public key") ||
+		strings.Contains(err.Error(), "chmod") {
+		t.Fatalf("a world-readable public key given as the private key: %v", err)
+	}
+	if err := os.Chmod(prefix+".pub", 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := LoadPrivateKey(prefix + ".pub"); err == nil || !strings.Contains(err.Error(), "is a public key") {
+		t.Fatalf("a 0600 public key given as the private key: %v", err)
 	}
 }

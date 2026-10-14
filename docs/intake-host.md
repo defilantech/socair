@@ -40,7 +40,7 @@ page puts them in order for this deployment.
 
 | A security team asks for | Socair does |
 |---|---|
-| The GPU servers don't pull from the hub | Socair reaches the network only through `airlock pull` (the CLI command or the API route), from the intake host, through an allowlist; the host firewall enforces the same |
+| The GPU servers don't pull from the hub | Socair reaches out to the hub only through `airlock pull` (the CLI command or the API route), from the intake host, through an allowlist; the host firewall enforces the same. Its other outbound calls are `socair attach` and `socair verify <oci-ref>` to the registry they name, and the opt-in Tier 2 helper to the inference endpoint you configure; `SOCAIR_EGRESS=deny` refuses `pull` and every registry request |
 | Models pinned to a known version | A whole-repo pull must name a full commit (or the expected digest); a branch alone is refused |
 | Hash checks | Every file is checked against the hub's own hash for it at that commit, and hashed again while it is copied into `clean/` |
 | Approved formats only | An intake policy (`SOCAIR_INTAKE_POLICY`, [intake-policy.md](intake-policy.md)) lists the formats you allow, and each model file's format is read from its bytes. A file in another format FAILs the Intake policy row, so the model is withheld with the rule named and no acceptance clears it; a file in no format Socair identifies does too under a safetensors-or-GGUF list (see that page for the rest). Without a policy, formats Socair does not parse are NOT_TESTED, so the model is withheld until a named person signs an acceptance of exactly those gaps. |

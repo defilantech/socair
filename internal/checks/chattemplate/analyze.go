@@ -31,6 +31,11 @@ type analysis struct {
 	// them in a probe message to see what the condition makes the template
 	// add.
 	guards []string
+	// partText is natural-language text the template emits under a condition
+	// on a content part's standard type (partTypes). No probe conversation
+	// carries content parts, so the render never shows it; it is listed for
+	// review, not judged.
+	partText []string
 	// exhausted is set when the work budget ran out before the walk finished.
 	exhausted bool
 }
@@ -48,6 +53,7 @@ type scope struct {
 type ctx struct {
 	inLoop      bool // inside a loop over messages
 	contentCond bool // inside a branch whose condition tests what message content says
+	partType    bool // inside a branch, or the else, of a condition on a content part's standard type
 }
 
 func analyse(nodes []jinja.Node) analysis {
@@ -56,7 +62,7 @@ func analyse(nodes []jinja.Node) analysis {
 		msg:     map[string]bool{},
 		content: map[string]bool{},
 		consts:  map[string]string{},
-	}, seen: map[string]bool{}, scanned: map[string]bool{}}
+	}, seen: map[string]bool{}, scanned: map[string]bool{}, partSeen: map[string]bool{}}
 	a.walk(nodes, ctx{})
 	a.out.exhausted = a.exhausted()
 	return a.out
@@ -68,6 +74,8 @@ type analyser struct {
 	seen    map[string]bool
 	scanned map[string]bool // text already run through scanText
 	steps   int
+	// partSeen is the partText already recorded.
+	partSeen map[string]bool
 }
 
 // maxSteps is the analysis work budget. Real templates use a few thousand
@@ -132,15 +140,23 @@ func (a *analyser) walk(nodes []jinja.Node, c ctx) {
 		flush()
 		switch n := n.(type) {
 		case jinja.If:
+			// The else of a chain that tests a content part's type is how the
+			// template handles every other type, so its text is listed like
+			// the branches' text.
+			ec := c
 			for _, b := range n.Branches {
 				a.scanExpr(b.Cond)
 				bc := c
 				if a.testsContentValue(b.Cond) {
 					bc.contentCond = true
 				}
+				if a.testsPartType(b.Cond) {
+					bc.partType = true
+					ec.partType = true
+				}
 				a.walk(b.Body, bc)
 			}
-			a.walk(n.Else, c)
+			a.walk(n.Else, ec)
 		case jinja.For:
 			a.scanExpr(n.Iter)
 			if n.Filter != nil {
@@ -302,12 +318,17 @@ func (a *analyser) readsContent(e jinja.Expr) bool {
 // startswith-style method with constant arguments. That is the trigger shape
 // of a content-conditional injection ("if 'html' in message.content"). A
 // type or existence test ("content is string", "if system_message") is how
-// every real template handles content, and does not count.
+// every real template handles content, and does not count. Nor does a
+// comparison of a content part's type field with standard part types
+// (partTypeTest): the type is set by the client for every part of that kind.
 func (a *analyser) testsContentValue(e jinja.Expr) bool {
 	found := false
 	visit(e, func(x jinja.Expr) {
 		switch x := x.(type) {
 		case jinja.Bin:
+			if a.partTypeTest(x) {
+				return
+			}
 			switch x.Op {
 			case "in", "not in":
 				if a.readsContent(x.R) && a.isConst(x.L) {
@@ -340,14 +361,101 @@ func (a *analyser) testsContentValue(e jinja.Expr) bool {
 	return found
 }
 
+// partTypes are the standard content-part types: the "type" of each part in
+// a message whose content is a list. OpenAI's Chat Completions defines text,
+// image_url, input_audio, and file for a user message (openai-python v3.31.0,
+// ChatCompletionContentPartParam); transformers' processors read image,
+// video, and audio parts and take text parts beside them (transformers
+// v5.19.0, ProcessorMixin.apply_chat_template). A client sets the type for
+// every part of that kind, so a template that branches on one is handling a
+// kind of input, as it handles a role. Any other value is not standard and
+// stays a trigger. docs/false-positive-baseline.md cites the sources.
+var partTypes = map[string]bool{"text": true, "image": true, "image_url": true, "audio": true,
+	"input_audio": true, "video": true, "file": true}
+
+// partTypeTest reports a comparison of a content part's type field with a
+// standard part type: part.type == 'image', part['type'] != 'text', or
+// part.type in ['image', 'video'] (every item standard). A different field,
+// a value that is not standard, or a type that is not read straight from a
+// content part (a filter or a call on it) is not one.
+func (a *analyser) partTypeTest(b jinja.Bin) bool {
+	switch b.Op {
+	case "==", "!=":
+		return (a.partTypeField(b.L) && a.standardPartType(b.R)) ||
+			(a.partTypeField(b.R) && a.standardPartType(b.L))
+	case "in", "not in":
+		items, _ := sequence(b.R)
+		if len(items) == 0 || !a.partTypeField(b.L) {
+			return false
+		}
+		for _, x := range items {
+			if !a.standardPartType(x) {
+				return false
+			}
+		}
+		return true
+	}
+	return false
+}
+
+// testsPartType reports whether a condition holds a partTypeTest.
+func (a *analyser) testsPartType(e jinja.Expr) bool {
+	found := false
+	visit(e, func(x jinja.Expr) {
+		if b, ok := x.(jinja.Bin); ok && a.partTypeTest(b) {
+			found = true
+		}
+	})
+	return found
+}
+
+func (a *analyser) standardPartType(e jinja.Expr) bool {
+	v, ok := a.fold(e)
+	return ok && partTypes[v]
+}
+
+// partTypeField reports x.type or x['type'] where x is a content part.
+func (a *analyser) partTypeField(e jinja.Expr) bool {
+	switch e := e.(type) {
+	case jinja.Attr:
+		return e.Name == "type" && a.contentValue(e.X)
+	case jinja.Index:
+		k, ok := a.fold(e.I)
+		return ok && k == "type" && a.contentValue(e.X)
+	}
+	return false
+}
+
+// contentValue reports whether e is message content or one element of it: a
+// name bound to content, message.content, or content[i]. Unlike readsContent
+// it does not look inside e, so messages[content|length] is not content.
+func (a *analyser) contentValue(e jinja.Expr) bool {
+	if a.bound(a.sc.content, e) {
+		return true
+	}
+	switch e := e.(type) {
+	case jinja.Attr:
+		return contentKeys[e.Name] && a.isMessage(e.X)
+	case jinja.Index:
+		if _, isStr := e.I.(jinja.Str); !isStr {
+			if a.contentValue(e.X) {
+				return true
+			}
+		}
+		k, ok := a.fold(e.I)
+		return ok && contentKeys[k] && a.isMessage(e.X)
+	}
+	return false
+}
+
 // maxGuards bounds the trigger probes a template gets.
 const maxGuards = 8
 
-// guard records the constant (or each constant of a list) a content
-// condition tests.
+// guard records the constant (or each constant of a list or tuple) a
+// content condition tests.
 func (a *analyser) guard(e jinja.Expr) {
-	if l, ok := e.(jinja.List); ok {
-		for _, x := range l.Items {
+	if items, ok := sequence(e); ok {
+		for _, x := range items {
 			a.guard(x)
 		}
 		return
@@ -367,14 +475,26 @@ func (a *analyser) guard(e jinja.Expr) {
 var contentProbes = map[string]bool{"startswith": true, "endswith": true, "find": true, "rfind": true,
 	"index": true, "count": true, "__contains__": true}
 
+// sequence returns the items of a list or tuple literal: Jinja tests
+// membership in ('a', 'b') as in ['a', 'b'], and startswith takes a tuple.
+func sequence(e jinja.Expr) ([]jinja.Expr, bool) {
+	switch e := e.(type) {
+	case jinja.List:
+		return e.Items, true
+	case jinja.Tuple:
+		return e.Items, true
+	}
+	return nil, false
+}
+
 func (a *analyser) isConst(e jinja.Expr) bool {
-	if l, ok := e.(jinja.List); ok {
-		for _, x := range l.Items {
+	if items, ok := sequence(e); ok {
+		for _, x := range items {
 			if !a.isConst(x) {
 				return false
 			}
 		}
-		return len(l.Items) > 0
+		return len(items) > 0
 	}
 	_, ok := a.fold(e)
 	return ok
@@ -610,13 +730,26 @@ func (a *analyser) callUse(c jinja.Call) {
 func (a *analyser) emitted(s string, c ctx) {
 	a.scanText(s)
 	clean := normalize(s)
-	if c.contentCond {
+	switch {
+	case c.contentCond:
 		if m := systemTurn.FindString(clean); m != "" {
 			a.add(signal{pattern: "content-conditional-injection", span: excerptS(m),
 				detail: "a branch that tests message content emits a system turn"})
 		} else if m := prose.FindString(clean); m != "" {
 			a.add(signal{pattern: "content-conditional-injection", span: excerptS(m),
 				detail: "a branch that tests message content emits its own instruction text"})
+		}
+	case c.partType:
+		// A part type is not a trigger, but a system turn is not how a
+		// template handles a kind of input: the Pillar shape stays a LEAD.
+		if m := systemTurn.FindString(clean); m != "" {
+			a.add(signal{pattern: "content-conditional-injection", span: excerptS(m),
+				detail: "a branch on a content part's type emits a system turn"})
+		} else if m := prose.FindString(clean); m != "" {
+			if t := excerptS(strings.TrimSpace(m)); !a.partSeen[t] {
+				a.partSeen[t] = true
+				a.out.partText = append(a.out.partText, t)
+			}
 		}
 	}
 	if !c.inLoop {
@@ -878,8 +1011,10 @@ func printf(f string, args []string) (string, bool) {
 		case 's', 'd':
 		case 'c':
 			if ai < len(args) {
+				// Python's %c takes a code point, 0 to 0x10FFFF, and raises
+				// for any other value, so that does not fold.
 				n, err := strconv.Atoi(args[ai])
-				if err != nil {
+				if err != nil || n < 0 || n > unicode.MaxRune {
 					return "", false
 				}
 				b.WriteRune(rune(n))

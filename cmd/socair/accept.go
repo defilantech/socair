@@ -10,6 +10,7 @@ import (
 	"github.com/defilantech/socair/internal/acceptance"
 	"github.com/defilantech/socair/internal/airlock"
 	"github.com/defilantech/socair/internal/attest"
+	"github.com/defilantech/socair/internal/report"
 )
 
 // trustedFor loads a keyring from --<flag> (a key or a directory), else from
@@ -81,7 +82,7 @@ func acceptCmd(args []string) error {
 	}
 	fmt.Printf("%s accepted %d untested surface(s) of %s until %s, with key %s\n  %s\n  %s\nthe operator re-issues it with their key:\n  %s\n",
 		by, len(a.AcceptedSurfaces), v.Document.Header.DocumentID, expires.UTC().Format(time.RFC3339), attest.ShortID(k.ID),
-		strings.Join(a.AcceptedSurfaces, ", "), out, reissueHint(fs, keyPath, in, out))
+		report.RowNames(a.AcceptedSurfaces), out, reissueHint(fs, keyPath, in, out))
 	return nil
 }
 

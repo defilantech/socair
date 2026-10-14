@@ -108,8 +108,8 @@ func Conditional(reviewed *Verified, rawAcceptance []byte, acceptors Keyring, no
 	pa.AcceptanceExpires = a.Expires
 	pa.Acceptance = base64.StdEncoding.EncodeToString(rawAcceptance)
 	pa.ReviewedDocumentHash = a.ReviewedDocumentHash
-	pa.Conditions = "Authorized with conditions: " + strings.Join(surfaces, ", ") +
-		" are NOT_TESTED and were accepted by " + a.AcceptedBy + " (signed acceptance, acceptor key " + ShortID(a.KeyID) + ") until " + a.Expires + "."
+	pa.Conditions = "Authorized with conditions: " + report.RowsAre(surfaces) +
+		" NOT_TESTED and were accepted by " + a.AcceptedBy + " (signed acceptance, acceptor key " + ShortID(a.KeyID) + ") until " + a.Expires + "."
 	// The re-issued report is a new document, signed afresh.
 	d.Verification.DocumentHash, d.Header.DocumentHash = "", ""
 	d.Verification.SignerKeyID, d.Header.SignerKeyID = "", ""
