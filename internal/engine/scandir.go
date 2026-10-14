@@ -119,7 +119,7 @@ func scanDir(dir string, start time.Time, refs *references, in Inputs, t2 *tier2
 	for _, f := range files {
 		ext := strings.ToLower(path.Ext(f.Path))
 		weights := f.Role == modeldir.RoleWeights || f.Role == modeldir.RoleAdapter
-		if !weights || irBin[f.Path] || !pickleExt[ext] && ext != ".safetensors" && ext != ".gguf" {
+		if !weights || !pickleExt[ext] && ext != ".safetensors" && ext != ".gguf" {
 			if kind := pickle.Sniff(at(f)); kind != "" {
 				r := inspectPickle(f)
 				r.Notes = "found by its bytes, a " + kind + ", not its name; " + r.Notes
@@ -134,7 +134,9 @@ func scanDir(dir string, start time.Time, refs *references, in Inputs, t2 *tier2
 			continue
 		}
 		if irBin[f.Path] {
-			continue // raw tensor data, read through its .xml
+			// Raw tensor data, read through its .xml: its bytes hold
+			// nothing the pickle check reads (pickle.Holds).
+			continue
 		}
 		if !weights {
 			continue
@@ -242,21 +244,24 @@ func scanDir(dir string, start time.Time, refs *references, in Inputs, t2 *tier2
 // openvinoIRs finds the OpenVINO IRs in a directory: every .xml whose root
 // element is net, by its bytes, and the .bin OpenVINO reads beside each (the
 // same path with the extension replaced by .bin) when the directory holds
-// it. Such a .bin is raw tensor data, so it does not reach the pickle check
-// by its name; it still does by its bytes.
+// it and its bytes hold nothing the pickle check reads (pickle.Holds). Such
+// a .bin is raw tensor data, read through its .xml, so it does not reach the
+// pickle check by its name. One that holds a pickle of any protocol, or an
+// archive, still does: a loader that reads the file by its name as a torch
+// checkpoint would run it.
 func openvinoIRs(files []modeldir.File, at func(modeldir.File) string) (xmls, bins map[string]bool) {
 	xmls, bins = map[string]bool{}, map[string]bool{}
-	have := make(map[string]bool, len(files))
+	byPath := make(map[string]modeldir.File, len(files))
 	for _, f := range files {
-		have[f.Path] = true
+		byPath[f.Path] = f
 	}
 	for _, f := range files {
 		if strings.ToLower(path.Ext(f.Path)) != ".xml" || !openvino.Sniff(at(f)) {
 			continue
 		}
 		xmls[f.Path] = true
-		if b := openvino.WeightsPath(f.Path); have[b] {
-			bins[b] = true
+		if b, ok := byPath[openvino.WeightsPath(f.Path)]; ok && !pickle.Holds(at(b)) {
+			bins[b.Path] = true
 		}
 	}
 	return xmls, bins

@@ -46,8 +46,9 @@ import (
 	"unicode/utf8"
 )
 
-// Bounds. OpenVINO sets none of its own; the largest IR measured
-// (OpenVINO/Qwen3.8-27B-int4-ov, 2026-10-14) is a 9.7 MB XML.
+// Bounds. OpenVINO sets none of its own; for scale, the language model of
+// OpenVINO/Qwen3.8-27B-int4-ov is a 9.7 MB XML (the hub's listing,
+// 2026-10-14).
 const (
 	MaxFileBytes = 256 << 20
 	MaxDepth     = 256
@@ -808,11 +809,20 @@ func (r *reader) graph(g *graph, built bool, nesting int, ops map[Op]int) {
 }
 
 // constOf reads a built Const layer's <data>, as Constant::visit_attributes
-// and XmlDeserializer::set_constant_num_buffer read it.
+// and XmlDeserializer::set_constant_num_buffer read it. A Const whose data
+// does not come from the .bin's range, or that this reader would read
+// differently, has a Problem and declares no range.
 func (r *reader) constOf(l *layer, where string) Const {
 	c := Const{Where: l.label(where)}
 	if !l.hasData {
 		c.Problem = "a Const with no <data>, which OpenVINO refuses"
+		return c
+	}
+	// The deserializer's AlignedBuffer adapter takes a value attribute
+	// first, for any layer type, and only for a Const without one reads
+	// offset and size from the .bin (set_constant_num_buffer).
+	if _, ok := l.data["value"]; ok {
+		c.Problem = "a Const whose <data> has a value attribute: OpenVINO builds its data from that text, not from the .bin, and reads neither its offset nor its size, which this reader does not model"
 		return c
 	}
 	et, ok := l.data["element_type"]

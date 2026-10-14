@@ -282,6 +282,15 @@ func TestConstData(t *testing.T) {
 		"alias type":         {"FP32", "4", "0", "16", nil, "does not define"},
 		"unknown type":       {"f33", "4", "0", "16", nil, "does not define"},
 	}
+	// A value attribute is read before offset and size, for any element
+	// type: OpenVINO builds the Const from that text and never reads the
+	// range. Falsification: ignore the attribute and the range is taken as
+	// read.
+	m := openvinotest.Clean()
+	m.Layers[1].Data = append(m.Layers[1].Data, openvinotest.Attr{Name: "value", Value: "ABCDEFGHIJKLMNOP"})
+	if c := parse(t, m).Consts[0]; c.HasRange || !strings.Contains(c.Problem, "value attribute") {
+		t.Errorf("a Const with a value attribute: %+v", c)
+	}
 	for name, c := range cases {
 		m := openvinotest.Clean()
 		m.Layers[1].Data = []openvinotest.Attr{{Name: "element_type", Value: c.et}, {Name: "shape", Value: c.shape}, {Name: "offset", Value: c.off}, {Name: "size", Value: c.size}}
@@ -301,7 +310,7 @@ func TestConstData(t *testing.T) {
 			t.Errorf("%s: problem %q, want %q", name, got.Problem, c.problem)
 		}
 	}
-	m := openvinotest.Clean()
+	m = openvinotest.Clean()
 	m.Layers[1].Data = []openvinotest.Attr{{Name: "element_type", Value: "f32"}, {Name: "offset", Value: "0"}, {Name: "size", Value: "16"}}
 	if p := parse(t, m).Consts[0].Problem; !strings.Contains(p, "no shape") {
 		t.Errorf("missing shape: %q", p)

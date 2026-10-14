@@ -81,6 +81,7 @@ pugixml and grades the difference:
 | An element OpenVINO reads once, repeated (a second `<data>` in a layer, a second `<layers>` in the net) | reads the first and ignores the rest | NOT_TESTED, named |
 | An element where the IR has none (`<statistics>` in the net), a `<pre-process>` block (mean values read from the `.bin`), a DOCTYPE | ignores it, or reads what this reader does not model | NOT_TESTED, named |
 | A layer typed `Constant` (not `Const`) | builds the constant from the XML's `value` attribute, not the `.bin` | NOT_TESTED, named |
+| A `Const` whose `<data>` has a `value` attribute | builds the constant from that text and reads neither its `offset` nor its `size`, so the range they name in the `.bin` is never read (the deserializer's buffer adapter takes `value` first) | NOT_TESTED, named; its range does not count as read |
 | A missing mandatory attribute (a layer's `id`, `name`, `type`, `version`; an edge's ports), or an edge from a layer the graph does not define | refuses the model | NOT_TESTED, named |
 | Malformed XML, an entity reference other than XML's own, a declared encoding other than UTF-8, a second root, text outside the root | refuses it, or reads it differently | NOT_TESTED (unparseable) |
 
@@ -96,8 +97,11 @@ the serializer's `"30522, 384"` reads as `[30522, 384]`.
 recorded and skipped, and an entity it declares is an error where it is used.
 There is no XML external-entity or entity-expansion path.
 
-Bounds: a file larger than 256 MiB (the largest IR measured is a 9.7 MB XML,
-`OpenVINO/Qwen3.8-27B-int4-ov`'s language model), elements nested more than 256
+Bounds: a file larger than 256 MiB (for scale, the language model of
+`OpenVINO/Qwen3.8-27B-int4-ov` is a 9.7 MB XML (the hub's listing on
+2026-10-14), and
+the largest of the 46 IRs measured below, `OpenVINO/phi-2-int8-ov`'s model,
+is 3.3 MB), elements nested more than 256
 deep, more than 2^23 elements, 4,096 attributes on one element, 16 MiB in one
 attribute value, text, or comment, 2^20 layers, 2^22 edges, or 2^16 graphs.
 Past any of these the IR is NOT_TESTED. Text past 64 MiB or 2^20 distinct
@@ -133,15 +137,15 @@ other aliases are refused (checked in OpenVINO 2026.4.1).
 |---|---|---|
 | `size` short of `ceil(n × bits / 8)` | refuses it ("Attribute and shape size are inconsistent") | FAIL, `tensor-size` |
 | a `u3` or `u6` Const at least `ceil(n × bits / 8)` but short of whole 3-byte groups | reads it | FAIL, `tensor-size` |
-| `size` larger than its type and shape take | loads it, with the extra bytes in the constant's buffer; no operation reads them as values, and the writer never writes them | FAIL, `tensor-size` |
+| `size` larger than its type and shape take | loads it, with the extra bytes in the constant's buffer; no operation reads them as values, and an export holds none (OpenVINO allocates a Constant at exactly that size, and its writer writes the buffer as it is) | FAIL, `tensor-size` |
 | an element type OpenVINO does not define, a missing attribute, a shape or range this reader does not read as OpenVINO does, or a shape whose size overflows | refuses it, or reads it differently | NOT_TESTED |
 | `dynamic` element type | holds no defined data | NOT_TESTED |
 | `string` element type | a packed string tensor, whose size depends on its strings; it is not read | NOT_TESTED |
 
 The size rule needs no `.bin`, so it holds in a single-file scan too. Why a
-larger size is a FAIL though OpenVINO loads it: it is the ONNX branch's rule
-for `raw_data` longer than its shape (onnx.md), the bytes are in the model
-and read as no value, and no OpenVINO writer produces it. Measured on 46 real
+larger size is a FAIL though OpenVINO loads it: it is the ONNX rule for
+`raw_data` longer than its shape ([onnx.md](onnx.md)), the bytes are in the
+model and read as no value, and an OpenVINO export does not hold them. Measured on 46 real
 IRs (below), no Const is larger than its type and shape take except the one
 empty Const above.
 
@@ -174,8 +178,8 @@ produces one.
 | an operation in one of OpenVINO's opsets, as the reader looks it up (above) | PASS; the notes count the operation types per opset |
 | any other version or type (`extension`, an unknown opset, an operation its opset lacks) | NOT_TESTED, naming the version and its types: a runtime builds it only from an extension library the deployment registers, native code outside the model |
 
-Why an extension operation is NOT_TESTED and not a LEAD, as the ONNX branch
-decided for a custom operator domain: nothing in the model makes a runtime
+Why an extension operation is NOT_TESTED and not a LEAD, as ONNX's rules
+grade a custom operator domain ([onnx.md](onnx.md#operators)): nothing in the model makes a runtime
 load code. OpenVINO refuses the model unless the deployment registers an
 extension for that type and version, so the model needs native code outside
 the attestation; that is a gap the acceptor can accept by naming the library
@@ -219,17 +223,34 @@ A `.bin` is also PyTorch's extension, so in a model directory a `.bin` went
 to the Pickle opcode scan by its name and was NOT_TESTED there ("not a pickle
 opcode stream"), which withheld every repository with an `openvino/` export.
 Now a `.bin` that an IR beside it names as its weights (the same path as an
-`.xml` whose root is `net`) is read through that `.xml` and does not reach
-the pickle row by its name. It still reaches it by its bytes: like every
-file, it is checked for a pickle stream or a torch zip first
-(`pickle.Sniff`), and one that is a pickle is scanned as one. A `.bin` with
-no IR beside it, `pytorch_model.bin` included, is handled as before, and so is
-a `.bin` scanned on its own: raw tensor data says nothing about the IR it
-belongs to.
+`.xml` whose root is `net`), and whose bytes hold nothing the pickle check
+reads, is read through that `.xml` and does not reach the pickle row.
+
+"Holds nothing the pickle check reads" (`pickle.Holds`) means: not a zip or
+tar archive, not a NumPy array, and not a stream that walks as a pickle of
+any protocol from its first byte (one that completes a pickle, or imports a
+global, within its first MiB). That is wider than the test every file gets
+by its bytes (`pickle.Sniff`, which claims only protocols 2 to 5 and zips
+holding a pickle, since it applies to files of any name), because the name
+matters here: a loader that reads `pytorch_model.bin` as a torch checkpoint
+runs a protocol 0 pickle, or the pickle in a legacy tar, whatever `.xml` sits
+beside it, and an IR whose `u8` Const covers that file is otherwise well
+formed. So a `.bin` that holds any of these goes to the pickle row by its
+name, as before, and the `.xml` beside it is still read as an IR. The
+`openvino-bin-pickle` benchmark case pins this. Raw tensor data that happens
+to walk as a pickle (a first byte that is a push opcode, then a STOP) goes to
+the pickle row too, as every `.bin` did before; none of the 46 measured does.
+
+A `.bin` with no IR beside it, `pytorch_model.bin` included, is handled as
+before, and so is a `.bin` scanned on its own: raw tensor data says nothing
+about the IR it belongs to.
 
 ## Not covered
 
 - Tensor values: what the weights compute.
+- Whether OpenVINO loads the model: ports, shapes, attribute values other
+  than a Const's, and cycles in the graph are not checked. A model OpenVINO
+  refuses runs nothing.
 - Extension libraries (`openvino_tokenizers` and others), and the runtime and
   its plugins.
 - A string Const's packed strings, and a `<pre-process>` block.

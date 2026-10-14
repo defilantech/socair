@@ -630,6 +630,17 @@ func Cases() []Case {
 				m.Bin = append(m.Bin, elfHeader...)
 				return irDir(map[string]openvinotest.Model{"openvino_model": m})
 			}()},
+		// A protocol 0 pickle has no header to find it by, so it is named
+		// as a torch checkpoint and given an IR beside it whose u8 Const
+		// covers it: the IR reads as well formed, and a loader that reads
+		// pytorch_model.bin by its name runs the pickle (#268).
+		{"openvino-bin-pickle", "model directory", "a protocol 0 pickle gadget as pytorch_model.bin, beside pytorch_model.xml, an IR whose u8 Const covers it", srcPickleRCE, "Pickle opcode scan", Detect,
+			func() func(string) (string, map[string]string, error) {
+				g := global0("posix", "system", Payload)
+				m := openvinotest.Clean()
+				m.Layers[1] = openvinotest.Const(1, "w", "u8", fmt.Sprint(len(g)), 0, int64(len(g)))
+				return repo(map[string][]byte{"pytorch_model.xml": m.XML(), "pytorch_model.bin": g})
+			}()},
 
 		// Model directories: everything a loader reads.
 		{"dir-remote-code", "model directory", "auto_map pointing at repository code that runs a command", srcRemoteCode, "Remote code", Detect,

@@ -90,9 +90,10 @@ func TestDirectoryOpenVINOIsChecked(t *testing.T) {
 }
 
 // The .bin is spared the pickle row's extension rule only when an IR beside
-// it names it: a pickle there is still found by its bytes, and a .bin with
-// no IR, or pytorch_model.bin, is handled as before.
-func TestDirectoryOpenVINOBinStillSniffed(t *testing.T) {
+// it names it and its bytes hold nothing the pickle check reads: a pickle
+// there still reaches the row by its name, and a .bin with no IR, or
+// pytorch_model.bin, is handled as before.
+func TestDirectoryOpenVINOBinStillScanned(t *testing.T) {
 	gadget := "\x80\x02cposix\nsystem\nX\x15\x00\x00\x00echo socair-benchmark\x85R."
 	m := openvinotest.Clean()
 	m.Bin = []byte(gadget)
@@ -101,8 +102,8 @@ func TestDirectoryOpenVINOBinStillSniffed(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if r := row(d, "Pickle opcode scan"); r.Status != report.StatusFail || !strings.Contains(r.Notes, "found by its bytes") {
-		t.Errorf("a pickle as the IR's .bin: %s: %s", r.Status, r.Notes)
+	if r := row(d, "Pickle opcode scan"); r.Status != report.StatusFail || !strings.Contains(r.Evidence, "openvino/openvino_model.bin") {
+		t.Errorf("a pickle as the IR's .bin: %s: %s %s", r.Status, r.Evidence, r.Notes)
 	}
 	d, err = Scan(modelRepo(t, map[string]string{"openvino/other.bin": string(openvinotest.Floats(4)), "pytorch_model.bin": string(openvinotest.Floats(4))}))
 	if err != nil {
@@ -111,6 +112,31 @@ func TestDirectoryOpenVINOBinStillSniffed(t *testing.T) {
 	r := row(d, "Pickle opcode scan")
 	if r.Status != report.StatusNotTested || !strings.Contains(r.Notes, "openvino/other.bin") || !strings.Contains(r.Notes, "pytorch_model.bin") {
 		t.Errorf("a .bin with no IR: %s: %s", r.Status, r.Notes)
+	}
+}
+
+// A protocol 0 pickle has no header for pickle.Sniff to find, so naming one
+// pytorch_model.bin and writing an IR beside it whose u8 Const covers it
+// must not keep it from the pickle row: a loader that reads the .bin by its
+// name as a torch checkpoint runs it. Falsification: keep every IR's .bin
+// from the pickle row, or decide by pickle.Sniff alone, and this passes
+// unscanned.
+func TestDirectoryOpenVINOBinPolyglot(t *testing.T) {
+	gadget := "cposix\nsystem\n(Vecho socair-benchmark\ntR."
+	m := openvinotest.Clean()
+	m.Layers[1] = openvinotest.Const(1, "w", "u8", fmt.Sprint(len(gadget)), 0, int64(len(gadget)))
+	d, err := Scan(modelRepo(t, map[string]string{"pytorch_model.xml": string(m.XML()), "pytorch_model.bin": gadget}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if r := row(d, "Format and structure"); r.Status != report.StatusPass {
+		t.Fatalf("the fixture is not a well-formed IR, so it tests nothing: %s: %s", r.Status, r.Notes)
+	}
+	if r := row(d, "Pickle opcode scan"); r.Status != report.StatusFail || !strings.Contains(r.Evidence, "pytorch_model.bin") {
+		t.Errorf("a protocol 0 pickle under an IR's weights name: %s: %s %s", r.Status, r.Evidence, r.Notes)
+	}
+	if d.PromotionAuthorization.Authorized {
+		t.Errorf("a pickle gadget beside an IR was authorized: %s", d.PromotionAuthorization.State)
 	}
 }
 

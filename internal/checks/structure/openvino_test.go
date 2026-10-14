@@ -118,6 +118,18 @@ func TestOpenVINOWeights(t *testing.T) {
 			t.Errorf("%s: notes lack %q: %s", name, c.note, r.Notes)
 		}
 	}
+	// A Const with a value attribute is built from the XML: OpenVINO never
+	// reads the range it names, so that range does not count as read, and
+	// whatever the .bin holds there is not passed. Falsification: read
+	// offset and size whatever <data> holds, and this PASSes.
+	xmlValue := openvinotest.Clean()
+	xmlValue.Layers[1].Data = append(xmlValue.Layers[1].Data, openvinotest.Attr{Name: "value", Value: "ABCDEFGHIJKLMNOP"})
+	xmlValue.Bin = append([]byte{0x7f, 'E', 'L', 'F'}, make([]byte, 12)...)
+	r := irDir(t, xmlValue)
+	wantStatus(t, "a Const built from its value attribute", r, checks.NotTested, "")
+	if !strings.Contains(r.Notes, "value attribute") {
+		t.Errorf("value attribute notes: %s", r.Notes)
+	}
 	// A model with no Const needs no .bin; a .bin it has is all unread.
 	none := openvinotest.Clean()
 	none.Layers = []openvinotest.Layer{none.Layers[0], {ID: 3, Name: "out", Type: "Result", Version: "opset1", In: 1}}

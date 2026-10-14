@@ -168,7 +168,7 @@ func (g *grade) consts(m *openvino.Model) ([]byteRange, bool) {
 		case c.Size < want:
 			why = fmt.Sprintf("OpenVINO's reader accepts it, but %s packs its elements in whole 3-byte groups, and its data is short of the last group", c.ElementType)
 		default:
-			why = fmt.Sprintf("OpenVINO loads it, and the %d byte(s) past what its type and shape take are read as no value: OpenVINO's writer never writes them, and unaccounted bytes can hide a payload", c.Size-want)
+			why = fmt.Sprintf("OpenVINO loads it, and the %d byte(s) past what its type and shape take are read as no value: an OpenVINO export holds none, and unaccounted bytes can hide a payload", c.Size-want)
 		}
 		g.fail("tensor-size", c.Where, fmt.Sprintf("size is %d bytes; shape %s of %s takes %d. %s",
 			c.Size, dimsString(c.Shape), c.ElementType, want, why))
@@ -304,7 +304,7 @@ func (g *grade) irOps(m *openvino.Model) string {
 		custom[op.Version] = append(custom[op.Version], clip(op.Type, 60))
 	}
 	for _, v := range customOrder {
-		g.gap(fmt.Sprintf("operations of version %s, which OpenVINO's opsets (opset1 to opset17 in 2026.4.1) do not define: a runtime builds them only from an extension library the deployment registers, native code outside the model that was not inspected",
+		g.gap(fmt.Sprintf("operations of version %s that OpenVINO's opsets (opset1 to opset17 in 2026.4.1) do not define under that version: a runtime builds them only from an extension library the deployment registers, native code outside the model that was not inspected",
 			strconv.Quote(clip(v, 40))), capList(custom[v], 5))
 	}
 	sort.Slice(usedOrder, func(i, j int) bool { return opsetNumber(usedOrder[i]) < opsetNumber(usedOrder[j]) })
