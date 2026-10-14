@@ -25,6 +25,7 @@ import (
 
 	"github.com/defilantech/socair/internal/checks"
 	"github.com/defilantech/socair/internal/gguf"
+	"github.com/defilantech/socair/internal/onnx"
 	"github.com/defilantech/socair/internal/safetensors"
 )
 
@@ -128,7 +129,9 @@ func Inspect(path string, opts Options) checks.Result {
 
 	var values []string
 	var invNote string
-	truncated := false
+	// unscanned says why some values were not scanned; any keeps the row
+	// from passing.
+	var unscanned []string
 	switch {
 	case safetensors.IsSafetensors(path):
 		sm, err := safetensors.ReadHeader(path)
@@ -141,12 +144,31 @@ func Inspect(path string, opts Options) checks.Result {
 			values = append(values, v)
 		}
 		invNote = fmt.Sprintf("artifact: safetensors header, %d tensors, %d metadata keys", sm.TensorCount, len(sm.MetadataKeys))
+	case onnx.Sniff(path):
+		m, err := onnx.Read(path)
+		if err != nil {
+			r.Status = checks.NotTested
+			r.Notes = "could not read the ONNX model's text: " + reason(err)
+			return r
+		}
+		values = m.Text
+		invNote = fmt.Sprintf("artifact: ONNX model, %d text values (%d bytes) from its producer, doc strings, metadata_props, and string attributes, "+
+			"and string elements of %d+ bytes; %d shorter string elements counted, not scanned",
+			len(m.Text), m.TextBytes, onnx.ArrayScanMin, m.ShortElements)
+		if m.TextTruncated {
+			unscanned = append(unscanned, "Some text was past the reader's caps, so it was not scanned")
+		}
+		for _, ep := range m.EPContexts {
+			if ep.EmbedMode != 0 && ep.ContextBytes > 0 {
+				unscanned = append(unscanned, fmt.Sprintf("%s embeds an execution-provider context of %d bytes (compiled code), which was not scanned", ep.Where, ep.ContextBytes))
+			}
+		}
 	default:
 		inv, err := gguf.Inventory(path)
 		if err != nil {
 			r.Status = checks.NotTested
 			if errors.Is(err, gguf.ErrNotGGUF) {
-				r.Notes = "not a GGUF or safetensors artifact; cannot inventory"
+				r.Notes = "not a GGUF, safetensors, or ONNX artifact; cannot inventory"
 			} else {
 				r.Notes = "could not read artifact metadata: " + err.Error()
 			}
@@ -155,7 +177,9 @@ func Inspect(path string, opts Options) checks.Result {
 		values = append(inv.Strings, inv.ArrayStrings...)
 		invNote = fmt.Sprintf("artifact: %d metadata keys, %d string bytes, %d string-array elements (%d of %d+ bytes scanned)",
 			len(inv.Keys), inv.TotalStrings, inv.ArrayElements, len(inv.ArrayStrings), gguf.ArrayScanMin)
-		truncated = inv.Truncated
+		if inv.Truncated {
+			unscanned = append(unscanned, "The metadata inventory reached its cap, so some values were not scanned")
+		}
 	}
 
 	for _, s := range values {
@@ -188,9 +212,9 @@ func Inspect(path string, opts Options) checks.Result {
 
 	// A FAIL above stands on its evidence; without one, an inventory cut off
 	// at a cap did not see every value, so it cannot pass.
-	if truncated {
+	if len(unscanned) > 0 {
 		r.Status = checks.NotTested
-		r.Notes = invNote + ". The metadata inventory reached its cap, so some values were not scanned."
+		r.Notes = invNote + ". " + capped(unscanned, 5) + "."
 		return r
 	}
 
@@ -387,7 +411,7 @@ func excerpt(s string) string {
 // does not parse to a format name. These are the files that can carry
 // weights or code and that no check examined.
 var unparsedExt = map[string]string{
-	".onnx": "ONNX", ".h5": "Keras/HDF5", ".hdf5": "Keras/HDF5", ".keras": "Keras",
+	".onnx": "ONNX (not this artifact)", ".h5": "Keras/HDF5", ".hdf5": "Keras/HDF5", ".keras": "Keras",
 	".pb": "TensorFlow graph or SavedModel", ".tflite": "TensorFlow Lite", ".nemo": "NeMo archive",
 	".npy": "NumPy", ".npz": "NumPy", ".joblib": "joblib", ".msgpack": "Flax msgpack",
 	".pkl": "pickle (not this artifact)", ".pickle": "pickle (not this artifact)",

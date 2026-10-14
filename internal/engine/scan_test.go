@@ -531,7 +531,7 @@ func TestReportNamesWhatItDidNotExamine(t *testing.T) {
 		t.Fatal(err)
 	}
 	got := strings.Join(d.OutOfScope.UnparsedFormats, "\n")
-	for _, want := range []string{"ONNX: model.onnx", "sub/extra.pkl", "saved_model/x/a.pb"} {
+	for _, want := range []string{"ONNX (not this artifact): model.onnx", "sub/extra.pkl", "saved_model/x/a.pb"} {
 		if !strings.Contains(got, want) {
 			t.Errorf("unparsed formats %q do not name %q", d.OutOfScope.UnparsedFormats, want)
 		}

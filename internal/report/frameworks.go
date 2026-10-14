@@ -46,6 +46,14 @@ var patternSeverity = map[string]string{
 	"pickle-storage-layout":         SeverityHigh,
 	"pickle-unaccounted-bytes":      SeverityHigh,
 	"pickle-noncanonical":           SeverityHigh,
+	// An ONNX tensor whose data does not match its type and shape, or data
+	// in a field one loader reads and another ignores.
+	"tensor-size": SeverityHigh,
+	"tensor-data": SeverityHigh,
+	// An ONNX model that points a loader at a file outside its directory,
+	// or at the runtime's own memory: a read of what is not the model.
+	"external-data-escape": SeverityHigh,
+	"external-data-memory": SeverityHigh,
 	// Suspicious or inconsistent; needs review.
 	"instruction-override":         SeverityMedium,
 	"secrecy-instruction":          SeverityMedium,
@@ -79,6 +87,8 @@ var patternSeverity = map[string]string{
 	"custom-generate":              SeverityMedium,
 	"inference-handler":            SeverityMedium,
 	"imported-code":                SeverityMedium,
+	// An ONNX external data location that systems resolve differently.
+	"external-data-path": SeverityMedium,
 	// No longer emitted (tier1/0.9, #254): any .py file was a LEAD. Kept so
 	// a report signed before it grades the same.
 	"python-file": SeverityMedium,

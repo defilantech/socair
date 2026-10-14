@@ -79,7 +79,9 @@ Milestone [M9](https://github.com/defilantech/socair/milestone/11), in order:
   validated payload structures hidden in tensor bytes
   ([#164](https://github.com/defilantech/socair/issues/164)).
 - **More formats** ([#165](https://github.com/defilantech/socair/issues/165)):
-  Keras, ONNX, config-as-code, joblib, TensorFlow SavedModel, and others.
+  Keras, OpenVINO IR, config-as-code, joblib, TensorFlow SavedModel, and
+  others. ONNX is read ([#264](https://github.com/defilantech/socair/issues/264),
+  [onnx.md](docs/onnx.md)).
 - **Reader hardening** against the bug classes other model loaders have had
   CVEs for ([#166](https://github.com/defilantech/socair/issues/166)).
 - **Windows release binaries**

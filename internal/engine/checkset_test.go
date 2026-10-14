@@ -18,7 +18,7 @@ import (
 // ruleRoots are the packages whose code decides what a check detects and how
 // it grades: the checks themselves and the parsers that feed them. A change
 // here can change a verdict, so it must be visible in CheckSetVersion.
-var ruleRoots = []string{"../checks", "../gguf", "../safetensors"}
+var ruleRoots = []string{"../checks", "../gguf", "../safetensors", "../onnx"}
 
 // changelog records every check-set version and the rule fingerprints it
 // covers.

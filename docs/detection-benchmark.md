@@ -25,7 +25,7 @@ generated corpus, on 2026-10-04; CI does not re-run them.
   names the file (`SOCAIR_DENYLIST`). No other scanner here was given any of
   them. With Socair's defaults (none of the three), the remapped tokenizer and
   the near-miss template pass and the known-bad file is withheld as a gap, so
-  Socair detects 49 of 55. Scores with the cases that need an input left out
+  Socair detects 53 of 59. Scores with the cases that need an input left out
   follow the comparison table.
 - **The attacks are defanged.** Each case keeps the attack's structure (the
   gadget, the opcodes, the archive trick, the template construct) and swaps its
@@ -38,27 +38,43 @@ generated corpus, on 2026-10-04; CI does not re-run them.
   - in-the-wild malicious uploads;
   - the 7z-wrapped nullifAI samples;
   - the ShadowPickle corpus (arXiv 2607.17503).
-- **Few benign controls.** There are 8 controls. False positives on real
+- **Few benign controls.** There are 10 controls. False positives on real
   models are measured separately, on real corpora, in
   [false-positive-baseline.md](false-positive-baseline.md).
 
-## Socair (check set tier1/0.9, 2026-10-14)
+## Socair (check set tier1/0.10, 2026-10-14)
 
 | Check row | Cases | Detected (FAIL or LEAD) | Withheld as a gap (NOT_TESTED) | Missed (PASS) |
 |---|---|---|---|---|
 | Chat template | 11 | 10 | 0 | 1 |
-| File inventory and payloads | 7 | 6 | 0 | 1 |
-| Format and structure | 2 | 2 | 0 | 0 |
+| File inventory and payloads | 8 | 7 | 0 | 1 |
+| Format and structure | 5 | 5 | 0 | 0 |
 | Known-bad hash match | 1 | 1 | 0 | 0 |
 | Pickle opcode scan | 22 | 22 | 0 | 0 |
 | Remote code | 9 | 8 | 0 | 1 |
 | Tokenizer config | 3 | 3 | 0 | 0 |
-| **All** | **55** | **52** | **0** | **3** |
+| **All** | **59** | **56** | **0** | **3** |
 
-Benign controls flagged (FAIL or LEAD on any row): 0 of 8.
+Benign controls flagged (FAIL or LEAD on any row): 0 of 10.
 
 Three of these detections depend on a reference input (see "Read this first");
-with Socair's defaults it detects 49 of 55.
+with Socair's defaults it detects 53 of 59.
+
+Check set tier1/0.10 reads ONNX models (#264) and adds four cases and two
+controls. `onnx-external-data-traversal` points an initializer's external data
+at `../../../../etc/hosts`, the directory traversal of CVE-2022-25882 and its
+bypass CVE-2024-27318; `onnx-external-data-memory` uses onnxruntime's
+in-memory marker `*/_ORT_MEM_ADDR_/*` as a location, which onnxruntime 1.20.0
+reads as a memory address; `onnx-initializer-size` gives an initializer 4096
+bytes of raw_data where its dims need 64; and `onnx-metadata-script` puts a
+shell script in metadata_props. The first three are Format and structure
+FAILs, the fourth a File inventory FAIL. Before this change an ONNX file was
+an unknown format, NOT_TESTED on every row that reads one. The
+`control-onnx` control is a clean ONNX model, and `control-dir-onnx` a
+directory with an `onnx/` export as sentence-transformers ships one: external
+data beside the model, and an onnxruntime contrib operator
+(`com.microsoft::FastGelu`), as optimum's O2 to O4 exports have. No earlier
+case changed outcome.
 
 Check set tier1/0.8 replaced the pickle row's import allowlist with a typed
 grammar (`socair-wo/1`, see [check-set.md](check-set.md)) and added three
@@ -121,9 +137,11 @@ notes and not judged, where it was a LEAD. No earlier case changed outcome.
 | `control-torch-zip-untyped` | pickle | benign PyTorch zip checkpoint with uint16 and float8 tensors, which torch.save writes over torch.storage.UntypedStorage | (control: every row) | PASS |  |
 | `control-gguf` | gguf | benign GGUF with a plain chat template | (control: every row) | PASS |  |
 | `control-safetensors` | safetensors | benign safetensors | (control: every row) | PASS |  |
+| `control-onnx` | onnx | benign ONNX model: standard operators, weights inline | (control: every row) | PASS |  |
 | `control-model-directory` | model directory | benign transformers-style directory | (control: every row) | PASS |  |
 | `control-dir-torchscript` | model directory | benign directory with a TorchScript archive, rust_model.ot, as sentence-transformers ships | (control: every row) | PASS |  |
 | `control-dir-training-script` | model directory | benign directory with train_script.py, as sentence-transformers ships, that no loader imports | (control: every row) | PASS |  |
+| `control-dir-onnx` | model directory | benign directory with an onnx/ export as sentence-transformers ships: external data beside the model, and an onnxruntime contrib operator | (control: every row) | PASS |  |
 | `pickle-os-system-p2` | pickle | os.system via GLOBAL + REDUCE, protocol 2 | Pickle opcode scan | FAIL | critical |
 | `pickle-os-system-p4` | pickle | os.system via STACK_GLOBAL, protocol 4 (the Python 3.8+ default) | Pickle opcode scan | FAIL | critical |
 | `pickle-builtins-exec` | pickle | builtins.exec of a code string | Pickle opcode scan | FAIL | critical |
@@ -161,6 +179,10 @@ notes and not judged, where it was a LEAD. No earlier case changed outcome.
 | `gguf-tokenizer-remapped` | gguf | two ordinary tokens swapped against the canonical tokenizer | Tokenizer config | LEAD | high |
 | `safetensors-appended-bytes` | safetensors | bytes appended past the tensors (a polyglot tail) | Format and structure | FAIL | high |
 | `safetensors-metadata-script` | safetensors | a script in the header metadata | File inventory and payloads | FAIL | high |
+| `onnx-external-data-traversal` | onnx | an initializer's external data location climbs out of the model's directory to /etc/hosts | Format and structure | FAIL | high |
+| `onnx-external-data-memory` | onnx | an initializer's external data location is onnxruntime's in-memory marker, with an address as its offset | Format and structure | FAIL | high |
+| `onnx-initializer-size` | onnx | an initializer whose raw_data holds 4096 bytes where its dims need 64 | Format and structure | FAIL | high |
+| `onnx-metadata-script` | onnx | a shell script in the model's metadata_props | File inventory and payloads | FAIL | high |
 | `dir-remote-code` | model directory | auto_map pointing at repository code that runs a command | Remote code | LEAD | medium |
 | `dir-remote-code-imported` | model directory | auto_map naming a clean module that imports repository code that runs a command | Remote code | LEAD | medium |
 | `dir-remote-code-other-repo` | model directory | auto_map naming code in another repository, which the loader fetches | Remote code | LEAD | medium |
@@ -224,9 +246,9 @@ rendered-template cases `gguf-template-macro-conditional` and
 `control-dir-torchscript` control), the `control-torch-zip-untyped`
 control added with #233, `gguf-template-tuple-trigger` added with #246, and
 the nine added with #254 (the seven Remote code cases,
-`dir-script-caller-named`, and the `control-dir-training-script` control), so
-its counts cover the cases before them; the other scanners have not been run
-on those twenty-one. A *suspicious* result counts as a finding, as Socair's LEAD does:
+`dir-script-caller-named`, and the `control-dir-training-script` control), and
+the six ONNX cases and controls added with #264, so its counts cover the cases
+before them; the other scanners have not been run on those twenty-seven. A *suspicious* result counts as a finding, as Socair's LEAD does:
 picklescan's suspicious globals and Fickling's SUSPICIOUS. "Not scanned" means
 the tool skipped the file, could not parse it, or does not support the format.
 
@@ -289,8 +311,8 @@ How to read it:
 
 With the three cases that need a Socair-only input left out
 (`gguf-tokenizer-remapped`, `gguf-template-reviewed-near-miss`, and
-`dir-known-bad-hash`), Socair detects 49 of 52 attacks with check set
-tier1/0.9 (34 of 35 in the 2026-10-04 run, which predates the near-miss case),
+`dir-known-bad-hash`), Socair detects 53 of 56 attacks with check set
+tier1/0.10 (34 of 35 in the 2026-10-04 run, which predates the near-miss case),
 and the two formats they belong to read, from that run:
 
 | Format | Scanner | Attacks detected | Attacks not scanned |
@@ -314,6 +336,8 @@ and the two formats they belong to read, from that run:
 | `control-dir-training-script` | clean | not run | not run | not run | not run |
 | `control-gguf` | clean | clean | clean | finding (not a pickle) | could not scan |
 | `control-model-directory` | clean | clean | could not scan | could not scan | could not scan |
+| `control-dir-onnx` | clean | not run | not run | not run | not run |
+| `control-onnx` | clean | not run | not run | not run | not run |
 | `control-pickle` | clean | clean | finding (suspicious) | finding | clean |
 | `control-safetensors` | clean | clean | clean | could not scan | could not scan |
 | `control-torch-zip` | clean | clean | finding (suspicious) | could not scan | could not scan |
@@ -371,6 +395,10 @@ and the two formats they belong to read, from that run:
 | `pickle-torch-zip-bad-crc` | finding | finding | finding | could not scan | could not scan |
 | `pickle-torch-zip-other-entry` | finding | clean | finding | could not scan | could not scan |
 | `pickle-unlisted-gadget` | finding | finding | finding (suspicious) | finding | clean |
+| `onnx-external-data-memory` | finding | not run | not run | not run | not run |
+| `onnx-external-data-traversal` | finding | not run | not run | not run | not run |
+| `onnx-initializer-size` | finding | not run | not run | not run | not run |
+| `onnx-metadata-script` | finding | not run | not run | not run | not run |
 | `safetensors-appended-bytes` | finding | could not scan | clean | could not scan | could not scan |
 | `safetensors-metadata-script` | finding | clean | clean | finding (not a pickle) | could not scan |
 

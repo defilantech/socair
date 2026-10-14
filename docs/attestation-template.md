@@ -40,7 +40,7 @@ This document is the artifact a security buyer files. Fill the bracketed fields 
 | Publisher signing status | `[verified (OMS, signer) / invalid (OMS) / present, not verified / not established]` |
 | Artifact file name | `[artifact_filename]` |
 | Artifact SHA256 (exact file scanned, or a model directory's manifest digest) | `[artifact_sha256]` |
-| Format | `[GGUF / safetensors / model directory]` |
+| Format | `[GGUF / safetensors / ONNX / model directory]` |
 | File size (bytes) | `[size_bytes]` |
 | Quantization, declared | `[quant_declared]` |
 | Quantization, observed weight layout | `[quant_observed]` |
@@ -86,7 +86,7 @@ Every row also carries a fixed **PASS means** line (`pass_means`): what that che
 
 The chat-template row also renders each template that reaches no code, with Socair's own Jinja evaluator, on fixed probe conversations. Its notes list the text the template adds to the prompt (listed, not judged), quote what each content condition adds, and say whether the template matches a reviewed template: byte for byte, render for render, or not at all. Two rendered signals are LEADs: a content condition that opens a system turn, and a template that renders like a reviewed one on every standard probe but adds a content-conditional branch. A template the evaluator cannot render is not rendered, the notes say why, and the row keeps the static verdict. A branch on a content part's standard type (text, image, image_url, audio, input_audio, video, or file) is how a template handles that kind of input, not a trigger: no probe conversation carries content parts, so the notes list the text such a branch adds, not judged, and a system turn it opens is still a LEAD.
 
-The rows that run depend on the format: every report carries structure, inventory, provenance, and the known-bad hash; a GGUF adds the chat template, tokenizer, and quant rows; a model directory adds the chat template, tokenizer, and remote code rows; a pickle checkpoint or NumPy array adds the pickle row, as does a model directory any of whose files is a pickle by its name or by its bytes (a directory with none says so in the File inventory row's notes). The License policy row runs, for every format, only when the operator configures a policy (`SOCAIR_LICENSE_POLICY`), and the Intake policy row likewise only with an intake policy (`SOCAIR_INTAKE_POLICY`), after it.
+The rows that run depend on the format: every report carries structure, inventory, provenance, and the known-bad hash; a GGUF adds the chat template, tokenizer, and quant rows; a model directory adds the chat template, tokenizer, and remote code rows; a pickle checkpoint or NumPy array adds the pickle row, as does a model directory any of whose files is a pickle by its name or by its bytes (a directory with none says so in the File inventory row's notes). An ONNX model, on its own or in a model directory, is read by the structure and inventory rows ([onnx.md](onnx.md)): its tensors against their types and shapes, its external data (which must stay inside the model's directory and, in a directory scan, fit its file), its operator domains, and its text; ONNX runs no Python, and a custom-operator library the deployment registers is outside the scan. The License policy row runs, for every format, only when the operator configures a policy (`SOCAIR_LICENSE_POLICY`), and the Intake policy row likewise only with an intake policy (`SOCAIR_INTAKE_POLICY`), after it.
 
 | Check | Looks for | Result | Evidence | Notes |
 |---|---|---|---|---|
