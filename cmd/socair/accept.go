@@ -39,6 +39,9 @@ func trustedFor(fs *flagSet, flag string, fromStore func(*airlock.Store) (attest
 // acceptor accepts only a report they can trust is the operator's.
 func acceptCmd(args []string) error {
 	fs := parseFlags(args)
+	if err := fs.allow("attestation", "by", "expires", "key", "out", "rationale", "store", "trusted"); err != nil {
+		return err
+	}
 	in, keyPath, by, exp := fs.val("attestation"), fs.val("key"), fs.val("by"), fs.val("expires")
 	if in == "" || keyPath == "" || by == "" || exp == "" {
 		return errors.New("usage: socair accept --attestation <r.dsse.json> --key <acceptor.key> --by <name> --expires <RFC 3339> (--trusted <key.pub|dir> | --store <path>) [--rationale <text>] [--out <path>]")

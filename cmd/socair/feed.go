@@ -27,6 +27,9 @@ func feedCmd(args []string) error {
 		return errors.New(usage)
 	}
 	fs := parseFlags(args[1:])
+	if err := fs.allow("description", "expires", "issuer", "key", "keys", "name", "store", "version"); err != nil {
+		return err
+	}
 	if len(fs.pos) != 1 {
 		return errors.New(usage)
 	}

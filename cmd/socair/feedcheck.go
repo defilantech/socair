@@ -94,6 +94,9 @@ func airlockFeed(args []string) error {
 		return errors.New(usage)
 	}
 	fs := parseFlags(args[1:])
+	if err := fs.allow("keys", "reason", "store"); err != nil {
+		return err
+	}
 	if len(fs.pos) != 1 || fs.bare["keys"] || fs.val("keys") == "" || fs.bare["reason"] || strings.TrimSpace(fs.val("reason")) == "" {
 		return errors.New(usage)
 	}

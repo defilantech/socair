@@ -15,6 +15,9 @@ func inventoryCmd(args []string) error {
 		return errors.New(usage)
 	}
 	fs := parseFlags(args[1:])
+	if err := fs.allow("allow-unsigned", "trusted"); err != nil {
+		return err
+	}
 	if len(fs.pos) != 1 || fs.val("trusted") == "" {
 		return errors.New(usage)
 	}

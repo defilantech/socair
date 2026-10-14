@@ -31,12 +31,8 @@ import (
 // Flags may appear before or after the path.
 func renderCmd(args []string) error {
 	fs := parseFlags(args)
-	for k := range fs.vals {
-		switch k {
-		case "pdf", "sarif", "cyclonedx", "report", "attestation", "trusted", "store", "artifact":
-		default:
-			return fmt.Errorf("unknown flag %q", "--"+k)
-		}
+	if err := fs.allow("artifact", "attestation", "cyclonedx", "pdf", "report", "sarif", "store", "trusted"); err != nil {
+		return err
 	}
 	for _, k := range []string{"pdf", "sarif", "cyclonedx", "report", "attestation", "trusted", "store", "artifact"} {
 		if fs.bare[k] {
