@@ -1,0 +1,64 @@
+name: admission
+
+# The Kyverno admission policies (policies/kyverno). scripts/admission-e2e.sh
+# creates its own kind cluster with a registry, installs Kyverno, attaches
+# Socair bindings to model artifacts with `socair attach`, and checks which
+# pods the policies admit and refuse. docs/admission.md explains the
+# policies.
+on:
+  push:
+    branches: [main]
+    paths:
+      - "policies/**"
+      - "cmd/**"
+      - "internal/**"
+      - "vendor/**"
+      - "go.mod"
+      - "scripts/admission-e2e.sh"
+      - ".github/workflows/admission.yml"
+  pull_request:
+    paths:
+      - "policies/**"
+      - "cmd/**"
+      - "internal/**"
+      - "vendor/**"
+      - "go.mod"
+      - "scripts/admission-e2e.sh"
+      - ".github/workflows/admission.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: admission-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  HELM_VERSION: v4.3.0
+  KIND_VERSION: v0.33.0
+  # The script's node image runs Kubernetes 1.35.8.
+  KUBECTL_VERSION: v1.35.8
+
+jobs:
+  kyverno:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: false
+      - uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
+        with:
+          version: ${{ env.HELM_VERSION }}
+      # kind and kubectl only: the script creates (and deletes) its own cluster.
+      - uses: helm/kind-action@1544676c07bb3570fcb70166beaa07c4528fd4aa # v1.15.1
+        with:
+          version: ${{ env.KIND_VERSION }}
+          kubectl_version: ${{ env.KUBECTL_VERSION }}
+          install_only: true
+      - name: admit and refuse model pods with Kyverno
+        run: scripts/admission-e2e.sh

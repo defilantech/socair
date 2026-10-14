@@ -212,16 +212,17 @@ manifest digest, which is what these verifiers compare with the image.
   cosign verifier lists referrers for Sigstore bundles first and verifies
   with cosign's library (v3.1.2). The policy needs a `cosign` attestor with
   `key.data` and `ctlog.insecureIgnoreTlog: true`, and an `intoto`
-  attestation whose type is `https://socair.ai/oci-binding/v1`. This is from
-  reading Kyverno's source; it has not been run against a Socair artifact.
-  Writing and testing the policies is
-  [#200](https://github.com/defilantech/socair/issues/200).
+  attestation whose type is `https://socair.ai/oci-binding/v1`. The policies
+  in [`policies/kyverno`](../policies/kyverno) do this and read the promotion
+  state; [admission.md](admission.md) describes them and the kind test that
+  runs them against attached artifacts.
 - **Sigstore policy-controller** (v0.15.1) is not served yet. For an
   authority with a key, it reads only cosign's legacy `sha256-<hex>.att` tag,
   and refuses the bundle format ("when using the new bundle format, the
   authority must be keyless"). Socair does not write that tag: it is cosign's
   own, shared with every cosign attestation of the image, and rewriting it
-  risks another tool's data.
+  risks another tool's data. [admission.md](admission.md#sigstore-policy-controller)
+  says what would close the gap.
 
 Notes for a policy author:
 
