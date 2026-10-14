@@ -1,0 +1,18 @@
+# Conformance cases Socair's verifier fails on purpose. CI passes these to
+# the suite's --xfail (one test id prefix per line; # starts a comment), so
+# each is reported as an expected failure, and as XPASS if it ever passes.
+# Each is a decision, recorded in docs/provenance-bundle.md.
+
+# The signing certificate has the digitalSignature key usage and no
+# codeSigning extended key usage. OMS v1.0 does not require the extended
+# usage, model_signing 1.1.1 accepts the key usage alone (the suite's own
+# self-test marks this case expected-fail for it), and NVIDIA's NGC signing
+# certificate carries the key usage only. Requiring the extended usage would
+# leave every NGC signature unverified.
+test_verify[negative/certificate-no-code-signing-eku_fail
+
+# A pre-1.0 bundle, predicate https://model_signing/Digests/v0.1, which OMS
+# v1.0 section 11.2 says a verifier MAY accept. Socair names it and does not
+# verify it: it is signed over an encoding, and with a hash, that the current
+# format does not use.
+test_verify[historical/historical-v0.2.0-certificate

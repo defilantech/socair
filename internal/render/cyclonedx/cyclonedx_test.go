@@ -111,7 +111,17 @@ func TestBOMValidatesAgainstCycloneDX16(t *testing.T) {
 		t.Errorf("a directory BOM lists every file, got %d components", len(got))
 	}
 
-	for name, d := range map[string]*report.Document{"golden": plain, "signed conditional": rich, "bare": bare, "model directory": dir} {
+	disputed := licensedPinned(t)
+	disputed.Artifact.License = &report.License{Disagreement: "the model card says apache-2.0, the LICENSE file mit",
+		Sources: []report.LicenseSource{{Source: "model card license", Value: "apache-2.0", ID: "apache-2.0"}, {Source: "LICENSE", Value: "MIT License", ID: "mit"}}}
+	disputed.Artifact.BaseModels = []report.BaseModel{{Name: "base", Repo: "org/base", URL: "not a url", Source: "model card base_model"}}
+
+	excluded := golden(t)
+	excluded.Artifact = dir.Artifact
+	excluded.OutOfScope.UnparsedFormats = []string{".git/: excluded (git metadata; a loader does not read it)", "extra/: excluded (symlinked directory, not followed)"}
+
+	for name, d := range map[string]*report.Document{"golden": plain, "signed conditional": rich, "bare": bare, "model directory": dir,
+		"licensed and pinned": licensedPinned(t), "disputed license": disputed, "directory with exclusions": excluded} {
 		if err := validate(t, s, render(t, d)); err != nil {
 			t.Errorf("%s: BOM does not validate against CycloneDX 1.6: %v", name, err)
 		}
@@ -190,6 +200,9 @@ func TestBOMSaysWhatTheReportSays(t *testing.T) {
 	files := m["components"].([]any)
 	if len(files) != 1 || files[0].(map[string]any)["name"] != d.Artifact.FileName {
 		t.Errorf("the BOM's component must be the attested file, got %v", files)
+	}
+	if a := m["metadata"].(map[string]any)["authors"].([]any); len(a) != 1 || a[0].(map[string]any)["name"] != report.Unissued {
+		t.Errorf("an unsigned report's BOM names no author but %q, got %v", report.Unissued, a)
 	}
 }
 

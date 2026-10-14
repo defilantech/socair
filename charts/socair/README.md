@@ -22,8 +22,10 @@ shows how to check it before installing.
 
 By default the API binds the pod's loopback with no Service (it has no
 authentication of its own, so `kubectl port-forward` and Kubernetes RBAC are
-the gate), egress is denied, and the pod passes the `restricted` Pod Security
-Standard.
+the gate), reads a path a request names only under the store's staging area,
+egress is denied, and the pod passes the `restricted` Pod Security Standard.
+To scan models from a mounted share, mount it with `extraVolumes` and
+`extraVolumeMounts` and name its mount path in `scanRoots`.
 
 ## Values
 
@@ -40,6 +42,7 @@ Standard.
 | `scratch.sizeLimit` | `""` | Caps the scan-snapshot emptyDir (`SOCAIR_SCAN_TMP`). |
 | `scratch.ephemeral.enabled` | `false` | A generic ephemeral claim for scratch instead, for models larger than the node's disk. |
 | `scratch.ephemeral.size` | `200Gi` | Its size. |
+| `scanRoots` | `[]` | Directories in the pod the API may read a model from by path (`--scan-root`), such as a mounted model share. `/store/incoming` is always one; any other path is refused. |
 | `pull.enabled` | `false` | Allow pulling from Hugging Face: TCP 443 and DNS egress, no `SOCAIR_EGRESS=deny`. |
 | `pull.endpoint` | `""` | A hub mirror (`SOCAIR_HF_ENDPOINT`). |
 | `pull.tokenSecret.name` | `""` | A Secret holding the hub token (`HF_TOKEN`). |

@@ -56,6 +56,11 @@
         }
       }
     },
+    "scanRoots": {
+      "type": "array",
+      "items": { "type": "string", "pattern": "^/" },
+      "uniqueItems": true
+    },
     "pull": {
       "type": "object",
       "additionalProperties": false,

@@ -10,7 +10,8 @@
 # reaches the wizard:
 #
 #   - the API is healthy, its store is ready, and the wizard is served;
-#   - a tiny safetensors model mounted into the pod scans to a withheld report;
+#   - a tiny safetensors model mounted into the pod, under a scan root, scans
+#     to a withheld report, and a path outside the scan roots is refused;
 #   - promotion refuses a report signed by an untrusted key, and refuses the
 #     withheld one signed by the trusted key;
 #   - it promotes the report re-issued with a signed acceptance, which needs
@@ -77,7 +78,8 @@ helm install "$rel" "$root/charts/socair" -n "$ns" --wait --timeout 5m \
 	--set trust.trustedKeysConfigMap=socair-trusted-keys \
 	--set trust.acceptorKeysConfigMap=socair-acceptor-keys \
 	--set-json 'extraVolumes=[{"name":"models","configMap":{"name":"tiny-model"}}]' \
-	--set-json 'extraVolumeMounts=[{"name":"models","mountPath":"/models","readOnly":true}]' >/dev/null
+	--set-json 'extraVolumeMounts=[{"name":"models","mountPath":"/models","readOnly":true}]' \
+	--set-json 'scanRoots=["/models"]' >/dev/null
 kubectl -n "$ns" exec "deploy/$dep" -c socair -- socair health
 
 step "reach the wizard through port-forward"
@@ -104,6 +106,15 @@ echo '{"path":"/models/tiny.safetensors"}' >"$tmp/req"
 api /api/scan "$tmp/req" | jq .report >"$tmp/r.json"
 [[ "$(cat "$tmp/status")" == 200 ]] || fail "scan answered $(cat "$tmp/status"): $(cat "$tmp/body")"
 [[ "$(jq -r .promotion_authorization.state "$tmp/r.json")" == withheld ]] || fail "expected a withheld report"
+
+step "the API refuses a path outside its scan roots"
+for p in /store/log.jsonl /models/../store/log.jsonl /etc/passwd; do
+	jq -n --arg p "$p" '{path: $p}' >"$tmp/req"
+	api /api/scan "$tmp/req" >/dev/null
+	if [[ "$(cat "$tmp/status")" != 422 ]] || ! grep -q 'scan root' "$tmp/body"; then
+		fail "scanning $p answered $(cat "$tmp/status"): $(cat "$tmp/body")"
+	fi
+done
 
 step "the gate refuses an untrusted signer and a withheld report"
 cp "$tmp/r.json" "$tmp/s.json"

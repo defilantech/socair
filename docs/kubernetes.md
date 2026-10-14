@@ -94,6 +94,20 @@ does not put it on the network by default:
 The probes run `socair health` inside the pod, because a kubelet's HTTP probe
 cannot reach a loopback address and the image has no shell or curl.
 
+## What it reads
+
+Whoever reaches the API names the paths a scan or a promotion reads, so the
+API reads a path a request names only under a scan root
+([api.md](api.md#scan-roots)). The store's staging area, `/store/incoming`,
+is always one; `scanRoots` adds others, each passed as `--scan-root`. By
+default there are no others, so a path anywhere else in the pod (the trust
+policy, the log, the clean store, the image's own files) is refused, as is a
+symlink that leads out of a root. Each entry must be an absolute path to a
+directory the pod mounts, or the server does not start, and the chart refuses
+`/`. Mount model shares read-only: a scan root that someone else can write to
+lets them swap a checked file for a symlink between the check and the read
+([api.md](api.md#scan-roots), "What the check does not close").
+
 ## Network
 
 A NetworkPolicy denies all ingress and egress by default
@@ -126,8 +140,9 @@ host only ([airlock.md](airlock.md#controlled-egress)).
 ## Getting models in
 
 - **From a volume**, for an air-gapped cluster: mount a share or a claim that
-  holds the models read-only, scan them in the wizard by path, sign the report
-  offline, and promote with the signed envelope:
+  holds the models read-only, name its mount path as a scan root, scan them in
+  the wizard by path, sign the report offline, and promote with the signed
+  envelope:
 
   ```yaml
   extraVolumes:
@@ -139,6 +154,8 @@ host only ([airlock.md](airlock.md#controlled-egress)).
     - name: incoming
       mountPath: /models
       readOnly: true
+  scanRoots:
+    - /models
   ```
 
 - **From a hub**, with `pull.enabled=true`: the wizard's Pull stages a file or
@@ -241,6 +258,7 @@ source. Unset `HF_TOKEN` in those pods; a client sends its token to
 | Pod Security Standard | passes `restricted` (CI installs into a namespace that enforces it) |
 | Kubernetes API | no service account token, no Role |
 | Network | default-deny NetworkPolicy; no egress unless `pull.enabled`; the hub endpoint, when enabled, only from `hub.ingressFrom` |
+| Files the API reads | paths under `/store/incoming` and `scanRoots` only |
 | Hub endpoint | off by default; its container mounts the store read-only |
 | Keys | public keys only; signing happens offline |
 | Image | distroless, pinned by digest in the Dockerfile, attested on release |
@@ -261,7 +279,8 @@ unit tests (`helm unittest charts/socair`), validates the manifests against
 the Kubernetes 1.27 and current schemas, and runs
 [`scripts/chart-e2e.sh`](../scripts/chart-e2e.sh) in a kind cluster. That
 script installs the image under the `restricted` Pod Security Standard and,
-through port-forward, scans a model mounted into the pod; checks that
+through port-forward, scans a model mounted into the pod under a scan root;
+checks that a path outside the scan roots is refused; checks that
 promotion refuses an untrusted signer and a withheld report, and promotes the
 report with a signed acceptance; verifies the activity log; turns on the hub
 endpoint and checks it serves the promoted bytes and their attestation, and

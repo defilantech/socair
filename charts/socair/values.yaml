@@ -51,6 +51,14 @@ scratch:
     storageClass: ""
     size: 200Gi
 
+# Directories in the pod the API may read a model from by path (`socair serve
+# --scan-root`), such as a read-only model share mounted with extraVolumes and
+# extraVolumeMounts. The store's staging area (/store/incoming) is always one.
+# A scan, ingest, or promote that names a path anywhere else is refused,
+# including one a symlink leads out to. Each must be an absolute path to a
+# directory the pod mounts, or the server does not start; "/" is refused.
+scanRoots: []
+
 # Pulling models from Hugging Face (the wizard's Pull, `airlock pull`). Off
 # by default: the pod gets no network egress (SOCAIR_EGRESS=deny, and the
 # NetworkPolicy allows none). Ingesting from a mounted volume needs none.

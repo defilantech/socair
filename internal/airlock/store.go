@@ -175,6 +175,10 @@ func (s *Store) cleanRoot() string   { return filepath.Join(s.Root, cleanDir) }
 // LogPath is the append-only activity log.
 func (s *Store) LogPath() string { return filepath.Join(s.Root, logName) }
 
+// StagingRoot is the staging area, incoming/: every staged entry is a
+// directory under it.
+func (s *Store) StagingRoot() string { return s.stagingRoot() }
+
 // StagingPath is the pull destination for an artifact hash.
 func (s *Store) StagingPath(sha string) string {
 	return filepath.Join(s.stagingRoot(), normalizeSHA(sha))

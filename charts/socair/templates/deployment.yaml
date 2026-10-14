@@ -54,7 +54,20 @@ spec:
         - name: socair
           image: {{ include "socair.image" . }}
           imagePullPolicy: {{ .Values.image.pullPolicy }}
-          args: [serve, --addr, {{ $addr }}, --web, /usr/share/socair/web, --store, /store]
+          # The API reads a caller-named path only under /store/incoming and
+          # each --scan-root (docs/api.md, "Scan roots").
+          args:
+            - serve
+            - --addr
+            - {{ $addr }}
+            - --web
+            - /usr/share/socair/web
+            - --store
+            - /store
+            {{- range .Values.scanRoots }}
+            - --scan-root
+            - {{ . | quote }}
+            {{- end }}
           env:
             - name: SOCAIR_SCAN_TMP
               value: /scratch
