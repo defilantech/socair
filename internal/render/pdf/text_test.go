@@ -6,6 +6,8 @@ import (
 	"io"
 	"regexp"
 	"testing"
+
+	"github.com/defilantech/socair/internal/report"
 )
 
 func TestWinAnsi(t *testing.T) {
@@ -63,5 +65,26 @@ func TestPDFDrawsWinAnsi(t *testing.T) {
 		if !bytes.Contains(content, []byte(code)) {
 			t.Errorf("the PDF does not draw the Windows-1252 code %q (the middle dot and the bullet)", code)
 		}
+	}
+}
+
+// TestPDFPromotionSectionNamesTheState: the promotion section printed
+// "Clean-store promotion: authorized" for an authorized_with_conditions
+// report. Falsification: print the authorized flag again and this fails.
+func TestPDFPromotionSectionNamesTheState(t *testing.T) {
+	d := loadGolden(t)
+	d.PromotionAuthorization = report.PromotionAuthorization{
+		Authorized:       true,
+		State:            report.StateAuthorizedWithConditions,
+		AcceptedBy:       "ciso@example.com",
+		AcceptedAt:       "2026-09-29T00:00:00Z",
+		AcceptedSurfaces: []string{"Known-bad hash match"},
+	}
+	content := contentStreams(t, render(t, d))
+	if !bytes.Contains(content, []byte("Clean-store promotion: authorized with conditions")) {
+		t.Error("the promotion section must name the authorized_with_conditions state, not the authorized flag")
+	}
+	if !bytes.Contains(contentStreams(t, render(t, loadGolden(t))), []byte("Clean-store promotion: withheld")) {
+		t.Error("a withheld report's promotion section must say withheld")
 	}
 }

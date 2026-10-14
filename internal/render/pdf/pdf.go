@@ -149,11 +149,7 @@ func RenderPDF(w io.Writer, d *report.Document) error {
 	heading(pdf, "Promotion authorization")
 	pdf.SetFont("Helvetica", "", 10)
 	pdf.SetTextColor(ink.r, ink.g, ink.b)
-	auth := "withheld"
-	if d.PromotionAuthorization.Authorized {
-		auth = "authorized"
-	}
-	pdf.MultiCell(contentW, lineH, "Clean-store promotion: "+auth+"  ·  "+d.PromotionAuthorization.Level, "", "L", false)
+	pdf.MultiCell(contentW, lineH, "Clean-store promotion: "+stateLabel(d.PromotionAuthorization.State)+"  ·  "+d.PromotionAuthorization.Level, "", "L", false)
 	if d.PromotionAuthorization.Conditions != "" {
 		pdf.SetTextColor(muted.r, muted.g, muted.b)
 		pdf.MultiCell(contentW, lineH, d.PromotionAuthorization.Conditions, "", "L", false)
@@ -262,15 +258,13 @@ func cover(pdf page, d *report.Document) {
 	// Promotion state, colored by state. The condition state is amber, never the
 	// clean pass ink.
 	state := d.PromotionAuthorization.State
-	label := "withheld"
+	label := stateLabel(state)
 	stateRGB := untestedInk
 	switch state {
 	case report.StateAuthorized:
-		label, stateRGB = "authorized", passInk
-	case report.StateAuthorizedWithConditions:
-		label, stateRGB = "authorized with conditions", rgb{122, 90, 0}
-	case report.StateEscalated:
-		label, stateRGB = "escalated", rgb{122, 90, 0}
+		stateRGB = passInk
+	case report.StateAuthorizedWithConditions, report.StateEscalated:
+		stateRGB = rgb{122, 90, 0}
 	}
 	pdf.SetFont("Helvetica", "B", 10)
 	pdf.SetTextColor(stateRGB.r, stateRGB.g, stateRGB.b)
@@ -306,6 +300,22 @@ func cover(pdf page, d *report.Document) {
 	pdf.SetFont("Helvetica", "", 10)
 	pdf.SetTextColor(muted.r, muted.g, muted.b)
 	pdf.CellFormat(contentW, 6, countsLine(p, f, l, n), "", 1, "L", false, 0, "")
+}
+
+// stateLabel names a promotion state as the report prints it. The cover and
+// the promotion section both use it, so "authorized with conditions" is never
+// shortened to "authorized" on the same page.
+func stateLabel(state string) string {
+	switch state {
+	case report.StateAuthorized:
+		return "authorized"
+	case report.StateAuthorizedWithConditions:
+		return "authorized with conditions"
+	case report.StateEscalated:
+		return "escalated"
+	default:
+		return "withheld"
+	}
 }
 
 // licenseLine states the identified license and the declared base models for

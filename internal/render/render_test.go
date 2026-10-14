@@ -170,6 +170,27 @@ func TestConditionBadgeIsNotClean(t *testing.T) {
 	}
 }
 
+// TestPromotionSectionNamesTheState: the promotion section printed
+// "Clean-store promotion: authorized" for an authorized_with_conditions
+// report, from the authorized flag, under a cover badge that said "with
+// conditions". Falsification: print the flag again and this fails.
+func TestPromotionSectionNamesTheState(t *testing.T) {
+	d := loadGolden(t)
+	d.PromotionAuthorization = report.PromotionAuthorization{
+		Authorized:       true,
+		State:            report.StateAuthorizedWithConditions,
+		AcceptedBy:       "ciso@example.com",
+		AcceptedAt:       "2026-09-29T00:00:00Z",
+		AcceptedSurfaces: []string{"Known-bad hash match"},
+	}
+	if out := renderString(t, d); !strings.Contains(out, "Clean-store promotion: <strong>authorized with conditions</strong>") {
+		t.Error("the promotion section must name the authorized_with_conditions state, not the authorized flag")
+	}
+	if out := renderString(t, loadGolden(t)); !strings.Contains(out, "Clean-store promotion: <strong>withheld</strong>") {
+		t.Error("a withheld report's promotion section must say withheld")
+	}
+}
+
 func TestPromotionClassMapping(t *testing.T) {
 	if promotionClass(report.StateAuthorizedWithConditions) == promotionClass(report.StateAuthorized) {
 		t.Fatal("the condition state must not share the clean badge class")

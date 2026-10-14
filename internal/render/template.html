@@ -255,7 +255,7 @@
 
   <h2>Promotion authorization</h2>
   <p>
-    Clean-store promotion: <strong>{{ if .Document.PromotionAuthorization.Authorized }}authorized{{ else }}withheld{{ end }}</strong>
+    Clean-store promotion: <strong>{{ promotionLabel .Document.PromotionAuthorization.State }}</strong>
     {{- if .Document.PromotionAuthorization.Level }} &middot; {{ .Document.PromotionAuthorization.Level }}{{ end }}
   </p>
   {{- if .Document.PromotionAuthorization.Conditions }}
