@@ -19,9 +19,12 @@ npm run build    # static output in web/build
 Serve the build with the engine, from the repository root:
 
 ```
-socair serve --web web/build                         # the wizard
-socair serve --web web/build --store <airlock store> # the wizard and the airlock console
+socair serve --web web/build --scan-root <models dir>   # the wizard
+socair serve --web web/build --store <airlock store>    # the wizard and the airlock console
 ```
+
+The scan page reads only under the server's scan roots: each `--scan-root`,
+and the store's `incoming/` with `--store` ([docs/api.md](../docs/api.md#scan-roots)).
 
 For development, `npm run dev` serves the app on `:5173` and proxies `/api`
 to a `socair serve` on `127.0.0.1:8080` (or `SOCAIR_API`).

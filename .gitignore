@@ -1,6 +1,7 @@
 # Binaries
 /socair
 /tools/socair-sigstore/socair-sigstore
+/tools/oms-conformance/oms-conformance
 /bin/
 *.exe
 

@@ -16,8 +16,11 @@ same app is the airlock console: the operator's view of what is staged, what is
 approved, and what each model waits for. Pages:
 
 - `/approved`: models in the clean store, with their attestation state. A
-  clean entry whose acceptance expired or that does not verify is listed here
-  too, in red.
+  clean entry that a recheck flagged (`socair airlock recheck`,
+  `docs/airlock.md`) is listed first, in red, under "Flagged by a recheck",
+  with the reason the engine returned. A clean entry whose acceptance expired
+  or that does not verify is listed here too, in red. The page shows the
+  recheck command to copy; the console does not run it.
 - `/pending`: staged models, grouped by stage, each with the step it waits for.
   A promoted model leaves it once approved. Pulling stays a CLI step
   (`socair airlock pull`); the empty pages say so.
@@ -34,7 +37,12 @@ Display rules. Every label comes from what the engine returned (`stage`,
 
 - Only an approved model with an unconditional authorization is green.
 - Authorized with conditions, and needs-acceptance, are amber.
-- Blocked, does-not-verify, and acceptance-expired are red.
+- Blocked, does-not-verify, acceptance-expired, and flagged are red. A flagged
+  model's page says it is still in the clean store, shows the recheck's
+  reason as the engine returned it, and labels the report below as the
+  attestation it was promoted on.
+- A recheck's log entry is red when it flagged, amber when it was
+  incomplete, and neutral when unchanged: an unchanged recheck is not a pass.
 - NOT_TESTED is never shown as a pass, and neither is a Tier 2 measurement.
 - A report is labelled "signed" only when its attestation verified.
 
@@ -63,11 +71,19 @@ engine still refuses it.
 For the shipped build, one process serves both the API and the wizard:
 
 ```
-socair serve --web web/build
+socair serve --web web/build --scan-root /srv/models
 ```
 
+The scan page reads a path only under a scan root: each `--scan-root`, and the
+store's `incoming/` with `--store`. With neither, every scan is refused with a
+message that names the flag ([api.md](api.md#scan-roots)). The refusal reads
+the same whether or not the path exists, and the wizard shows it as the
+engine returned it.
+
 The Go server hands the static files to the browser and keeps `/api` as JSON:
-an unknown `/api/` route is a JSON `404`, never the wizard's page.
+an unknown `/api/` route is a JSON `404`, never the wizard's page. It reads
+the static files through an `os.Root` on the build directory, so a request
+cannot reach a file outside it.
 
 To see the console with a model in every state, `scripts/demo-console.sh`
 builds both from the checkout, pulls four small public models from Hugging
@@ -78,7 +94,8 @@ command.
 
 ## The engine contract
 
-- `POST /api/scan` returns the report document. The wizard renders that document.
+- `POST /api/scan` returns the report document for a path under a scan root.
+  The wizard renders that document.
 - `POST /api/render` takes the document back and returns the HTML or PDF bytes.
 - `GET /api/health` tells the wizard whether the engine is usable.
 

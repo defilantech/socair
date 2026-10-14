@@ -21,6 +21,43 @@ tests:
       - notExists:
           path: spec.template.spec.containers[0].ports
 
+  # Whoever reaches the API names the paths it reads. By default it reads
+  # only the store's staging area, which needs no --scan-root.
+  - it: reads paths only under the store's staging area by default
+    asserts:
+      - notContains:
+          path: spec.template.spec.containers[0].args
+          content: --scan-root
+
+  - it: passes each scan root to the server
+    set:
+      scanRoots: [/models, /mnt/share]
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].args
+          value: [serve, --addr, 127.0.0.1:8080, --web, /usr/share/socair/web, --store, /store, --scan-root, /models, --scan-root, /mnt/share]
+
+  - it: refuses / as a scan root
+    set:
+      scanRoots: [/models, /]
+    asserts:
+      - failedTemplate:
+          errorPattern: scanRoots names /
+
+  - it: refuses / however it is spelled
+    set:
+      scanRoots: [/models/../]
+    asserts:
+      - failedTemplate:
+          errorPattern: scanRoots names /
+
+  - it: refuses a relative scan root
+    set:
+      scanRoots: [models]
+    asserts:
+      - failedTemplate:
+          errorPattern: does not match pattern
+
   - it: binds all interfaces only when a Service with an authenticating proxy is configured
     set:
       service.enabled: true

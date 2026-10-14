@@ -126,25 +126,27 @@ Node classes: `[sha256:hash]`, reported by the probe helper (not observed by Soc
 
 A FAIL or LEAD row carries a **severity** (`critical`, `high`, `medium`, `low`), the highest of its findings' patterns, fixed per pattern in `report.patternSeverity`. It is for triage: any FAIL or LEAD withholds promotion whatever its severity. Code a loader or template would execute, and a known-bad hash, are critical. Positive evidence of tampering is high. A suspicious or inconsistent signal, a license outside the operator's policy, and a broken intake rule are medium. A mislabelled quantization, and license statements that disagree, are low.
 
-Every row names what it **addresses** (`maps_to`), against MITRE ATLAS 5.6.0 and the OWASP Top 10 for LLM Applications 2025. A mapping is a claim about what the check inspects, never the wider threat:
+Every row names what it **addresses** (`maps_to`), against MITRE ATLAS 2026.09 and the OWASP Top 10 for LLM Applications 2025. Each entry records its framework, the edition (`version`: `2026.09`, `2025`), the ID, and the name the edition gives it, and the rendered report names the editions under the checks table. A mapping is a claim about what the check inspects, never the wider threat:
 
-| Check | MITRE ATLAS | OWASP LLM |
+| Check | MITRE ATLAS 2026.09 | OWASP LLM 2025 |
 |---|---|---|
 | Format and structure | AML.T0010.003 | LLM03 |
-| File inventory and payloads | AML.T0011.000, AML.T0010.003 | LLM03 |
-| Chat template | AML.T0051, AML.T0011.000 | LLM01, LLM03 |
-| Tokenizer config | AML.T0010.003 | LLM03 |
+| File inventory and payloads | AML.T0011.000, AML.T0018.002, AML.T0010.003 | LLM03 |
+| Chat template | AML.T0018.003, AML.T0051, AML.T0011.000 | LLM01, LLM03 |
+| Tokenizer config | AML.T0018.003, AML.T0011.000, AML.T0010.003 | LLM03 |
 | Quant match | AML.T0010.003 | LLM03 |
-| Pickle opcode scan | AML.T0011.000, AML.T0010.003 | LLM03 |
+| Pickle opcode scan | AML.T0011.000, AML.T0018.002, AML.T0010.003 | LLM03 |
 | Remote code | AML.T0011.000, AML.T0010.001 | LLM03 |
-| Hash, provenance, lineage | AML.T0010.003, AML.T0058 | LLM03 |
-| Known-bad hash match | AML.T0058, AML.T0010.003 | LLM03 |
+| Hash, provenance, lineage | AML.T0010.003, AML.T0115.001 | LLM03 |
+| Known-bad hash match | AML.T0115.001, AML.T0010.003 | LLM03 |
 | License policy | (none: no ATLAS technique is a license) | LLM03 (licensing risk) |
 | Intake policy | (none: it enforces the organization's rules and detects no compromise) | LLM03 (trusted suppliers, verifiable sources) |
 
-The SARIF output carries both: each rule's `security-severity` (critical 9.5, high 8.0, medium 5.5, low 3.0) and tags such as `external/atlas/AML.T0011.000` and `external/owasp-llm/LLM03`.
+Every ATLAS ID and name is checked against the published data of the release named (`internal/report/testdata/atlas-ids.txt`, from the `atlas-data` release `v2026.09`). Reports made before this edition was recorded carry no `version`, and name AML.T0058 "Publish Poisoned Models" where this one names AML.T0115.001: ATLAS 2026.07 replaced the first with the second. [control-mapping.md](control-mapping.md) maps the rows and Socair's other evidence to framework controls.
 
-No Tier 1 check addresses AML.T0018 (Manipulate AI Model) or LLM04 (Data and Model Poisoning): Tier 1 reads no weights for behavior. Those stay on the detection ceiling.
+The SARIF output carries both: each rule's `security-severity` (critical 9.5, high 8.0, medium 5.5, low 3.0) and tags such as `external/atlas/AML.T0011.000` and `external/owasp-llm/LLM03`, with the editions in the run's `socairFrameworkEditions` property.
+
+No Tier 1 check addresses AML.T0018.000 (Poison AI Model), AML.T0018.001 (Modify AI Model Architecture), or LLM04 (Data and Model Poisoning): Tier 1 reads no weights for behavior. Those stay on the detection ceiling. The rows that map to AML.T0018 name the sub-techniques that live outside the weights: code embedded in a model file (AML.T0018.002) and the template and tokenizer logic that builds the prompt (AML.T0018.003).
 
 ## 5. Results and findings
 

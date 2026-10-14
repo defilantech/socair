@@ -76,6 +76,9 @@ func WithIssuer(pemBytes []byte, issuer string) ([]byte, error) {
 // (feeds) take, without exposing the key itself.
 func (k *PrivateKey) Sign(msg []byte) []byte { return ed25519.Sign(k.key, msg) }
 
+// Public returns the key's public half.
+func (k *PrivateKey) Public() ed25519.PublicKey { return k.key.Public().(ed25519.PublicKey) }
+
 // Keyring maps key id to a trusted public key.
 type Keyring map[string]ed25519.PublicKey
 

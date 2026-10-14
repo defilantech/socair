@@ -81,7 +81,7 @@ func scanDir(dir string, start time.Time, refs *references, in Inputs, t2 *tier2
 	tok := tokenizer.InspectHF(root, files)
 	id.TokenizerSHA256 = tok.Hash
 
-	sig, err := dirSignature(dir, root, files)
+	sig, err := dirSignature(dir, root, files, start)
 	if err != nil {
 		return nil, err
 	}

@@ -20,38 +20,74 @@ import (
 // not invalid.
 var ErrUnsupported = errors.New("unsupported OMS serialization")
 
+// DefaultExclusions are the paths OMS v1.0 section 6.2 leaves out of every
+// signature by default, matched at the top of the model directory only.
+var DefaultExclusions = []string{".git", ".gitattributes", ".github", ".gitignore"}
+
+// Exclusion is a path a verifier leaves out of the comparison, and why.
+type Exclusion struct {
+	Path string // relative to the directory, "/"-separated; a directory excludes its subtree
+	Why  string
+}
+
+// Compare says what a verifier leaves out of the comparison besides the
+// paths the signer listed in ignore_paths.
+type Compare struct {
+	// Signature is the signature file's own path in the directory, when it
+	// is in it. A signature cannot cover itself (OMS v1.0 section 6.2).
+	Signature string
+	// Exclude are further paths left out when the manifest does not list
+	// them: another signature file, or a verifier's own ignore paths.
+	Exclude []Exclusion
+	// AllowUnsigned tolerates files the manifest does not list, naming them
+	// (OMS v1.0 section 8.5, --ignore-unsigned-files). A scan never sets it:
+	// there, a file nobody signed is a difference.
+	AllowUnsigned bool
+}
+
 // CheckFiles compares a model directory snapshot (root, with its files) to a
-// verified manifest. sigRel is the signature file's own path, which a
-// signature cannot cover. It returns every difference: a file changed,
-// missing, or present but not signed. Paths the signer listed in
-// ignore_paths are not compared, and are returned as ignored, so the report
-// can name what the signature does not cover.
-func CheckFiles(m *Manifest, root string, files []modeldir.File, sigRel string) (diffs, ignored []string, err error) {
+// verified manifest. It returns every difference: a file changed, missing,
+// or present but not signed. A file the manifest lists is always compared. A
+// file it does not list is left out, not a difference, only when the signer
+// excluded it (ignore_paths), when it is an OMS default exclusion (.git,
+// .gitattributes, .github, .gitignore at the top), or when c excludes it;
+// each is returned in ignored as "path (why)", so the report can name what
+// the signature does not cover. The signature file itself is never compared.
+func CheckFiles(m *Manifest, root string, files []modeldir.File, c Compare) (diffs, ignored []string, err error) {
 	if err := supported(m); err != nil {
 		return nil, nil, err
 	}
-	skip := func(p string) bool {
-		if p == sigRel {
-			return true
-		}
-		for _, ip := range m.IgnorePaths {
-			ip = strings.TrimSuffix(path.Clean(filepath.ToSlash(ip)), "/")
-			if ip != "." && (p == ip || strings.HasPrefix(p, ip+"/")) {
-				return true
+	signerSkip := func(p string) bool { return p == c.Signature || under(p, m.IgnorePaths) }
+	listed := map[string]bool{}
+	for _, r := range m.Resources {
+		name := r.Name
+		if m.Method == "shards" {
+			if p, _, _, ok := shardName(r.Name); ok {
+				name = p
 			}
 		}
-		return false
+		listed[path.Clean(name)] = true
 	}
 	onDisk := map[string]modeldir.File{}
 	for _, f := range files {
-		if skip(f.Path) {
-			if f.Path != sigRel {
-				ignored = append(ignored, f.Path)
-			}
-			continue
+		p := f.Path
+		switch {
+		case p == c.Signature:
+		case signerSkip(p):
+			ignored = append(ignored, p+" (excluded by the signer)")
+		case listed[p]:
+			onDisk[p] = f
+		case under(p, DefaultExclusions):
+			ignored = append(ignored, p+" (an OMS default exclusion)")
+		case excludedBy(p, c.Exclude) != "":
+			ignored = append(ignored, p+" ("+excludedBy(p, c.Exclude)+")")
+		case c.AllowUnsigned:
+			ignored = append(ignored, p+" (not signed; unsigned files tolerated)")
+		default:
+			onDisk[p] = f
 		}
-		onDisk[f.Path] = f
 	}
+	sort.Strings(ignored)
 
 	if m.Method == "shards" {
 		diffs, err = checkShards(m, root, onDisk)
@@ -71,17 +107,39 @@ func CheckFiles(m *Manifest, root string, files []modeldir.File, sigRel string) 
 		}
 	}
 	for p := range signed {
-		if _, ok := onDisk[p]; !ok && !skip(p) {
+		if _, ok := onDisk[p]; !ok && !signerSkip(p) {
 			diffs = append(diffs, "missing: "+p)
 		}
 	}
 	sort.Strings(diffs)
-	sort.Strings(ignored)
 	return diffs, ignored, nil
 }
 
+// under reports whether p is one of paths or inside one, as OMS matches an
+// ignore path: an exact path from the directory's top, and its subtree.
+func under(p string, paths []string) bool {
+	for _, ip := range paths {
+		ip = strings.TrimSuffix(path.Clean(filepath.ToSlash(ip)), "/")
+		if ip != "." && ip != "" && (p == ip || strings.HasPrefix(p, ip+"/")) {
+			return true
+		}
+	}
+	return false
+}
+
+func excludedBy(p string, ex []Exclusion) string {
+	for _, e := range ex {
+		if under(p, []string{e.Path}) {
+			return e.Why
+		}
+	}
+	return ""
+}
+
 // CheckFile compares a single-file artifact to a verified manifest: it must
-// sign exactly one file, with this artifact's hash.
+// sign exactly one file, with this artifact's hash. A signature over several
+// files that lists this one is not checked here, since the others are not in
+// hand: it is an error, so the signature is unverified, not invalid.
 func CheckFile(m *Manifest, sha string) ([]string, error) {
 	if err := supported(m); err != nil {
 		return nil, err
@@ -90,7 +148,12 @@ func CheckFile(m *Manifest, sha string) ([]string, error) {
 		return nil, fmt.Errorf("%w: a %s manifest for a single file", ErrUnsupported, m.Method)
 	}
 	if len(m.Resources) != 1 {
-		return []string{fmt.Sprintf("the signature covers %d files, not this one artifact", len(m.Resources))}, nil
+		for _, r := range m.Resources {
+			if strings.ToLower(r.Digest) == sha {
+				return nil, fmt.Errorf("the signature covers %d files and this artifact is one of them (%s); scan the directory to check it over all of them", len(m.Resources), r.Name)
+			}
+		}
+		return []string{fmt.Sprintf("the signature covers %d files, and this artifact is none of them", len(m.Resources))}, nil
 	}
 	if strings.ToLower(m.Resources[0].Digest) != sha {
 		return []string{"changed: the artifact is not the file that was signed"}, nil

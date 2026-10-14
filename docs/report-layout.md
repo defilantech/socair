@@ -55,7 +55,9 @@ The same document also renders as:
 - **PDF**, drawn directly in pure Go with the vendored `go-pdf/fpdf`
   (`internal/render/pdf`), so it renders air-gapped. Byte-stable, by test.
 - **SARIF** (`internal/render/sarif`).
-- **CycloneDX 1.6 ML-BOM** (`internal/render/cyclonedx`).
+- **CycloneDX 1.6 ML-BOM** (`internal/render/cyclonedx`), filled from the
+  report only and signable with `socair sign --bom`
+  ([cyclonedx.md](cyclonedx.md)).
 
 `socair render` writes each with a flag, and `POST /api/render` serves each by
 `format` (`docs/api.md`).

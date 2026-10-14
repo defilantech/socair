@@ -13,14 +13,23 @@ The API is a thin client of `internal/engine`. It invents no report shape.
 ## Running it
 
 ```
-socair serve [--addr 127.0.0.1:8080] [--web <dir>] [--store <path>]
+socair serve [--addr 127.0.0.1:8080] [--web <dir>] [--store <path>] [--scan-root <dir>]...
 ```
 
 - `--web` serves a SvelteKit static build at `/`, with the `200.html` SPA
   fallback, so the box runs one process.
 - `--store` enables the airlock endpoints and the store half of the health
-  check. Without it those endpoints answer a clean 400.
+  check. Without it those endpoints answer a clean 400. The store's
+  `incoming/` is also a scan root.
+- `--scan-root` names a directory under which the scan, ingest, and promote
+  routes may read a path the request names. It repeats. Without it,
+  `SOCAIR_SCAN_ROOTS` is read: a list in the form of `PATH` (`:` between
+  directories, `;` on Windows). Each root must be an existing directory, or
+  the server does not start. With no root at all, those routes refuse every
+  path. See [Scan roots](#scan-roots).
 - `--addr` defaults to `127.0.0.1:8080`.
+
+The server prints the scan roots in effect when it starts.
 
 ## Authentication
 
@@ -41,6 +50,85 @@ is also checked against the pages they might visit:
   never answers.
 - **Load.** At most two scans, pulls, ingests, or promotions run at once;
   past that the API answers `503` rather than queueing without bound.
+
+## Scan roots
+
+`POST /api/scan`, ingest's `local`, and promote's `artifact` take a
+filesystem path from the request body. With no authentication, anyone who
+reaches the API could otherwise have it read any file the process can read,
+and get back a hash, a report, and an error that says whether the path
+exists. These routes read a path only when it lies under a scan root: a
+`--scan-root` directory, or the store's `incoming/` with `--store`
+(`internal/api/roots.go`).
+
+A path is read only when all of these hold:
+
+- It is absolute. Nothing is resolved against the server's working
+  directory.
+- As written, once `.` and `..` are cleaned away, it is under a root, either
+  as the root was configured or with the root's own symlinks resolved.
+- With every symlink in it resolved (`filepath.EvalSymlinks`), it is under a
+  root's resolved path. A link inside a root that leads out is refused, and
+  so is a link outside the roots that leads in.
+
+"Under" means that `filepath.Rel` from the root leaves a remainder that
+[`filepath.IsLocal`](https://pkg.go.dev/path/filepath#IsLocal) accepts: not
+absolute, not empty, and no `..` that climbs out. A path equal to a root is
+under it, so a root that is one model directory can be scanned whole. A path
+that is not under a root as written is refused before any filesystem call on
+it. The engine is handed the path as written, cleaned, rather than its
+resolved form: the scan snapshot keeps the file's own name, which the quant
+row reads, and the engine reads files beside the artifact where the caller put
+them.
+
+Every refusal of a path is a `422` with the same message, which quotes the
+path as it was sent and reads the same whether the path is outside the roots,
+does not exist, or is a symlink that leads out:
+
+```json
+{"error":"\"/etc/shadow\" is not an existing path under a scan root; the API reads only under the directories socair serve was started with (--scan-root, and the store's incoming/ with --store)"}
+```
+
+A relative path is refused with a message that says it is not absolute, and
+with no root configured every path is refused with a message that names
+`--scan-root`. Neither depends on anything on disk.
+
+**Defaults.** With no `--scan-root`, no `SOCAIR_SCAN_ROOTS`, and no `--store`,
+the API reads no path a request names, and the wizard's scan page shows the
+refusal. With `--store`, a model pulled into staging can be scanned and
+promoted by path with nothing else set. To scan from a model share, name it:
+
+```
+socair serve --store "$SOCAIR_STORE" --web web/build --scan-root /srv/models
+```
+
+Ingest's `repo` form resolves an entry in the Hugging Face cache
+(`SOCAIR_HF_CACHE` or `HF_HOME`) by checked names, and only checks that it
+exists. Scanning the path it returns needs the cache as a scan root.
+
+**What the check does not close.** The check and the read are two steps:
+the API checks the path, then the engine, or the promotion gate, opens it by
+name (`internal/engine/snapshot.go`, `internal/airlock/promote.go`). Someone
+who can create or rename entries inside a scan root while a request is in
+flight can replace a checked file or directory with a symlink after the check,
+and the open follows it out of the roots. The caller then gets what any scan
+or promotion returns for a file: its hash, and for a model file what the
+report records about it, such as a GGUF's metadata and chat template. Keep
+scan roots writable only by the operator: the chart mounts
+a model share read-only, and only Socair writes `incoming/`. Closing the
+window needs the engine to open the artifact through an
+[`os.Root`](https://pkg.go.dev/os#Root) on the scan root, which it does not do
+today. Once the engine has taken its snapshot, every check reads the snapshot,
+so a swap after that point changes nothing. A scan root is a directory tree as
+its paths see it: a mount point inside it, such as a bind mount of another
+directory, is inside it too.
+
+**Static files.** With `--web`, the build is read through an `os.Root` on its
+directory, so neither a `..` in the request, encoded or not, nor a symlink in
+the build that points out of it opens a file outside it. A plain `..` is
+redirected to the cleaned path by Go's request router, an encoded one gets
+`400` from Go's file server, and a link that leads out gets the SPA shell. [`os.DirFS`](https://pkg.go.dev/os#DirFS) would not be enough: its
+documentation says it does not stop a symlink that points outside the tree.
 
 ## Endpoints
 
@@ -69,7 +157,9 @@ and the API binds the pod's loopback, which a kubelet's HTTP probe cannot reach.
 
 ### `POST /api/scan`
 
-Request `{"path":"/models/model.gguf"}`. `local` is accepted as an alias.
+Request `{"path":"/models/model.gguf"}`. `local` is accepted as an alias. The
+path must be under a scan root; anything else is a `422` and nothing is read
+([Scan roots](#scan-roots)).
 
 `200` `{"report": { ...the attestation document... }}`.
 
@@ -81,8 +171,9 @@ report.
 
 Request `{"report": { ...document... }, "format": "html" | "pdf" | "sarif" | "cyclonedx"}`.
 `cyclonedx` returns a CycloneDX 1.6 ML-BOM derived from the document
-(`application/vnd.cyclonedx+json; version=1.6`); a header-only report, which
-names no exact bytes, is a 422.
+(`application/vnd.cyclonedx+json; version=1.6`, described in
+[cyclonedx.md](cyclonedx.md)); a header-only report, which names no exact
+bytes, is a 422. The API does not sign a BOM; `socair sign --bom` does.
 The default format is `html`.
 
 Returns the bytes with the matching `Content-Type`. An unfilable document is
@@ -100,7 +191,8 @@ DSSE envelope, checked with `socair verify`, is the proof.
 
 Request `{"local":"/path"}` or `{"repo":"org/name","file":"name","revision":"main"}`.
 `200` `{"path":"/resolved/path","event":{...}}`. The path is resolved and
-logged; nothing is copied into staging.
+logged; nothing is copied into staging. A `local` path must be under a scan
+root, or the answer is `422` and nothing is checked on disk.
 
 ### `POST /api/airlock/pull`
 
@@ -120,6 +212,9 @@ envelope is a signed attestation (`socair sign`), passed through byte for byte
 and handed to the one gate implementation. A bare report document is refused
 with `400`: a document is not a ticket until a trusted key signs it.
 
+`artifact` must be under a scan root, which with `--store` includes
+`incoming/`; anything else is refused with `422` before the gate runs.
+
 `200` `{"event":{...}}`, or `422` when the gate refuses: no trusted key in the
 store, a signature that does not verify against it, a state that does not
 authorize promotion, or an artifact that does not hash to the attested
@@ -136,24 +231,30 @@ sha256, or a model directory's manifest digest. An entry is `staging`
 
 `200` `{"models":[ ... ]}`, clean entries first, then staging, each sorted by
 id. It reads evidence files only, never artifact bytes. A staging entry whose
-id is approved in clean is omitted (promote leaves the staged copy); it is kept
-when the clean entry's acceptance expired or it does not verify. Each model:
+id is approved in clean, or was approved and then flagged by a recheck, is
+omitted (promote leaves the staged copy); it is kept when the clean entry's
+acceptance expired or it does not verify. Each model:
 
 ```json
 {"id":"<64-hex>","name":"...","format":"gguf","size_bytes":123,
  "location":"staging|clean",
- "stage":"staged|scanned|ready|needs-acceptance|blocked|approved|acceptance-expired|does-not-verify",
+ "stage":"staged|scanned|ready|needs-acceptance|blocked|approved|acceptance-expired|does-not-verify|flagged",
  "stage_reason":"...","promotion_state":"...","issuer":"...","signer_key_id":"...",
  "accepted_surfaces":["..."],"accepted_by":"...","acceptance_expires":"...",
  "expires_soon":true,"promoted_at":"...",
+ "rechecked_at":"...","recheck_outcome":"flagged|unchanged|incomplete","recheck_reason":"...",
  "next":{"action":"scan|sign|accept|promote|none","command":"socair ..."}}
 ```
 
 Only `id`, `name`, `location`, `stage`, and `next` are always present. The
 stage is derived from the evidence through `Store.Assess`, the same
-verification `promote` uses. `expires_soon` is set when an acceptance expires
-within 30 days. `next.command` is the exact CLI command when the step needs a
-key.
+verification `promote` uses, and for a clean entry from its `recheck.json`
+(`docs/airlock.md`, "Rechecking the clean store"): `flagged` is a clean entry
+a recheck found would now be withheld, still in the clean store, with the
+recheck's reason in `stage_reason`. `rechecked_at`, `recheck_outcome`, and
+`recheck_reason` are the clean entry's last recheck, when it has one.
+`expires_soon` is set when an acceptance expires within 30 days.
+`next.command` is the exact CLI command when the step needs a key.
 
 ### `GET /api/airlock/models/{id}`
 
@@ -169,7 +270,7 @@ for an unknown id.
 One evidence file, byte for byte, as an attachment. `name` must be one of
 `provenance.json`, `report.json`, `report.dsse.json`,
 `report.acceptance.dsse.json`, `report.conditional.dsse.json`,
-`attestation.json`, `attestation.dsse.json`. Anything else, or a file the
+`attestation.json`, `attestation.dsse.json`, `recheck.json`. Anything else, or a file the
 entry does not have, is `404`. Artifact bytes are never served.
 
 ### `POST /api/airlock/models/{id}/scan`
@@ -224,8 +325,9 @@ answers there.
   `Allow` lists the methods it does take.
 - `413`: an uploaded attestation over 4 MiB.
 - `415`: a `POST` body that is not `application/json`.
-- `422`: understood and refused (a scan failure, an unfilable document, a
-  refused promotion, a denied pull, a refused attestation upload).
+- `422`: understood and refused (a path that is not under a scan root, a
+  scan failure, an unfilable document, a refused promotion, a denied pull, a
+  refused attestation upload).
 - `500`: an internal failure.
 - `503`: health, a degraded store; or the engine is busy (the load limit).
 

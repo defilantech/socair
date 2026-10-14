@@ -66,6 +66,11 @@ SOCAIR_API_ALLOW_PUBLIC=1 (docs/api.md).
 {{- if and .Values.service.enabled (not .Values.service.authenticatingProxy) }}
 {{- fail "service.enabled exposes the Socair API, which has no authentication of its own. Put an authenticating proxy in front of it and set service.authenticatingProxy=true to confirm, or reach the wizard with kubectl port-forward (the default)." }}
 {{- end }}
+{{- range .Values.scanRoots }}
+{{- if eq (clean .) "/" }}
+{{- fail "scanRoots names /, which would let anyone who reaches the API have it read any file in the pod. Name the directories that hold models, such as a mounted model share." }}
+{{- end }}
+{{- end }}
 {{- if and .Values.trust.trustedKeysConfigMap (eq .Values.trust.trustedKeysConfigMap .Values.trust.acceptorKeysConfigMap) }}
 {{- fail "trust.trustedKeysConfigMap and trust.acceptorKeysConfigMap name the same ConfigMap: one key may not both sign attestations and accept their gaps." }}
 {{- end }}

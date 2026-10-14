@@ -142,15 +142,21 @@ Usage:
                            re-issue it as authorized with conditions
   socair verify <attestation> --trusted <key.pub|dir> [--artifact <path>]
                            verify an attestation, and that a file is its artifact
+  socair sign --key <key> --bom --attestation <r.dsse.json> [--cyclonedx <bom.json>]
+                           sign the attestation's CycloneDX BOM (an inventory, not a promotion ticket)
+  socair verify --bom <bom.dsse.json> --trusted <key.pub|dir> [--artifact <path>] [--cyclonedx <out.json>]
+                           verify a signed BOM, and write the BOM it carries
   socair airlock init <store>   create the store, staging, and activity log
   socair airlock pull      pull a file, or a whole repo at a pinned commit, into staging
   socair airlock ingest    resolve a local file or directory, or an offline HF cache entry
   socair airlock trust add <key.pub>   trust a signing key for promotion
   socair airlock promote   promote a file or model directory with a signed attestation
+  socair airlock recheck [--rescan]   re-check the clean store against the current feed and check set
   socair airlock log       print the airlock activity log (--verify checks its hash chain)
   socair airlock export --out <dir> [--key <k>]   write a shareable, signed snapshot of the store
   socair inventory verify <dir> --trusted <key.pub|dir>   verify an exported inventory snapshot
-  socair serve             run the engine HTTP/JSON API for the click-ops wizard
+  socair serve [--scan-root <dir>]...   run the engine HTTP/JSON API for the click-ops wizard;
+                           it reads a path a request names only under a scan root
   socair health [--addr <host:port>]   exit 0 only if a running API reports healthy (a container probe)
   socair demo              write a SAMPLE attestation that shows what a report looks like
 `)

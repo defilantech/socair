@@ -268,12 +268,17 @@ type Scope struct {
 	CheckSetVersion  string `json:"check_set_version"`
 	ToolVersions     string `json:"tool_versions,omitempty"`
 	ExecutionContext string `json:"execution_context"`
-	InputPath        string `json:"input_path"`
-	ScanStartUTC     string `json:"scan_start_utc,omitempty"`
-	ScanEndUTC       string `json:"scan_end_utc,omitempty"`
-	InferenceBudget  string `json:"inference_budget,omitempty"`
+	// InputPath says how the input arrived: "local path", or the source a
+	// bound provenance manifest records ("airlock pull"). It is never the
+	// path on the scanning host; the subject digest identifies the artifact.
+	InputPath       string `json:"input_path"`
+	ScanStartUTC    string `json:"scan_start_utc,omitempty"`
+	ScanEndUTC      string `json:"scan_end_utc,omitempty"`
+	InferenceBudget string `json:"inference_budget,omitempty"`
 	// ReferenceData names the reference data the checks compared against: a
-	// signed feed (issuer, version, dates, key) and any local denylist.
+	// signed feed (issuer, version, dates, key), and each local input (a
+	// denylist, tokenizer tables, reviewed templates, a license policy) by
+	// file name and the SHA-256 of the bytes read, never by its path.
 	ReferenceData string `json:"reference_data,omitempty"`
 	// IntakePolicy names the organization's intake policy the Intake policy
 	// row was checked against (SOCAIR_INTAKE_POLICY), by its file's base

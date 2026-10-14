@@ -73,7 +73,7 @@ func TestReferenceSignaturesVerify(t *testing.T) {
 			continue
 		}
 		root, files := snapshot(t, c.dir)
-		diffs, _, err := CheckFiles(o.Manifest, root, files, "model.sig")
+		diffs, _, err := CheckFiles(o.Manifest, root, files, Compare{Signature: "model.sig"})
 		if err != nil || len(diffs) != 0 {
 			t.Errorf("%s: files do not match the reference signature: %v %v", c.dir, diffs, err)
 		}
@@ -114,7 +114,7 @@ func TestChangedFilesAreDifferences(t *testing.T) {
 			t.Fatal(err)
 		}
 		o := Verify(readSig(t, c.dir+"/model.sig"), trustFrom(t, "p256.pub", ""))
-		diffs, _, err := CheckFiles(o.Manifest, root, files, "model.sig")
+		diffs, _, err := CheckFiles(o.Manifest, root, files, Compare{Signature: "model.sig"})
 		cleanup()
 		if err != nil || !containsPrefix(diffs, c.want) {
 			t.Errorf("%s: diffs %v (%v), want %q", name, diffs, err, c.want)
@@ -201,7 +201,7 @@ func TestUnsupportedAndLegacyAreUnverified(t *testing.T) {
 	if o.State != Verified {
 		t.Fatalf("a well-signed BLAKE2 manifest verifies as a signature: %s (%s)", o.State, o.Detail)
 	}
-	if _, _, err := CheckFiles(o.Manifest, t.TempDir(), nil, "model.sig"); err == nil {
+	if _, _, err := CheckFiles(o.Manifest, t.TempDir(), nil, Compare{Signature: "model.sig"}); err == nil {
 		t.Error("a BLAKE2 manifest cannot be checked against files and must say so")
 	}
 	legacy := statementFor(res, rootOf(res), "files")

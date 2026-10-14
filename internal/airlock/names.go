@@ -73,13 +73,16 @@ func hasDotDot(p string) bool {
 	return false
 }
 
-// within reports whether p resolves under root.
-func within(root, p string) bool {
+// inside returns p, rebuilt from root, when it lies strictly under root: the
+// rest of it is local (filepath.IsLocal: not empty, not absolute, no ".."
+// that climbs out) and is not root itself. Callers use the path it returns,
+// so what they open is visibly root plus a local remainder.
+func inside(root, p string) (string, bool) {
 	rel, err := filepath.Rel(root, p)
-	if err != nil {
-		return false
+	if err == nil && rel != "." && filepath.IsLocal(rel) {
+		return filepath.Join(root, rel), true
 	}
-	return rel != "." && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)) && !filepath.IsAbs(rel)
+	return "", false
 }
 
 // StagingFile is the pull destination for one artifact file under its hash. It
@@ -95,9 +98,9 @@ func (s *Store) StagingFile(sha, file string) (string, error) {
 	if err := notEvidenceName(file); err != nil {
 		return "", err
 	}
-	p := filepath.Join(s.StagingPath(sha), file)
-	if !within(s.stagingRoot(), p) {
-		return "", fmt.Errorf("staging path %q escapes the store", p)
+	p, ok := inside(s.stagingRoot(), filepath.Join(s.StagingPath(sha), file))
+	if !ok {
+		return "", fmt.Errorf("staging path for %q escapes the store", file)
 	}
 	return p, nil
 }

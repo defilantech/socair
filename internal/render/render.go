@@ -24,6 +24,7 @@ var tmpl = template.Must(template.New("report").Funcs(template.FuncMap{
 	"promotionLabel": promotionLabel,
 	"outcomeClass":   outcomeClass,
 	"shortHash":      report.ShortHash,
+	"editions":       report.FrameworkEditions,
 }).Parse(templateHTML))
 
 // Counts tallies check results for the cover block.
