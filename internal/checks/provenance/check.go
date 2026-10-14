@@ -18,6 +18,12 @@
 // as "main" that can move. Any other sidecar is surfaced but not verified, and a
 // signing status in the manifest is reported as that manifest's claim. Short
 // of all that the row is NOT_TESTED, never a silent pass.
+//
+// The uploader's own checksum lists (SHA256SUMS, <file>.sha256) are then
+// compared with the bytes the scan hashed (checksums.go). A listed file whose
+// bytes differ makes the row a LEAD, unless it is already a FAIL; agreement
+// is only noted, since a list is its uploader's claim and agreeing with it
+// shows consistency, not safety.
 package provenance
 
 import (
@@ -33,6 +39,7 @@ import (
 	"strings"
 
 	"github.com/defilantech/socair/internal/checks"
+	"github.com/defilantech/socair/internal/modeldir"
 )
 
 // Manifest is a provenance record for one artifact.
@@ -80,6 +87,13 @@ type Options struct {
 	// Signature is the result of verifying a publisher signature over the
 	// artifact (an OMS signature); nil when there is none.
 	Signature *Signature
+	// Root and Files are a model directory scan's snapshot and the files it
+	// hashed into it. The uploader's checksum lists among the files are
+	// compared with the rest (checksums.go). Without them the artifact is a
+	// single file, and the lists beside ArtifactPath are compared with
+	// ArtifactSHA256.
+	Root  string
+	Files []modeldir.File
 }
 
 // Signature states of a publisher signature.
@@ -152,11 +166,29 @@ func Bind(opts Options) (*Manifest, string) {
 	return &m, ""
 }
 
-// Inspect reports the provenance result for one artifact.
+// Inspect reports the provenance result for one artifact: its origin, then
+// what the uploader's own checksum lists say of the bytes the scan hashed.
 func Inspect(opts Options) checks.Result {
+	r := inspectOrigin(opts)
+	var cs *checksumScan
+	switch {
+	case opts.Root != "":
+		cs = dirChecksums(opts.Root, opts.Files)
+	case opts.ArtifactPath != "":
+		cs = fileChecksums(opts.ArtifactPath, opts.ArtifactSHA256)
+	}
+	if m, unbound := Bind(opts); cs != nil && m != nil && unbound == "" && m.Selection != nil {
+		cs.leftOut = m.Selection.LeftOut
+	}
+	return cs.apply(r)
+}
+
+// inspectOrigin is the row as the publisher signature and the provenance
+// manifest decide it.
+func inspectOrigin(opts Options) checks.Result {
 	r := checks.Result{
 		Name:     "Hash, provenance, lineage",
-		LooksFor: "Traceable origin: a manifest bound to this hash, from an immutable upstream commit",
+		LooksFor: "Traceable origin: a manifest bound to this hash, from an immutable upstream commit; files that disagree with the uploader's checksum list",
 	}
 
 	// A publisher signature that claims a trusted signer and does not hold is

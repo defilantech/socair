@@ -92,6 +92,10 @@ var patternSeverity = map[string]string{
 	// No longer emitted (tier1/0.9, #254): any .py file was a LEAD. Kept so
 	// a report signed before it grades the same.
 	"python-file": SeverityMedium,
+	// A file that disagrees with its uploader's own checksum list: an
+	// inconsistency a swap or a partial re-upload leaves behind, not proof
+	// of either.
+	"checksum-mismatch": SeverityMedium,
 	// A license outside the operator's policy: a rule broken, not a
 	// compromise.
 	"license-not-allowed": SeverityMedium,

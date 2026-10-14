@@ -92,7 +92,7 @@ The rows that run depend on the format: every report carries structure, inventor
 |---|---|---|---|---|
 | Format and structure | Malformed container structure, unexpected tensors | `[result]` | `[evidence]` | `[notes]` |
 | File inventory and payloads | Hidden files, embedded payloads, unexpected executables | `[result]` | `[evidence]` | `[notes]` |
-| Hash, provenance, lineage | Traceable origin: a manifest bound to this hash, from an immutable upstream commit | `[result]` | `[evidence]` | `[notes]` |
+| Hash, provenance, lineage | Traceable origin: a manifest bound to this hash, from an immutable upstream commit; files that disagree with the uploader's checksum list | `[result]` | `[evidence]` | `[notes]` |
 | Known-bad hash match | Match against the known-bad artifact denylist | `[result]` | `[evidence]` | `[notes]` |
 | Chat template | Code reach, hidden or obfuscated text, override or content-triggered instructions, and the text the rendered template adds to the prompt | `[result]` | `[evidence]` | `[notes]` |
 | Tokenizer config | Tampered tokenizer tables: special-token ids, token types, control tokens | `[result]` | `[evidence]` | `[notes]` |
@@ -104,6 +104,8 @@ The rows that run depend on the format: every report carries structure, inventor
 | Tensor reference (with a reference) | Weights that are not, tensor for tensor, the reviewed model's | `[result]` | `[evidence: each tensor that differs, is not in the reference, or is missing]` | `[notes: the reference by file name and hash, the model it describes, how many tensors matched and how, and what was not compared]` |
 
 The License policy row FAILs only when the artifact's statements agree on a license the policy does not allow. Statements that name different licenses, one of them not allowed, are a LEAD: which license governs needs a person. No identified license, or an allowed one beside a statement the catalogue does not recognize, is NOT_TESTED. Its PASS means the identified license is on the operator's list; it is not legal advice.
+
+The provenance row also compares the artifact with its uploader's own SHA-256 lists (`SHA256SUMS`, `<file>.sha256`), read as `sha256sum --check` reads them ([provenance-bundle.md](provenance-bundle.md#uploader-checksum-lists)). A listed file whose bytes differ makes the row a LEAD, unless it is already a FAIL; a Markdown file that differs (a model card edited after the list was written) is named and not graded. Agreement is noted and never moves the row: a list is its uploader's claim, so agreeing with it shows consistency, not safety. A listed file the scan does not hold (a selected pull leaves files out), a file listed under another name, a list whose names are not files beside it, and a line that does not parse are noted, not graded.
 
 The Intake policy row can only withhold ([intake-policy.md](intake-policy.md)). It FAILs when a rule is broken: a model file in a format the policy does not allow, identified from its bytes; a publisher on the denied list or off the allowed list, read from a provenance manifest bound to this hash; or a listed publisher's model without a verified publisher signature. A rule it cannot evaluate (no bound manifest names the publisher, a file whose format is not identified, a signature that was not verified) is NOT_TESTED with the reason. It never changes another row.
 

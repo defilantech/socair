@@ -42,7 +42,7 @@
               "id": "hash-provenance-lineage",
               "name": "Hash, provenance, lineage",
               "shortDescription": {
-                "text": "Traceable origin: a manifest bound to this hash, from an immutable upstream commit"
+                "text": "Traceable origin: a manifest bound to this hash, from an immutable upstream commit; files that disagree with the uploader's checksum list"
               },
               "properties": {
                 "tags": [

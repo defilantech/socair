@@ -129,7 +129,10 @@ Every command also takes `--store <path>`.
   subject, covers the kept files alone, and the provenance manifest
   (`selection`: the patterns and every file `left_out`) and the log name what
   was left out. The scan's provenance row says so too, so the signed report
-  that travels with the bytes reads as a selection, not the whole repo. A
+  that travels with the bytes reads as a selection, not the whole repo. When
+  the repo ships its uploader's checksum list (`SHA256SUMS`), the files it
+  lists that the selection left out are noted as not compared, never flagged
+  ([provenance-bundle.md](provenance-bundle.md#uploader-checksum-lists)). A
   selection that keeps nothing, a bare or empty `--include`/`--exclude`, or a
   pattern with an unclosed `[` is refused before any download. A comma inside
   `[...]` belongs to the class.

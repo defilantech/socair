@@ -27,7 +27,7 @@ generated corpus, on 2026-10-04; CI does not re-run them.
   scanner here was given any of them. With Socair's defaults (none of the
   four), the remapped tokenizer and the near-miss template pass, the known-bad
   file is withheld as a gap, and the edited weights have no row that compares
-  them, so Socair detects 53 of 60. Scores with the cases that need an input left out
+  them, so Socair detects 54 of 61. Scores with the cases that need an input left out
   follow the comparison table.
 - **The attacks are defanged.** Each case keeps the attack's structure (the
   gadget, the opcodes, the archive trick, the template construct) and swaps its
@@ -40,7 +40,7 @@ generated corpus, on 2026-10-04; CI does not re-run them.
   - in-the-wild malicious uploads;
   - the 7z-wrapped nullifAI samples;
   - the ShadowPickle corpus (arXiv 2607.17503).
-- **Few benign controls.** There are 11 controls. False positives on real
+- **Few benign controls.** There are 12 controls. False positives on real
   models are measured separately, on real corpora, in
   [false-positive-baseline.md](false-positive-baseline.md).
 
@@ -51,17 +51,18 @@ generated corpus, on 2026-10-04; CI does not re-run them.
 | Chat template | 11 | 10 | 0 | 1 |
 | File inventory and payloads | 8 | 7 | 0 | 1 |
 | Format and structure | 5 | 5 | 0 | 0 |
+| Hash, provenance, lineage | 1 | 1 | 0 | 0 |
 | Known-bad hash match | 1 | 1 | 0 | 0 |
 | Pickle opcode scan | 22 | 22 | 0 | 0 |
 | Remote code | 9 | 8 | 0 | 1 |
 | Tensor reference | 1 | 1 | 0 | 0 |
 | Tokenizer config | 3 | 3 | 0 | 0 |
-| **All** | **60** | **57** | **0** | **3** |
+| **All** | **61** | **58** | **0** | **3** |
 
-Benign controls flagged (FAIL or LEAD on any row): 0 of 11.
+Benign controls flagged (FAIL or LEAD on any row): 0 of 12.
 
 Four of these detections depend on a reference input (see "Read this first");
-with Socair's defaults it detects 53 of 60.
+with Socair's defaults it detects 54 of 61.
 
 Check set tier1/0.8 replaced the pickle row's import allowlist with a typed
 grammar (`socair-wo/1`, see [check-set.md](check-set.md)) and added three
@@ -144,6 +145,16 @@ data beside the model, and an onnxruntime contrib operator
 (`com.microsoft::FastGelu`), as optimum's O2 to O4 exports have. No earlier
 case changed outcome.
 
+Check set tier1/0.10 also compares an artifact with its uploader's own SHA-256
+lists (#263, [provenance-bundle.md](provenance-bundle.md#uploader-checksum-lists)).
+`dir-checksum-swapped` is a directory whose `model.safetensors` was replaced,
+by a well-formed and benign file, after its `SHA256SUMS` was written: the
+provenance row is a LEAD naming the file, where it was NOT_TESTED (no
+manifest), so the directory was withheld only as a gap an acceptance could
+clear. The `control-dir-checksums` control carries a `SHA256SUMS` that
+matches every file, which is noted and flags nothing. No earlier case changed
+outcome.
+
 | Case | Format | Technique | Row | Result | Severity |
 |---|---|---|---|---|---|
 | `control-pickle` | pickle | benign state-dict-shaped pickle written by CPython | (control: every row) | PASS |  |
@@ -156,6 +167,7 @@ case changed outcome.
 | `control-onnx` | onnx | benign ONNX model: standard operators, weights inline | (control: every row) | PASS |  |
 | `control-dir-onnx` | model directory | benign directory with an onnx/ export as sentence-transformers ships: external data beside the model, and an onnxruntime contrib operator | (control: every row) | PASS |  |
 | `control-dir-training-script` | model directory | benign directory with train_script.py, as sentence-transformers ships, that no loader imports | (control: every row) | PASS |  |
+| `control-dir-checksums` | model directory | benign directory with an uploader's SHA256SUMS that matches every file | (control: every row) | PASS |  |
 | `pickle-os-system-p2` | pickle | os.system via GLOBAL + REDUCE, protocol 2 | Pickle opcode scan | FAIL | critical |
 | `pickle-os-system-p4` | pickle | os.system via STACK_GLOBAL, protocol 4 (the Python 3.8+ default) | Pickle opcode scan | FAIL | critical |
 | `pickle-builtins-exec` | pickle | builtins.exec of a code string | Pickle opcode scan | FAIL | critical |
@@ -217,6 +229,7 @@ case changed outcome.
 | `dir-weights-edited` | model directory | one weight edited in a model presented as the reviewed one | Tensor reference | LEAD | medium |
 | `control-dir-tensor-reference` | model directory | benign directory compared with its own reviewed tensor manifest | (control: every row) | PASS |  |
 | `dir-known-bad-hash` | model directory | a file whose hash is on the known-bad list | Known-bad hash match | FAIL | critical |
+| `dir-checksum-swapped` | model directory | model.safetensors replaced after the uploader's SHA256SUMS was written | Hash, provenance, lineage | LEAD | medium |
 
 There are three misses. The first is the published known miss: a default system prompt that steers
 answers as ordinary guidance, with no override phrase, URL, obfuscation, or
@@ -264,9 +277,10 @@ control added with #233, `gguf-template-tuple-trigger` added with #246, and
 the nine added with #254 (the seven Remote code cases,
 `dir-script-caller-named`, and the `control-dir-training-script` control), and
 the two added with #262 (`dir-weights-edited` and the
-`control-dir-tensor-reference` control), and the six ONNX cases and controls
-added with #264, so its counts cover the cases before them; the other scanners
-have not been run on those twenty-nine. A *suspicious* result counts as a finding, as Socair's LEAD does:
+`control-dir-tensor-reference` control), the six ONNX cases and controls
+added with #264, and the two added with #263 (`dir-checksum-swapped` and the
+`control-dir-checksums` control), so its counts cover the cases before them;
+the other scanners have not been run on those thirty-one. A *suspicious* result counts as a finding, as Socair's LEAD does:
 picklescan's suspicious globals and Fickling's SUSPICIOUS. "Not scanned" means
 the tool skipped the file, could not parse it, or does not support the format.
 
@@ -329,7 +343,7 @@ How to read it:
 
 With the four cases that need a Socair-only input left out
 (`gguf-tokenizer-remapped`, `gguf-template-reviewed-near-miss`,
-`dir-known-bad-hash`, and `dir-weights-edited`), Socair detects 53 of 56
+`dir-known-bad-hash`, and `dir-weights-edited`), Socair detects 54 of 57
 attacks with check set tier1/0.10 (34 of 35 in the 2026-10-04 run, which predates the near-miss case),
 and the two formats they belong to read, from that run:
 
@@ -350,6 +364,7 @@ and the two formats they belong to read, from that run:
 
 | Case | Socair | ModelAudit | picklescan | Fickling | ModelScan |
 |---|---|---|---|---|---|
+| `control-dir-checksums` | clean | not run | not run | not run | not run |
 | `control-dir-torchscript` | clean | not run | not run | not run | not run |
 | `control-dir-training-script` | clean | not run | not run | not run | not run |
 | `control-gguf` | clean | clean | clean | finding (not a pickle) | could not scan |
@@ -361,6 +376,7 @@ and the two formats they belong to read, from that run:
 | `control-torch-zip` | clean | clean | finding (suspicious) | could not scan | could not scan |
 | `control-torch-zip-untyped` | clean | not run | not run | not run | not run |
 | `dir-known-bad-hash` | finding | clean | could not scan | could not scan | could not scan |
+| `dir-checksum-swapped` | finding | not run | not run | not run | not run |
 | `dir-executable-named-script` | finding | not run | not run | not run | not run |
 | `dir-native-executable` | finding | clean | could not scan | could not scan | could not scan |
 | `dir-normalizer-injects-special` | finding | clean | could not scan | could not scan | could not scan |

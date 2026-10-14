@@ -90,6 +90,9 @@ func scanDir(dir string, start time.Time, refs *references, in Inputs, t2 *tier2
 	if err != nil {
 		return nil, err
 	}
+	// The uploader's checksum lists are among the files, so the provenance
+	// row reads them, and the files they list, from the snapshot.
+	provOpts.Root, provOpts.Files = root, files
 	d.Scope.ReferenceData = refs.scope()
 	ident := dirLicense(root, files)
 	d.Artifact.License, d.Artifact.BaseModels = licenseIdentity(ident)

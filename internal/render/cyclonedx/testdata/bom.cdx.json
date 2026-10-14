@@ -319,7 +319,7 @@
       {
         "bom-ref": "claim:hash-provenance-lineage",
         "target": "model:13d44e37860489806f575deb0b219c6058c9421fe1982a9311a0e367c4e8f444",
-        "predicate": "Check \"Hash, provenance, lineage\" returned NOT_TESTED. It looks for: Traceable origin: a manifest bound to this hash, from an immutable upstream commit."
+        "predicate": "Check \"Hash, provenance, lineage\" returned NOT_TESTED. It looks for: Traceable origin: a manifest bound to this hash, from an immutable upstream commit; files that disagree with the uploader's checksum list."
       },
       {
         "bom-ref": "claim:known-bad-hash-match",
