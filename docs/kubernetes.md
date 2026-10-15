@@ -29,7 +29,7 @@ attestation. Fetch the chart and check both before installing:
 
 <!-- x-release-please-start-version -->
 ```
-V=0.1.0-rc.6
+V=0.1.0-rc.7
 helm repo add socair https://defilantech.github.io/socair
 helm pull socair/socair --version $V
 gh attestation verify socair-$V.tgz --repo defilantech/socair \
