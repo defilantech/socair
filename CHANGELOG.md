@@ -7,6 +7,29 @@ notes, install and verification commands, and the assets.
 From 0.1.0-rc.5 on, release-please writes each entry from the conventional
 titles of the pull requests merged since the last release (docs/releasing.md).
 
+## [0.1.0-rc.5](https://github.com/defilantech/socair/compare/v0.1.0-rc.4...v0.1.0-rc.5) (2026-10-15)
+
+
+### Features
+
+* **checks:** a check whose input was not supplied is named, not run: known-bad needs your list, chat template needs a template ([#280](https://github.com/defilantech/socair/issues/280)) ([b13ac3b](https://github.com/defilantech/socair/commit/b13ac3b4665ea10e0910528554658d762ce4edff))
+* **checks:** compare an uploader's SHA256SUMS and .sha256 lists with the bytes scanned ([#276](https://github.com/defilantech/socair/issues/276)) ([e0df1d1](https://github.com/defilantech/socair/commit/e0df1d17fee71a975d5c1c2129e02607f5d156bb))
+* **checks:** read Keras models: HDF5 layout, .keras members, and code in the config ([#278](https://github.com/defilantech/socair/issues/278)) ([6c1b5e8](https://github.com/defilantech/socair/commit/6c1b5e82c7e55991cd77af894a14846d72d8cbcc))
+* **checks:** read ONNX models: tensors, external data, operator domains, and metadata ([#266](https://github.com/defilantech/socair/issues/266)) ([09267c7](https://github.com/defilantech/socair/commit/09267c7f88c3b76e449efb19c27a99395a327d67))
+* **checks:** read OpenVINO IR models: Const ranges in the .bin, operations, and rt_info text ([#277](https://github.com/defilantech/socair/issues/277)) ([c3c747a](https://github.com/defilantech/socair/commit/c3c747a6c34cb44dab3cf5246ec41600be5bb75b))
+* **cli:** socair scan says what would close each gap; the docs say to pull only what you serve ([#272](https://github.com/defilantech/socair/issues/272)) ([f866a00](https://github.com/defilantech/socair/commit/f866a003857a3f55871d23b1fe948adefe95e062))
+* **tensors:** compare a model's weights with a reviewed model, tensor by tensor ([#265](https://github.com/defilantech/socair/issues/265)) ([4923cb5](https://github.com/defilantech/socair/commit/4923cb589eee5ca75e5b646be30b965cb14f65e8))
+
+
+### Fixes
+
+* **airlock:** a staged scan with a FAIL or LEAD is blocked, not offered for signing ([#273](https://github.com/defilantech/socair/issues/273)) ([e0826af](https://github.com/defilantech/socair/commit/e0826afa370cf2d2322ec20e4766ff8fbbbc28d7))
+* **checks:** configs a Python loader reads are decoded as Python's json decodes them ([#274](https://github.com/defilantech/socair/issues/274)) ([c215f09](https://github.com/defilantech/socair/commit/c215f09bad7459d2dde271f374f243d3166f3330))
+* **cli:** every command refuses a flag it does not take ([#275](https://github.com/defilantech/socair/issues/275)) ([ff18a78](https://github.com/defilantech/socair/commit/ff18a7804b0891c9440666567e073cd3896ff0d8))
+* **engine:** write an empty fails or not_tested list as [], as the report schema says ([#279](https://github.com/defilantech/socair/issues/279)) ([5b77c42](https://github.com/defilantech/socair/commit/5b77c42beb50f3cf911af3264f0c6d269f95d19f))
+* **inventory:** a directory's listing is graded once, not with every file ([#270](https://github.com/defilantech/socair/issues/270)) ([1d4f3df](https://github.com/defilantech/socair/commit/1d4f3dfdf0dc0a436f0f89ccc98f5837e8fafa28))
+* **release:** a rebuild from a tag stamps the tag's version, whatever the module cache holds ([#271](https://github.com/defilantech/socair/issues/271)) ([69d9577](https://github.com/defilantech/socair/commit/69d95779de0871d1e06cda831d51798acebf3f90))
+
 ## 0.1.0-rc.4 (2026-10-14)
 
 The second public release candidate. The check set is `tier1/0.9`.
