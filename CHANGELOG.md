@@ -7,6 +7,14 @@ notes, install and verification commands, and the assets.
 From 0.1.0-rc.5 on, release-please writes each entry from the conventional
 titles of the pull requests merged since the last release (docs/releasing.md).
 
+## [0.1.0-rc.6](https://github.com/defilantech/socair/compare/v0.1.0-rc.5...v0.1.0-rc.6) (2026-10-15)
+
+
+### Fixes
+
+* **scripts:** the console demo's approved-with-conditions model has a gap to accept again ([#281](https://github.com/defilantech/socair/issues/281)) ([60af4ef](https://github.com/defilantech/socair/commit/60af4ef625d6b0fc3c372bb6b3f966bd0d6f4272))
+* **tokenizer:** a GGUF special-token id of -1 is the "no token" sentinel, not out of range ([#282](https://github.com/defilantech/socair/issues/282)) ([5ab2a2a](https://github.com/defilantech/socair/commit/5ab2a2a7232b6795382e5feaf7eed651153ad554))
+
 ## [0.1.0-rc.5](https://github.com/defilantech/socair/compare/v0.1.0-rc.4...v0.1.0-rc.5) (2026-10-15)
 
 
