@@ -6,9 +6,13 @@
 #
 # The models, each pulled at its current commit:
 #   Qwen/Qwen3-0.6B                               approved: every row PASSes
-#   hf-internal-testing/tiny-random-LlamaForCausalLM  approved with conditions:
-#                                                 a CISO key signs an acceptance
-#                                                 of the one NOT_TESTED row
+#   hf-internal-testing/tiny-random-bert          approved with conditions:
+#                                                 its weights are a PyTorch
+#                                                 pickle checkpoint, so Format
+#                                                 and structure is NOT_TESTED
+#                                                 (the pickle row reads them),
+#                                                 and a CISO key signs an
+#                                                 acceptance of that one gap
 #   katuni4ka/tiny-random-chatglm2                blocked: its config.json
 #                                                 auto_map runs the repo's own
 #                                                 Python, a Remote code LEAD
@@ -21,10 +25,13 @@
 #
 # SOCAIR_DEMO_ISSUER and SOCAIR_DEMO_ACCEPTOR rename the demo signer and
 # acceptor. SOCAIR_DEMO_CONDITIONAL names another repo for the approved-with-
-# conditions model (one whose rows are PASS or NOT_TESTED, so a signed
-# acceptance clears it), and SOCAIR_DEMO_CONDITIONAL_EXCLUDE its --exclude
-# pattern (default onnx/; set it empty to pull the whole repo). The binary is stamped with `git describe` of the checkout, so a
-# report names the exact commit or tag that produced it.
+# conditions model: one whose report is withheld on NOT_TESTED rows alone, so
+# a signed acceptance clears it (the script stops if it is not).
+# SOCAIR_DEMO_CONDITIONAL_EXCLUDE is its --exclude pattern: by default the
+# default repo's safetensors, TensorFlow, and ONNX copies of the weights,
+# leaving the pickle checkpoint, and nothing for a repo you name. The binary
+# is stamped with `git describe` of the checkout, so a report names the exact
+# commit or tag that produced it.
 set -euo pipefail
 
 root="$(cd "$(dirname "$0")/.." && pwd)"
@@ -35,8 +42,13 @@ X="$D/bin/socair"
 hub="${SOCAIR_HF_ENDPOINT:-https://huggingface.co}"
 issuer="${SOCAIR_DEMO_ISSUER:-Acme ML Platform}"
 acceptor="${SOCAIR_DEMO_ACCEPTOR:-Jane Doe, CISO}"
-conditional="${SOCAIR_DEMO_CONDITIONAL:-hf-internal-testing/tiny-random-LlamaForCausalLM}"
-conditional_exclude="${SOCAIR_DEMO_CONDITIONAL_EXCLUDE-onnx/}"
+if [[ -n "${SOCAIR_DEMO_CONDITIONAL:-}" ]]; then
+	conditional="$SOCAIR_DEMO_CONDITIONAL"
+	conditional_exclude="${SOCAIR_DEMO_CONDITIONAL_EXCLUDE-}"
+else
+	conditional=hf-internal-testing/tiny-random-bert
+	conditional_exclude="${SOCAIR_DEMO_CONDITIONAL_EXCLUDE-model.safetensors,tf_model.h5,onnx/}"
+fi
 version="$(git -C "$root" describe --tags --always --dirty 2>/dev/null || echo dev)"
 version="${version#v}"
 
@@ -91,8 +103,9 @@ q=$(pull Qwen/Qwen3-0.6B)
 scan_sign "$q" SOCAIR_DENYLIST="$D/denylist.txt"
 "$X" airlock promote "$q" --attestation "$(dirname "$q")/report.dsse.json" >/dev/null
 
-# Approved with conditions: with no known-bad list that row is NOT_TESTED, and
-# the CISO signs an acceptance of exactly that gap, until the rescan date.
+# Approved with conditions: the report is withheld on NOT_TESTED rows alone
+# (for the default repo, Format and structure, which reads no pickle), and the
+# CISO signs an acceptance of exactly those gaps, until the rescan date.
 cond_args=()
 if [[ -n "$conditional_exclude" ]]; then
 	cond_args=(--exclude "$conditional_exclude")
@@ -100,6 +113,11 @@ fi
 l=$(pull "$conditional" ${cond_args[@]+"${cond_args[@]}"})
 scan_sign "$l"
 e=$(dirname "$l")
+if ! jq -e '.promotion_authorization.state == "withheld"
+	and ([.checks[] | select(.status == "FAIL" or .status == "LEAD")] | length == 0)' "$e/report.json" >/dev/null; then
+	echo "$conditional came back $(jq -r .promotion_authorization.state "$e/report.json"), not withheld on NOT_TESTED rows alone, so there is no gap to accept: name another repo with SOCAIR_DEMO_CONDITIONAL" >&2
+	exit 1
+fi
 "$X" accept --attestation "$e/report.dsse.json" --key "$D/keys/ciso.key" --by "$acceptor" \
 	--expires "$(jq -r '.header.rescan_due' "$e/report.json")" --store "$SOCAIR_STORE" >/dev/null
 "$X" sign --key "$D/keys/operator.key" --attestation "$e/report.dsse.json" \

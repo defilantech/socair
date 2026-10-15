@@ -661,7 +661,7 @@ section 3), and publishers whose models need a verified publisher signature
 | Input | Row it moves | Without it |
 |---|---|---|
 | `SOCAIR_REPO_MIRROR` | File inventory and payloads, for a single file | NOT_TESTED |
-| `SOCAIR_DENYLIST`, or a denylist in a feed | Known-bad hash match | NOT_TESTED |
+| `SOCAIR_DENYLIST`, or a denylist in a feed | Known-bad hash match | the row does not run; the report names it under Out of scope, and it is not a gap |
 | `SOCAIR_PROVENANCE`, or an OMS signature from a trusted publisher | Hash, provenance, lineage | NOT_TESTED |
 | `SOCAIR_TOKENIZER_REFERENCE`, or tables in a feed | Tokenizer config: a changed ordinary token becomes a LEAD | PASS on internal consistency only, and the row says no reference was compared |
 | `SOCAIR_TEMPLATE_REFERENCE`, or template texts in a feed | Chat template: a reviewed template plus an added content-conditional branch becomes a LEAD | the rendered inventory only, and the row says no reviewed template text was compared |
@@ -674,8 +674,10 @@ section 3), and publishers whose models need a verified publisher signature
 
 Each input is proven to drive its row: `TestHappyPathDropsOneInput` removes the
 provenance input and asserts the row drops to NOT_TESTED and the promotion
-state drops to withheld. The same shape holds for the mirror and the denylist:
-remove the input and the row returns to NOT_TESTED.
+state drops to withheld. The same shape holds for the mirror: remove the input
+and the row returns to NOT_TESTED. The denylist is different: remove it and
+the Known-bad hash match row is not run at all, named under Out of scope with
+its reason (`TestUnsuppliedInputsAreNamedNotRun`).
 
 ## What this is not
 
