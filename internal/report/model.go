@@ -600,6 +600,16 @@ func Validate(d *Document) []string {
 	req(d.BoundedStatement == BoundedStatementOf(d), "bounded_statement (must equal the fixed wording for these check rows)")
 	req(strings.TrimSpace(d.OutOfScope.DoesNotCertify) != "", "out_of_scope.does_not_certify")
 	req(len(d.OutOfScope.Ceiling) > 0, "out_of_scope.ceiling")
+	// A check either ran (a row) or did not (not_run, with its reason).
+	rows := map[string]bool{}
+	for _, c := range d.Checks {
+		rows[c.Name] = true
+	}
+	for _, c := range d.OutOfScope.NotRun {
+		if rows[c.Name] {
+			problems = append(problems, fmt.Sprintf("out_of_scope.not_run names %q, which is also a checks row", c.Name))
+		}
+	}
 	req(strings.TrimSpace(d.Issuer.Authority) != "", "issuer.authority")
 	req(d.Verification.ArtifactSHA256 == d.Artifact.SHA256, "verification.artifact_sha256 (must match artifact.sha256)")
 	for i, c := range d.Checks {

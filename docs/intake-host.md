@@ -46,7 +46,7 @@ page puts them in order for this deployment.
 | Approved formats only | An intake policy (`SOCAIR_INTAKE_POLICY`, [intake-policy.md](intake-policy.md)) lists the formats you allow, and each model file's format is read from its bytes. A file in another format FAILs the Intake policy row, so the model is withheld with the rule named and no acceptance clears it; a file in no format Socair identifies does too under a safetensors-or-GGUF list (see that page for the rest). Without a policy, formats Socair does not parse are NOT_TESTED, so the model is withheld until a named person signs an acceptance of exactly those gaps. |
 | Approved publishers, signed where we require it | The same policy lists the hub organizations you allow or refuse, read from the provenance manifest the pull wrote, and the ones whose models must carry a publisher signature that verifies against a key you trust. |
 | No remote code | Python a loader would import is a LEAD: a module an `auto_map`, `custom_pipelines`, or a sentence-transformers or diffusers config names, a file a loader imports by its path (`custom_generate/generate.py`, an inference toolkit's `handler.py`), and what those import. No acceptance clears a LEAD and Socair has no other path that does, so a model whose `config.json` has `auto_map` ends at a Remote code LEAD and cannot cross. A script no loader imports, such as a training script, is listed in the report and not judged. |
-| Scanning before promotion | The Tier 1 checks run on every model you scan: structure, embedded payloads, chat template, tokenizer, pickle, quantization label, provenance, known-bad hashes. Nothing scans automatically: you run `socair scan`, or the console's scan, and `promote` needs a signed attestation from that scan |
+| Scanning before promotion | The Tier 1 checks run on every model you scan: structure, embedded payloads, chat template, tokenizer, pickle, quantization label, provenance, and known-bad hashes against your organization's list when you supply one. Nothing scans automatically: you run `socair scan`, or the console's scan, and `promote` needs a signed attestation from that scan |
 | A record of every model brought in | Each promoted model keeps its signed attestation beside its bytes, and `log.jsonl` records every pull, promotion, and refusal in a hash chain |
 
 ## One-time setup
@@ -210,11 +210,13 @@ bring `report.dsse.json` back into `$E`, or upload it in the console.
 
 **4. Act on the promotion state.**
 
-Expect most models to arrive withheld on a row or two at first. A check that
-needs reference data you have not supplied is NOT_TESTED rather than a silent
-pass. For example, Known-bad hash match needs a denylist or a signed feed
-(`SOCAIR_DENYLIST`, `SOCAIR_FEED`; see [feed.md](feed.md)). Supply the
-reference data once, and these rows start to PASS.
+A row that could not look is NOT_TESTED rather than a silent pass. A check
+that needs reference data only your organization holds does not run until you
+supply it: Known-bad hash match runs against your known-bad list or your
+organization's signed feed (`SOCAIR_DENYLIST`, `SOCAIR_FEED`; see
+[feed.md](feed.md)), and without one the report names it under Out of scope
+and it withholds nothing. A model pulled through the airlock, with every check
+PASSing, is authorized.
 
 - **Authorized** (every row PASS): promote it.
 

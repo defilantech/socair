@@ -5,8 +5,17 @@ hashes, reviewed known-good chat templates, and canonical tokenizers. A
 **feed** delivers that data as a signed bundle, so an air-gapped site can
 import it and know who vouched for it and until when.
 
-The format is open, and so is the data: anyone can build and sign a feed with
-the `socair` CLI, and the project's own reference data is built in the open.
+A feed is your organization's own. Your security team builds it, signs it
+with its own key using the `socair` CLI, and every intake host verifies it
+against that key: one review, enforced on every host, under your name. The
+Socair project publishes no feed and signs no reference data, just as it
+signs no one's attestation: whoever signs is the issuer
+([Your organization's feed](#your-organizations-feed)).
+
+Without a feed or a local list, the Known-bad hash match check does not run.
+The report names it under Out of scope, with the reason, and it withholds
+nothing: there is no standing public list of malicious model files to default
+to, and a match against nothing would say nothing.
 
 ## Using a feed
 
@@ -177,6 +186,28 @@ skips the comparison, and the API cannot accept a feed.
   by discarding the metadata it trusted (section 5.3, step 11).
 
 [tuf]: https://theupdateframework.github.io/specification/latest/
+
+## Your organization's feed
+
+What goes into it is your organization's decisions, recorded once:
+
+- **Known-bad hashes** (`denylist.txt`): files your incident response, your
+  threat intelligence, or a vendor's published report names. There is no
+  standing public list of malicious model files; the few public sources are
+  one-off vendor and researcher reports that print hashes. Any changed byte
+  gives a new hash, so this catches exact copies only; the Pickle, Format and
+  structure, and Chat template checks do the main work.
+- **Reviewed chat templates** (`templates.txt`, `templates/<sha256>.jinja`):
+  templates your reviewers have read. A listed template clears a *language*
+  lead on that exact template at every host that imports the feed (never
+  structural evidence), so a reviewer reads a model's template once, not at
+  every scan.
+- **Canonical tokenizers** (`tokenizers.txt`, `tokenizers/<name>.json`): the
+  tokenizers of models you have approved, so a fine-tune that remaps tokens
+  shows as a LEAD.
+
+Keep the signing key off the machines that import the feed, and set an expiry
+your hosts can import within ([Before a feed expires](#before-a-feed-expires)).
 
 ## What a feed changes
 

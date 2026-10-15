@@ -350,16 +350,19 @@ func TestRecheckFlagClearsOnlyWhenReexamined(t *testing.T) {
 	chainIntact(t, s)
 }
 
-// The engine's known-bad lists, with a configured local list unread: not a
-// full match, so the outcome is incomplete, never unchanged.
-func TestRecheckWithoutAListIsIncomplete(t *testing.T) {
+// With no known-bad list configured the known-bad level does not run, as
+// at scan time, and says so; it is not a gap. A configured local list that
+// could not be read is: not a full match, so the outcome is incomplete,
+// never unchanged. Falsification: count the absent list as a gap again and
+// the first recheck is incomplete.
+func TestRecheckWithoutAListDoesNotRunTheMatch(t *testing.T) {
 	s := trustedStore(t)
 	id := promoted(t, s)
 	noFeed(t)
 	t.Setenv("SOCAIR_DENYLIST", "")
 	rc := recheckOnly(t, s, RecheckOptions{})
-	if rc.Outcome != OutcomeIncomplete || rc.KnownBad.Checked || !strings.Contains(rc.Reason, "no known-bad list is configured") {
-		t.Fatalf("a recheck that matched against nothing must say so: %+v", rc)
+	if rc.Outcome != OutcomeUnchanged || rc.KnownBad.Checked || !strings.Contains(rc.Reason, "no known-bad list is configured, so no known-bad match ran") {
+		t.Fatalf("a recheck with no list must say the match did not run, and not count it as a gap: %+v", rc)
 	}
 	t.Setenv("SOCAIR_DENYLIST", filepath.Join(t.TempDir(), "missing.txt"))
 	rc = recheckOnly(t, s, RecheckOptions{})
@@ -495,8 +498,9 @@ func TestRecheckRescanHonoursTheSignedAcceptance(t *testing.T) {
 	if !rc.Rescan.Ran || rc.Rescan.WouldWithhold || rc.Rescan.PromotionState != report.StateWithheld {
 		t.Fatalf("accepted gaps must not withhold on a rescan: %+v", rc.Rescan)
 	}
-	// Still incomplete: no known-bad list was read.
-	if rc.Outcome != OutcomeIncomplete || len(rc.Flags) != 0 {
+	// No known-bad list is configured, so that level did not run, which is
+	// not a gap: the rescan is the recheck.
+	if rc.Outcome != OutcomeUnchanged || len(rc.Flags) != 0 || !strings.Contains(rc.Reason, "no known-bad match ran") {
 		t.Fatalf("%+v", rc)
 	}
 }

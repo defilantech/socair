@@ -216,25 +216,38 @@ func scanDir(dir string, start time.Time, refs *references, in Inputs, t2 *tier2
 		}
 	}
 
-	templates, nonString, unread := modeldir.ChatTemplates(root, files)
-	tmplRow := chattemplate.InspectAllWith(templates, nonString, refs.templateOptions(chattemplate.TokensFromHF(tok.Special, tok.AddedTexts())))
-	if len(templates) == 0 && len(nonString) == 0 {
-		tmplRow.Notes = "no chat template in tokenizer_config.json, chat_template.json, or a .jinja file"
-	}
-	if len(unread) > 0 && tmplRow.Status == checks.Pass {
-		tmplRow.Status = checks.NotTested
-		tmplRow.Notes += "; could not read: " + strings.Join(unread, "; ")
-	}
-
+	// Checks whose input was not supplied are named, not run (notrun.go).
+	var notRun []report.NotRunCheck
 	results := []checks.Result{
 		structRow,
 		invRow,
 		provenance.Inspect(provOpts),
-		denylistRow(files, id.SHA256, refs),
-		tmplRow,
-		tokRow,
-		remotecode.Inspect(root, files),
 	}
+	if refs.knownBadSupplied() {
+		results = append(results, denylistRow(files, id.SHA256, refs))
+	} else {
+		notRun = append(notRun, knownBadNotRun)
+	}
+
+	// A directory with no chat template where a loader looks for one, and
+	// no template file it could not read, has none to check.
+	templates, nonString, unread := modeldir.ChatTemplates(root, files)
+	if len(templates) == 0 && len(nonString) == 0 && len(unread) == 0 {
+		notRun = append(notRun, noChatTemplate("none in tokenizer_config.json, chat_template.json, or a .jinja file"))
+	} else {
+		tmplRow := chattemplate.InspectAllWith(templates, nonString, refs.templateOptions(chattemplate.TokensFromHF(tok.Special, tok.AddedTexts())))
+		if len(templates) == 0 && len(nonString) == 0 {
+			tmplRow.Notes = "no chat template that could be read"
+		}
+		if len(unread) > 0 && tmplRow.Status == checks.Pass {
+			tmplRow.Status = checks.NotTested
+		}
+		if len(unread) > 0 {
+			tmplRow.Notes += "; could not read: " + strings.Join(unread, "; ")
+		}
+		results = append(results, tmplRow)
+	}
+	results = append(results, tokRow, remotecode.Inspect(root, files))
 	if len(pickleParts) > 0 {
 		results = append(results, checks.Merge(pickleParts[0].Result.Name, pickleParts[0].Result.LooksFor, pickleParts))
 	}
@@ -255,6 +268,7 @@ func scanDir(dir string, start time.Time, refs *references, in Inputs, t2 *tier2
 	}); ok {
 		results = append(results, row)
 	}
+	d.OutOfScope.NotRun = append(d.OutOfScope.NotRun, notRun...)
 	measureTier2(d, t2, root)
 	d = finish(d, results, unparsed, expires)
 	// root is the scan's own snapshot directory, named by the directory's

@@ -42,16 +42,34 @@ func TestNextSteps(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// A known-bad list the operator supplied but that held nothing, or could
+	// not be read, keeps its row and says how to fix the list.
+	scanWithList := func(list string) *report.Document {
+		t.Helper()
+		t.Setenv("SOCAIR_DENYLIST", list)
+		defer t.Setenv("SOCAIR_DENYLIST", "")
+		d, err := Scan(file)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return d
+	}
+	empty := filepath.Join(t.TempDir(), "known-bad.txt")
+	if err := os.WriteFile(empty, []byte("# our organization's list, empty so far\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	emptyList := scanWithList(empty)
+	missingList := scanWithList(filepath.Join(t.TempDir(), "no-such-list.txt"))
 
 	matched := map[string]bool{}
-	for _, d := range []*report.Document{single, dir} {
+	for _, d := range []*report.Document{single, dir, emptyList, missingList} {
 		for _, s := range NextSteps(d) {
 			if s.Status == report.StatusPass {
 				t.Errorf("%s PASSed but has a step", s.Row)
 			}
 			for _, r := range inputSteps {
 				if s.Row == r.row && s.Next == r.next {
-					matched[r.row] = true
+					matched[r.phrase] = true
 					if !s.Input {
 						t.Errorf("%s: an input closes it, but Input is false", s.Row)
 					}
@@ -60,13 +78,10 @@ func TestNextSteps(t *testing.T) {
 			if strings.Contains(s.Next, "a format Socair does not read") {
 				matched["format:"+s.Row] = true
 			}
-			if strings.Contains(s.Next, "ships no chat template") {
-				matched["no template"] = true
-			}
 		}
 	}
 	for _, r := range inputSteps {
-		if !matched[r.row] {
+		if !matched[r.phrase] {
 			t.Errorf("no scan matched the %q rule (%q): has the check's note changed?", r.row, r.phrase)
 		}
 	}
@@ -75,8 +90,20 @@ func TestNextSteps(t *testing.T) {
 			t.Errorf("%s: a file Socair does not read got no step about leaving it out of the pull", row)
 		}
 	}
-	if !matched["no template"] {
-		t.Error("a directory with no chat template got no step saying so")
+	// Without a known-bad list, and in a directory with no chat template,
+	// those checks are named as not run: no row, so no step.
+	for _, c := range []struct {
+		d   *report.Document
+		row string
+	}{{single, "Known-bad hash match"}, {dir, "Known-bad hash match"}, {dir, "Chat template"}} {
+		for _, s := range NextSteps(c.d) {
+			if s.Row == c.row {
+				t.Errorf("%s has a step (%q), but it did not run", c.row, s.Next)
+			}
+		}
+		if !notRun(c.d, c.row) {
+			t.Errorf("%s is not named in out_of_scope.not_run", c.row)
+		}
 	}
 
 	sum := Summary(single)
@@ -88,6 +115,16 @@ func TestNextSteps(t *testing.T) {
 			t.Errorf("the summary lists %s, which PASSed", c.Name)
 		}
 	}
+}
+
+// notRun reports whether a check is named in out_of_scope.not_run.
+func notRun(d *report.Document, name string) bool {
+	for _, c := range d.OutOfScope.NotRun {
+		if c.Name == name {
+			return true
+		}
+	}
+	return false
 }
 
 // TestNextStepsNeverOfferAcceptanceForAFindings: an acceptance clears only

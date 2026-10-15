@@ -25,8 +25,10 @@ type NextStep struct {
 // to a real scan), so a reworded note fails a test rather than losing its
 // hint.
 var inputSteps = []struct{ row, phrase, next string }{
-	{"Known-bad hash match", "no denylist configured",
-		"set SOCAIR_FEED and SOCAIR_FEED_KEYS to a signed reference feed, or SOCAIR_DENYLIST to a local list of known-bad hashes (docs/feed.md)"},
+	{"Known-bad hash match", "the denylist is empty",
+		"the known-bad list you supplied holds no hashes, so nothing was matched: add your organization's known-bad hashes to it, or leave SOCAIR_DENYLIST unset to leave the row out (docs/feed.md)"},
+	{"Known-bad hash match", "could not read denylist",
+		"the known-bad list you supplied could not be read: fix the file SOCAIR_DENYLIST names, or leave it unset to leave the row out (docs/feed.md)"},
 	{"Hash, provenance, lineage", "no provenance input",
 		"pull the model through the airlock (socair airlock pull), which records where it came from, and scan with the SOCAIR_PROVENANCE it prints; or verify the publisher's signature (SOCAIR_PUBLISHER_KEYS, docs/provenance-bundle.md)"},
 	{"File inventory and payloads", "Repo mirror not provided",
@@ -40,9 +42,6 @@ var formatGaps = []string{
 	"Archive contents were not scanned",
 	"is not a pickle opcode stream",
 }
-
-// noTemplate is the Chat template row's note for a model that ships none.
-const noTemplate = "no chat template in"
 
 // NextSteps lists, for each row that did not PASS, what would close it: an
 // input the scan did not have, files left out of the pull, or a person's
@@ -68,9 +67,6 @@ func NextSteps(d *report.Document) []NextStep {
 				if s.Next == "" && strings.Contains(c.Notes, p) {
 					s.Next = "a file is in a format Socair does not read: leave files you will not serve out of the pull (socair airlock pull --include, docs/airlock.md), or review the gap and accept it (socair accept)"
 				}
-			}
-			if s.Next == "" && c.Name == "Chat template" && strings.HasPrefix(c.Notes, noTemplate) {
-				s.Next = "the model ships no chat template, so there was none to read; an embedding or reranking model needs none. Review the gap and accept it (socair accept)"
 			}
 			if s.Next == "" {
 				s.Next = "review the reason in the notes; if the gap is acceptable, sign an acceptance (socair accept), which re-issues the report as authorized with conditions"

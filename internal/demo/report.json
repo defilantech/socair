@@ -45,8 +45,7 @@
     "execution_context": "Tier 1 static, portable",
     "input_path": "airlock pull",
     "scan_start_utc": "2026-09-29T00:00:00Z",
-    "scan_end_utc": "2026-09-29T00:00:12Z",
-    "reference_data": "local denylist denylist.txt (sha256 85970338b0c77f6665382b895849953fe6db54d6275fcec55433c8e011a16634)"
+    "scan_end_utc": "2026-09-29T00:00:12Z"
   },
   "checks": [
     {
@@ -121,33 +120,6 @@
           "version": "2026.09",
           "id": "AML.T0115.001",
           "name": "Publish Poisoned AI Artifacts: Models"
-        },
-        {
-          "framework": "OWASP LLM Top 10",
-          "version": "2025",
-          "id": "LLM03",
-          "name": "Supply Chain"
-        }
-      ]
-    },
-    {
-      "name": "Known-bad hash match",
-      "looks_for": "Match against the known-bad artifact denylist",
-      "status": "PASS",
-      "notes": "no entry matched among 1204 known-bad hashes (denylist denylist.txt (sha256 85970338b0c77f6665382b895849953fe6db54d6275fcec55433c8e011a16634))",
-      "pass_means": "This exact hash is not on the configured denylist. Any changed byte gives a new hash, so it catches only known files.",
-      "maps_to": [
-        {
-          "framework": "MITRE ATLAS",
-          "version": "2026.09",
-          "id": "AML.T0115.001",
-          "name": "Publish Poisoned AI Artifacts: Models"
-        },
-        {
-          "framework": "MITRE ATLAS",
-          "version": "2026.09",
-          "id": "AML.T0010.003",
-          "name": "AI Supply Chain Compromise: Model"
         },
         {
           "framework": "OWASP LLM Top 10",
@@ -295,6 +267,11 @@
         "name": "Serving-stack differential (Tier 2)",
         "looks_for": "Same artifact behaving differently across stacks",
         "reason": "Tier 2 (forward-pass, on the production node class) did not run; Tier 1 is static and runs no inference"
+      },
+      {
+        "name": "Known-bad hash match",
+        "looks_for": "Match against the known-bad artifact denylist",
+        "reason": "no known-bad list was supplied (SOCAIR_DENYLIST, or a signed feed that carries one), so the artifact's hash was not matched against one"
       }
     ]
   },

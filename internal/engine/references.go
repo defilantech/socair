@@ -376,6 +376,11 @@ func (r *references) withUnread(row checks.Result) checks.Result {
 // loaded reports whether any denylist was read.
 func (r *references) loaded() bool { return len(r.denySrc) > 0 }
 
+// knownBadSupplied reports whether the operator supplied a known-bad list: a
+// local list (read or not) or a verified feed that carries one. The Known-bad
+// hash match row runs only then (knownBadNotRun).
+func (r *references) knownBadSupplied() bool { return len(r.denySrc) > 0 || r.denyErr != "" }
+
 // templateOptions are the chat-template check's inputs: the feed's reviewed
 // hashes (which clear language leads), every reviewed template text (which
 // renders are compared with), and the artifact's special tokens.
