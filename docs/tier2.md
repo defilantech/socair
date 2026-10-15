@@ -302,11 +302,15 @@ and changing that is a contract change that could still never authorize.
 
 | Issue | Check | What it measures |
 |---|---|---|
-| [#155](https://github.com/defilantech/socair/issues/155) | Quantization differential | The served format (FP8, NVFP4, GGUF k-quants, AWQ/GPTQ) against full precision, on the same engine and node, against a null envelope from known-clean quants |
+| [#284](https://github.com/defilantech/socair/issues/284) | Trigger confirmation | The model run on the triggers Tier 1 found (a chat template's content condition, a near-miss of a reviewed template, a changed or instruction-carrying token), each present and absent in an otherwise identical conversation, against a noise floor from a neutral literal in its place |
+| [#155](https://github.com/defilantech/socair/issues/155) | Quantization differential | The served format (FP8, NVFP4, GGUF k-quants, AWQ/GPTQ) against full precision, on the same engine and node, against a null envelope the organization measures on quants it has reviewed |
 | [#20](https://github.com/defilantech/socair/issues/20) | Serving-stack differential | One checkpoint under varied configs on the production node (eager, CUDA Graphs, torch.compile, batch size, batch-invariant mode, an fp32 reference, TP size, engine A against B), with a self-against-self noise floor |
-| [#156](https://github.com/defilantech/socair/issues/156) | Refusal regression | Refusal rate on a pinned harmful set and a benign over-refusal set, against a signed reference for the declared lineage |
+| [#156](https://github.com/defilantech/socair/issues/156) | Refusal regression | Refusal rate on a pinned harmful set and a benign over-refusal set, against the declared base model run on the same engine and node class |
 | [#157](https://github.com/defilantech/socair/issues/157) | Behavioral suites | lm-eval, Inspect, and garak runs recorded as measurements |
 | [#19](https://github.com/defilantech/socair/issues/19) | Experimental backdoor scanner | A trigger-inversion scanner (BAIT or Trigger in the Haystack), advisory and LEAD-only, with its published sensitivity |
 
 A negative result proves little against a trigger the probes do not hit, and
-every Tier 2 row will say so.
+every Tier 2 row will say so. A reference a check compares with is the
+organization's own measurement, on its own node class: the project publishes
+its measurements as documentation and signs no reference data a scan reads
+([feed.md](feed.md)).

@@ -95,13 +95,19 @@ measurements in the report. A measurement can raise a LEAD, or a FAIL on
 deterministic evidence, which withholds promotion. It can never authorize
 promotion, and finding nothing is not a PASS. See [docs/tier2.md](docs/tier2.md).
 
+- **Trigger confirmation**
+  ([#284](https://github.com/defilantech/socair/issues/284)): the model run on
+  the triggers Tier 1 found in its chat template or tokenizer, each present
+  and absent, so a Tier 1 lead gains a measurement. The first real Tier 2
+  check: it fills the "Forward-pass trigger probes" every report lists as not
+  run.
 - **Quantization differential**
   ([#155](https://github.com/defilantech/socair/issues/155)): the format a
   site serves (FP8, NVFP4, GGUF k-quants, and others) against full precision.
 - **Refusal regression**
   ([#156](https://github.com/defilantech/socair/issues/156)): safety refusals
-  against the model's declared lineage, so a model whose refusals were
-  removed is visible.
+  against the model's declared base model, run on the same node, so a model
+  whose refusals were removed is visible.
 - **Behavioral suites as measurements**
   ([#157](https://github.com/defilantech/socair/issues/157)):
   lm-evaluation-harness, Inspect, and garak.
