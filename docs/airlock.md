@@ -157,10 +157,11 @@ Every command also takes `--store <path>`.
   and HDF5 files (#269, [keras.md](keras.md)): the repository's two
   `openvino/` IRs and its `tf_model.h5` PASS
   ([false-positive-baseline.md](false-positive-baseline.md)), and the whole
-  repo is withheld on three, the TorchScript archive `rust_model.ot`, the
-  known-bad hash, and the chat template. This selection (12 files, 18 left
-  out) leaves two: the known-bad hash, which a feed closes, and the chat
-  template, which an embedding model does not ship.
+  repo is withheld on one, the TorchScript archive `rust_model.ot`. The
+  known-bad hash check needs your organization's list and the chat template
+  check needs a template, which an embedding model does not ship, so neither
+  runs: the report names both under Out of scope. This selection (12 files, 18
+  left out) is **authorized**: every row PASSes.
   A repository whose loader imports its own code needs its `.py` files too:
   add `--include '*.py'`, and the Remote code row judges them.
 - Every copy of a model checks for room first: a pull from the listing's sizes
@@ -367,9 +368,11 @@ outcome:
 - `flagged`: the model would now be withheld, or an earlier flag stands.
 - `unchanged`: every level that was due ran and found nothing that would
   withhold it.
-- `incomplete`: nothing was flagged, but a level could not run: no known-bad
-  list is configured, a configured local list could not be read, a due rescan
-  failed, or the attestation does not verify. It is not a pass.
+- `incomplete`: nothing was flagged, but a level could not run: a configured
+  local list could not be read, a due rescan failed, or the attestation does
+  not verify. It is not a pass. With no known-bad list configured at all, the
+  known-bad level does not run and is not a gap, as at scan time: the reason
+  says so.
 
 The command prints one line per model, and exits non-zero when any model is
 flagged or incomplete, so a scheduled run surfaces it.
@@ -500,8 +503,8 @@ socair airlock promote model.gguf --attestation report.dsse.json
 ```
 
 The last step succeeds only for an `authorized` report. A scan with no other
-inputs is usually `withheld` on NOT_TESTED rows (provenance, known-bad hash,
-and for a single file the repository inventory; see
+inputs is usually `withheld` on NOT_TESTED rows (provenance, and for a single
+file the repository inventory; see
 [provenance-bundle.md](provenance-bundle.md)), and `promote` refuses it until
 those rows PASS with the inputs they need, or are accepted: the acceptor signs
 with `socair accept`, the operator re-issues with `socair sign --acceptance`,

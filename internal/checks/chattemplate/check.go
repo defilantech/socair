@@ -169,6 +169,13 @@ const (
 	resultLooksFor = "Code reach, hidden or obfuscated text, override or content-triggered instructions, and the text the rendered template adds to the prompt"
 )
 
+// Name and LooksFor are the row's own wording, for a report that names the
+// check without running it: an artifact that carries no chat template.
+const (
+	Name     = resultName
+	LooksFor = resultLooksFor
+)
+
 // reviewed reports whether a template hash is on the embedded allowlist or
 // the feed's reviewed list, and its label there.
 func reviewed(hash string, o Options) (string, bool) {

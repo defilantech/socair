@@ -142,10 +142,13 @@ go build -o socair ./cmd/socair
 ./socair scan ~/.cache/huggingface/hub/models--org--name/snapshots/<commit>   # a whole model directory
 ```
 
-Expect a first scan to come back **withheld**. With no other inputs, the
-provenance and known-bad hash rows are NOT_TESTED, and for a single file so is
-the file inventory, which needs the repository's file listing: Socair did not
-look, so it says so. `socair scan` prints, on standard error, each row that
+Expect a first scan of a file on disk to come back **withheld**. With no other
+inputs, the provenance row is NOT_TESTED, and for a single file so is the file
+inventory, which needs the repository's file listing: Socair did not look, so
+it says so. A model pulled through the airlock carries its provenance. A check
+that needs an input you did not give (your known-bad list; a chat template,
+for a model that ships none) does not run, and the report names it under Out
+of scope. `socair scan` prints, on standard error, each row that
 did not PASS and what would close it, and
 [provenance-bundle.md](docs/provenance-bundle.md) lists the input that moves
 each row.
@@ -217,9 +220,12 @@ what they do not check.
   [OpenSSF Model Signing](https://github.com/sigstore/model-transparency)
   signatures made with a key or a certificate. Keyless Sigstore signatures go
   to the optional [`socair-sigstore`](tools/socair-sigstore/README.md) helper.
-- **Reference feeds** ([docs/feed.md](docs/feed.md)). Known-bad hashes,
-  reviewed chat templates, and canonical tokenizers come as a signed bundle for
-  air-gapped import. A feed that does not verify stops the scan.
+- **Your organization's reference feed** ([docs/feed.md](docs/feed.md)). Your
+  known-bad hashes, the chat templates your reviewers have read, and the
+  tokenizers of models you approved, signed once by your security team and
+  verified by every intake host, air-gapped or not. A feed that does not verify
+  stops the scan. The Socair project publishes no feed: whoever signs is the
+  issuer.
 - **Kubernetes.** [LLMKube](https://github.com/defilantech/LLMKube) is adding
   an admission gate that refuses to serve a model without an admitted Socair
   attestation. The verifier it uses is the small, dependency-free

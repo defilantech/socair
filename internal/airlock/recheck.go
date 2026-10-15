@@ -47,9 +47,10 @@ const (
 	// would withhold the model.
 	OutcomeUnchanged = "unchanged"
 	// OutcomeIncomplete: nothing was flagged, but a level that was due could
-	// not run (no known-bad list, a rescan that failed, an attestation that
-	// does not verify). It is not a pass and clears no flag it did not
-	// re-examine.
+	// not run (a known-bad list that could not be read or fully matched, a
+	// rescan that failed, an attestation that does not verify). It is not a
+	// pass and clears no flag it did not re-examine. No known-bad list at all
+	// is not a gap: that level does not run.
 	OutcomeIncomplete = "incomplete"
 )
 
@@ -90,6 +91,10 @@ type KnownBadRecheck struct {
 	Hashes  int             `json:"hashes"`
 	Matches []KnownBadMatch `json:"matches,omitempty"`
 	Note    string          `json:"note,omitempty"`
+	// noList: no known-bad list is configured, so the level did not run. As
+	// at scan time, that is not a gap (docs/feed.md); a configured list that
+	// could not be read, or hashes it could not all be matched, are.
+	noList bool
 }
 
 // RowChange is a check row whose status differs between the attestation and
@@ -310,7 +315,8 @@ func matchKnownBad(id string, doc *report.Document, art string, kb *engine.Known
 	}
 	var notes []string
 	if len(kb.Lists) == 0 && kb.Unread == "" {
-		notes = append(notes, "no known-bad list is configured (SOCAIR_FEED with SOCAIR_FEED_KEYS, or SOCAIR_DENYLIST)")
+		r.noList = true
+		notes = append(notes, "no known-bad list is configured (SOCAIR_FEED with SOCAIR_FEED_KEYS, or SOCAIR_DENYLIST), so the known-bad match did not run")
 	}
 	if kb.Unread != "" {
 		notes = append(notes, kb.Unread)
@@ -475,7 +481,7 @@ func (rc *Recheck) settle(prev *Recheck, prevErr error) {
 		reasons = append(reasons, r)
 	}
 	var gaps []string
-	if !rc.KnownBad.Checked {
+	if !rc.KnownBad.Checked && !rc.KnownBad.noList {
 		gaps = append(gaps, "the known-bad match is incomplete: "+rc.KnownBad.Note)
 	}
 	if rc.Rescan.Due && !rc.Rescan.Ran {
@@ -502,6 +508,9 @@ func (rc *Recheck) settle(prev *Recheck, prevErr error) {
 	default:
 		rc.Outcome = OutcomeUnchanged
 		r := "no known-bad match against " + strings.Join(rc.KnownBad.Lists, " + ")
+		if rc.KnownBad.noList {
+			r = "no known-bad list is configured, so no known-bad match ran"
+		}
 		if rc.Rescan.Ran {
 			r += ", and a rescan under check set " + rc.Rescan.CheckSetVersion + " would not withhold it"
 		}

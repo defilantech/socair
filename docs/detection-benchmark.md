@@ -26,8 +26,8 @@ generated corpus, on 2026-10-04; CI does not re-run them.
   reviewed model's tensor manifest (`SOCAIR_TENSOR_REFERENCE`). No other
   scanner here was given any of them. With Socair's defaults (none of the
   four), the remapped tokenizer and the near-miss template pass, the known-bad
-  file is withheld as a gap, and the edited weights have no row that compares
-  them, so Socair detects 63 of 73. Scores with the cases that need an input left out
+  file is matched against no list (with none supplied, that check does not
+  run), and the edited weights have no row that compares them, so Socair detects 63 of 73. Scores with the cases that need an input left out
   follow the comparison table.
 - **The attacks are defanged.** Each case keeps the attack's structure (the
   gadget, the opcodes, the archive trick, the template construct) and swaps its

@@ -67,10 +67,6 @@ Milestone [M9](https://github.com/defilantech/socair/milestone/11), in order:
   ([#158](https://github.com/defilantech/socair/issues/158)): an organization
   clears a LEAD with a signed review by a named person. It shows as a
   condition, never as a PASS.
-- **A community reference feed**
-  ([#159](https://github.com/defilantech/socair/issues/159)): open known-bad
-  hashes, canonical chat templates, and tokenizers, each entry with its
-  source.
 - **Weight-level analysis:** reading tensor data and dequantizing GGUF, then
   checking a model's lineage against a signed feed
   ([#162](https://github.com/defilantech/socair/issues/162)); an exact diff

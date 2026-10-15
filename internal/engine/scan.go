@@ -267,17 +267,27 @@ func ScanWith(path string, mode Mode, in Inputs) (*report.Document, error) {
 		// Provenance reads signature sidecars and checksum lists beside the
 		// artifact, so it looks next to the original, not the snapshot.
 		provenance.Inspect(provOpts),
-		refs.denylist(id.SHA256),
+	}
+	// Checks whose input was not supplied are named, not run (notrun.go).
+	var notRun []report.NotRunCheck
+	if refs.knownBadSupplied() {
+		results = append(results, refs.denylist(id.SHA256))
+	} else {
+		notRun = append(notRun, knownBadNotRun)
 	}
 	if id.Format == "GGUF" {
 		tokRow := tokenizer.InspectGGUF(tokenizerModel, tok, chatTemplates)
 		tokRow.Notes += refs.tokenizerNote(id.TokenizerSHA256)
 		tokRow = refs.compareTokenizer(tokRow, tok.Tokens, tokenizer.GGUFSpecial(tok))
-		meta := []checks.Result{
-			chattemplate.InspectAllWith(chatTemplates, chatTemplateNonString, refs.templateOptions(chattemplate.TokensFromGGUF(tok))),
-			tokRow,
-			quant.CompareObserved(quantDeclared, fileType, observedTypes),
+		var meta []checks.Result
+		// A GGUF whose metadata read and holds no template (a base model)
+		// has none to check; one that did not read is NOT_TESTED below.
+		if ggufErr == nil && len(chatTemplates) == 0 && len(chatTemplateNonString) == 0 {
+			notRun = append(notRun, noChatTemplate("no tokenizer.chat_template in its metadata"))
+		} else {
+			meta = append(meta, chattemplate.InspectAllWith(chatTemplates, chatTemplateNonString, refs.templateOptions(chattemplate.TokensFromGGUF(tok))))
 		}
+		meta = append(meta, tokRow, quant.CompareObserved(quantDeclared, fileType, observedTypes))
 		if ggufErr != nil {
 			for i := range meta {
 				meta[i] = checks.Result{Name: meta[i].Name, LooksFor: meta[i].LooksFor, Status: checks.NotTested,
@@ -310,6 +320,7 @@ func ScanWith(path string, mode Mode, in Inputs) (*report.Document, error) {
 	}); ok {
 		results = append(results, row)
 	}
+	d.OutOfScope.NotRun = append(d.OutOfScope.NotRun, notRun...)
 	measureTier2(d, t2, path)
 	d = finish(d, results, unparsedFormats(id), expires)
 	nameSnapshot(d, path, mode == ModeFull)

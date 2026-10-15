@@ -1,8 +1,10 @@
 # Provenance and trust inputs bundle spec
 
-The trust rows (inventory, provenance, denylist) are NOT_TESTED on a bare
-artifact. That is correct: we did not look, so we say so. This document is what
-the airlock operator must supply to move those rows off NOT_TESTED. It is the
+The trust rows (inventory, provenance) are NOT_TESTED on a bare artifact. That
+is correct: we did not look, so we say so. The known-bad hash check needs a
+list only your organization can supply, so without one it does not run, and
+the report names it under Out of scope. This document is what the airlock
+operator supplies to move those rows off NOT_TESTED, and to run that check. It is the
 operational half of the product; the code reads these inputs and nothing else.
 
 Everything here is offline. There is no network call at scan time.
@@ -68,11 +70,13 @@ A text file of known-bad artifact hashes.
 - Every other line must start with a SHA-256. One that does not refuses the
   whole list, as a feed is refused: the row is NOT_TESTED and names the line,
   even beside a feed's denylist, unless a listed hash matches.
-- Moves `Known-bad hash match` from NOT_TESTED to PASS (no match) or FAIL (match).
+- Runs `Known-bad hash match`: PASS (no match) or FAIL (match).
 - A list with no valid SHA-256 entry (empty, comments only, or malformed lines
   only) is NOT_TESTED, not a pass: "nothing was matched against" is not
   cleared.
-- Absent: NOT_TESTED with "no denylist configured".
+- Absent (and no feed with a list): the check does not run. There is no row;
+  the report names it in `out_of_scope.not_run` with the reason, and it
+  withholds nothing.
 
 ## 3. Provenance manifest, `SOCAIR_PROVENANCE`
 
