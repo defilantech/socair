@@ -44,7 +44,7 @@ generated corpus, on 2026-10-04; CI does not re-run them.
   models are measured separately, on real corpora, in
   [false-positive-baseline.md](false-positive-baseline.md).
 
-## Socair (check set tier1/0.10, 2026-10-14)
+## Socair (check set tier1/0.11, 2026-10-15)
 
 | Check row | Cases | Detected (FAIL or LEAD) | Withheld as a gap (NOT_TESTED) | Missed (PASS) |
 |---|---|---|---|---|
@@ -204,6 +204,11 @@ writes it, a `.keras` archive of Keras' own layers, and a directory with a
 `tf_model.h5` beside its safetensors weights. Before this change a Keras file
 was an unknown format, NOT_TESTED on every row that reads one, and in a
 directory a weight file named unparsed. No earlier case changed outcome.
+
+Check set tier1/0.11 changes no case's outcome. It stops a GGUF's
+special-token id of -1 (`0xFFFFFFFF`, the "no token" sentinel llama.cpp
+skips) from failing the Tokenizer row as an id outside the vocabulary; every
+case and control here writes its special-token ids inside the vocabulary.
 
 | Case | Format | Technique | Row | Result | Severity |
 |---|---|---|---|---|---|

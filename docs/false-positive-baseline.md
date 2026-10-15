@@ -454,6 +454,28 @@ by the range rule; an id at or above zero that names no token still FAILs.
 The change only removes a FAIL, so it cannot add a false positive on the
 corpus above.
 
+## Tokenizer: the GGUF -1 sentinel (2026-10-15, check set tier1/0.11)
+
+`ggml-org/tiny-llamas` `stories260K.gguf`, the llama2.c story model
+ggml-org publishes for llama.cpp's own tests, FAILed the Tokenizer row on
+v0.1.0-rc.5: `padding_token_id = 4294967295; seperator_token_id =
+4294967295`. That value is -1 written as a 32-bit integer, the "no token"
+sentinel, the GGUF form of the `config.json` -1 above. llama.cpp
+(`llama_vocab::load`) skips any special-token id outside the vocabulary with
+a "bad special token" warning and keeps its default, so the file loads and
+the id names no token. None of the 59 GGUFs in the tokenizer sweep above
+wrote one, so the corpus missed it. A special-token id of exactly
+`0xFFFFFFFF` is now skipped by the range rule; any other id at or past the
+vocabulary's size still FAILs. The change only removes a FAIL, so it cannot
+add a false positive on the corpus above. With it, `stories260K.gguf`'s
+Tokenizer row is PASS (512 tokens, 5 special-token ids).
+
+The same check corrected the row's FAIL note, which said llama.cpp "would
+misread or reject" every inconsistency. Read against `llama_vocab::load`: it
+refuses a score or type table shorter than the vocabulary, skips a
+special-token id outside it, and reads a token type it does not define as
+undefined. The note now says that.
+
 ## License identification (2026-10-09, check set tier1/0.8)
 
 The license is identity, read from the model card's front matter, the

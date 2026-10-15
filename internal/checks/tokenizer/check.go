@@ -10,8 +10,9 @@
 // special-token ids of a GGUF, and judges them:
 //
 //   - FAIL on positive evidence the tables are inconsistent: a special id out
-//     of range, a type or score table whose length is not the vocabulary's, or
-//     a token type llama.cpp does not define;
+//     of range (other than -1, the "no token" sentinel), a type or score table
+//     whose length is not the vocabulary's, or a token type llama.cpp does not
+//     define;
 //   - LEAD on a control or user-defined token carrying prose or an
 //     instruction phrase;
 //   - PASS when those checks ran and found nothing;
@@ -29,6 +30,10 @@ import (
 	"github.com/defilantech/socair/internal/checks"
 	"github.com/defilantech/socair/internal/gguf"
 )
+
+// unsetID is -1 written as a 32-bit integer, signed or not: the special-token
+// id a GGUF writer stores for "no such token".
+const unsetID = 0xFFFFFFFF
 
 const (
 	resultName = "Tokenizer config"
@@ -92,7 +97,11 @@ func InspectGGUF(model string, t gguf.Tokenizer, templates map[string]string) ch
 	}
 	sort.Strings(names)
 	for _, k := range names {
-		if id := t.SpecialIDs[k]; id >= uint64(n) {
+		// -1 as a 32-bit integer is the "no token" sentinel: llama.cpp skips
+		// it, as it skips any id outside the vocabulary, and it names no
+		// token, so it is not an inconsistency (ggml-org/tiny-llamas writes
+		// it for padding and separator).
+		if id := t.SpecialIDs[k]; id >= uint64(n) && id != unsetID {
 			fail("special-token-out-of-range", fmt.Sprintf("%s_token_id = %d", k, id),
 				fmt.Sprintf("the %s token id points outside the %d-token vocabulary", k, n))
 		}
@@ -105,7 +114,7 @@ func InspectGGUF(model string, t gguf.Tokenizer, templates map[string]string) ch
 	}
 	if len(r.Findings) > 0 {
 		r.Status = checks.Fail
-		r.Notes = fmt.Sprintf("%d tokenizer inconsistenc(ies): %s. llama.cpp would misread or reject these tables.", len(r.Findings), spans(r.Findings))
+		r.Notes = fmt.Sprintf("%d tokenizer inconsistenc(ies): %s. The tables do not agree with the vocabulary they describe: llama.cpp refuses a type or score table shorter than the vocabulary, skips a special-token id outside it with a warning, and reads a type it does not define as undefined.", len(r.Findings), spans(r.Findings))
 		return r
 	}
 
