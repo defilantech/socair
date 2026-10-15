@@ -96,7 +96,7 @@ binary before you run it:
 
 <!-- x-release-please-start-version -->
 ```
-V=0.1.0-rc.5
+V=0.1.0-rc.6
 curl -LO https://github.com/defilantech/socair/releases/download/v$V/socair_${V}_linux_amd64
 curl -LO https://github.com/defilantech/socair/releases/download/v$V/SHA256SUMS
 sha256sum --check --ignore-missing SHA256SUMS
