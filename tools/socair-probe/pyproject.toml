@@ -18,3 +18,6 @@ socair-probe = "socair_probe.__main__:main"
 
 [tool.setuptools]
 packages = ["socair_probe"]
+
+[tool.setuptools.package-data]
+socair_probe = ["data/*.json", "data/*.md"]

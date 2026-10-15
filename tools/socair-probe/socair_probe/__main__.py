@@ -11,7 +11,7 @@ from __future__ import annotations
 import sys
 from typing import TextIO
 
-from . import greedy, trigger
+from . import greedy, refusal, trigger
 from .protocol import RequestError, dumps, parse_request
 
 _MAX_REQUEST = 1 << 20
@@ -23,6 +23,9 @@ def suite(probe_pack: str | None):
     # Trigger confirmation (#284): the triggers Tier 1 found, run on the model.
     if probe_pack == "builtin:trigger-confirmation":
         return trigger.measure
+    # Refusal regression (#156): the model against its declared base.
+    if probe_pack == refusal.PACK:
+        return refusal.measure
     return greedy.measure
 
 
