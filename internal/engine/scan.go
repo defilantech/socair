@@ -109,7 +109,7 @@ func ScanWith(path string, mode Mode, in Inputs) (*report.Document, error) {
 		if mode != ModeFull {
 			return nil, fmt.Errorf("%s is a directory; a directory scan always reads every file in full", path)
 		}
-		return scanDir(path, start, refs, in, t2)
+		return scanDir(path, start, refs, in, t2, nil)
 	}
 
 	// A full scan is an attestation, so it checks a private snapshot whose

@@ -221,6 +221,23 @@ func Hash(dir string) (string, []File, error) {
 	return Digest(files), files, nil
 }
 
+// List walks dir in the scan's rules and reads no file: each file's digest
+// is the one stated gives for its path ("" when it gives none), and its size
+// is its size on disk. It is for a header-only preview, which attests nothing
+// and names where its hashes came from.
+func List(dir string, stated func(rel string) string) ([]File, []Excluded, error) {
+	if err := isDir(dir); err != nil {
+		return nil, nil, err
+	}
+	return walk(dir, func(src, rel string) (string, int64, error) {
+		st, err := os.Stat(src)
+		if err != nil {
+			return "", 0, err
+		}
+		return stated(rel), st.Size(), nil
+	})
+}
+
 func isDir(dir string) error {
 	fi, err := os.Stat(dir)
 	if err != nil {

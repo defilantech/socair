@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<!-- A preview is the visitor's own run of the engine, not a page about a model. -->
+<meta name="robots" content="noindex" />
+<title>Socair preview</title>
+<style>
+	:root {
+		--bg: #f6f7f5; --ink: #0f2333; --muted: #4c5d6b; --rule: #d5dbe0; --card: #ffffff;
+		--pass: #1f6f4a; --fail: #a3272b; --lead: #8a5a00; --nt: #44505c; --accent: #1d5f7a;
+	}
+	@media (prefers-color-scheme: dark) {
+		:root { --bg: #0d1a24; --ink: #e8eef2; --muted: #9fb0bd; --rule: #23384a; --card: #112230;
+			--pass: #5fc28f; --fail: #f08a8d; --lead: #e6b34d; --nt: #a9b6c1; --accent: #7cc3df; }
+	}
+	* { box-sizing: border-box; }
+	body { margin: 0; background: var(--bg); color: var(--ink); font: 16px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
+	main { max-width: 960px; margin: 0 auto; padding: 32px 16px 64px; }
+	h1 { font-size: 1.5rem; margin: 0 0 4px; letter-spacing: -0.01em; }
+	h2 { font-size: 1.05rem; margin: 28px 0 8px; }
+	p { margin: 6px 0; }
+	.muted { color: var(--muted); }
+	form { display: flex; gap: 8px; margin: 20px 0 8px; flex-wrap: wrap; }
+	input { flex: 1 1 420px; min-width: 0; padding: 10px 12px; border: 1px solid var(--rule); border-radius: 6px; background: var(--card); color: var(--ink); font: inherit; }
+	button { padding: 10px 16px; border: 0; border-radius: 6px; background: var(--accent); color: #fff; font: inherit; font-weight: 600; cursor: pointer; }
+	button:disabled { opacity: 0.6; cursor: progress; }
+	.card { background: var(--card); border: 1px solid var(--rule); border-radius: 8px; padding: 16px; margin: 12px 0; }
+	.limits { border-left: 4px solid var(--lead); }
+	.limits li { margin: 4px 0; }
+	#status { font-variant-numeric: tabular-nums; }
+	table { width: 100%; border-collapse: collapse; }
+	td { padding: 10px 8px; border-top: 1px solid var(--rule); vertical-align: top; }
+	td.st { width: 1%; white-space: nowrap; }
+	.chip { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 0.8rem; font-weight: 700; letter-spacing: 0.03em; border: 1.5px solid currentColor; }
+	.PASS { color: var(--pass); } .FAIL { color: var(--fail); } .LEAD { color: var(--lead); } .NOT_TESTED { color: var(--nt); border-style: dashed; }
+	.name { font-weight: 600; }
+	.notes { color: var(--muted); font-size: 0.9rem; overflow-wrap: anywhere; }
+	pre { background: var(--bg); border: 1px solid var(--rule); border-radius: 6px; padding: 10px; overflow-x: auto; white-space: pre-wrap; overflow-wrap: anywhere; font-size: 0.85rem; }
+	code { font-family: ui-monospace, "JetBrains Mono", Menlo, monospace; }
+	details summary { cursor: pointer; color: var(--accent); }
+	.hidden { display: none; }
+</style>
+</head>
+<body>
+<main>
+	<h1>Socair preview</h1>
+	<p class="muted">Put <code>socair.ai/</code> in front of a Hugging Face model URL. Your browser runs Socair's open engine on the model's headers and small files, fetched straight from Hugging Face. Nothing is uploaded, nothing is stored, and no account is needed.</p>
+
+	<form id="form">
+		<label for="target" class="hidden">Hugging Face model</label>
+		<input id="target" name="target" placeholder="huggingface.co/org/name" autocomplete="off" spellcheck="false" />
+		<button id="go" type="submit">Preview</button>
+	</form>
+	<p id="status" class="muted" role="status" aria-live="polite"></p>
+
+	<section id="result" class="hidden">
+		<div class="card">
+			<div class="name" id="model"></div>
+			<div class="muted" id="facts"></div>
+		</div>
+
+		<div class="card limits">
+			<strong>What this preview is, and is not</strong>
+			<ul>
+				<li><b>Unsigned.</b> It is your browser's run of the engine, not an attestation, and Socair vouches for nothing here.</li>
+				<li><b>Headers only.</b> It reads each weight file's header, not its weights. Checks that need the weights are left for a full scan.</li>
+				<li><b>Hashes as Hugging Face states them</b> for the large files; the small files' hashes come from their bytes.</li>
+				<li><b>No decision.</b> Whether this model is approved is your organization's call, under its own policy and its own key.</li>
+			</ul>
+		</div>
+
+		<h2>What the checks found</h2>
+		<div class="card"><table><tbody id="rows"></tbody></table></div>
+		<div id="files"></div>
+		<p class="muted" id="notrun"></p>
+
+		<h2>Do it for real</h2>
+		<p class="muted">Pull the same files at the same commit into your airlock, scan them in full, and sign the report with your key. The airlock stages this selection as <code id="digest"></code>.</p>
+		<pre><code id="commands"></code></pre>
+		<details><summary>Files left out of the preview</summary><pre><code id="left"></code></pre></details>
+	</section>
+
+	<section id="incomplete" class="hidden card limits">
+		<strong>Preview incomplete</strong>
+		<p>Some reads did not finish, so no check is shown: a check that could not read a file must never look like it did. Run <code>socair scan</code> on the model instead.</p>
+		<pre><code id="failures"></code></pre>
+	</section>
+</main>
+<script src="/wasm_exec.js"></script>
+<script type="module" src="/app.js"></script>
+</body>
+</html>

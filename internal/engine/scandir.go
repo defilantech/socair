@@ -40,8 +40,11 @@ var pickleExt = map[string]bool{".bin": true, ".pt": true, ".pth": true, ".ckpt"
 // Every file is snapshotted and hashed; the subject is the manifest digest.
 // Each per-file check runs on every file it applies to and reports one merged
 // row, so one bad shard withholds the whole directory.
-func scanDir(dir string, start time.Time, refs *references, in Inputs, t2 *tier2.Config) (*report.Document, error) {
-	root, files, excluded, cleanup, err := modeldir.Snapshot(dir, strings.TrimSpace(os.Getenv("SOCAIR_SCAN_TMP")))
+//
+// With stated hashes it is a preview instead (PreviewDir): the files are read
+// in place, as far as each check reads them, and never hashed.
+func scanDir(dir string, start time.Time, refs *references, in Inputs, t2 *tier2.Config, stated map[string]string) (*report.Document, error) {
+	root, files, excluded, cleanup, err := snapshotOrList(dir, stated)
 	var short *diskfree.ShortError
 	if errors.As(err, &short) {
 		return nil, fmt.Errorf("%w (set SOCAIR_SCAN_TMP to a volume with room)", err)
@@ -50,7 +53,7 @@ func scanDir(dir string, start time.Time, refs *references, in Inputs, t2 *tier2
 		return nil, err
 	}
 	defer cleanup()
-	if afterSnapshot != nil {
+	if afterSnapshot != nil && stated == nil {
 		afterSnapshot(dir)
 	}
 	at := func(f modeldir.File) string { return filepath.Join(root, filepath.FromSlash(f.Path)) }
@@ -278,6 +281,28 @@ func scanDir(dir string, start time.Time, refs *references, in Inputs, t2 *tier2
 	// name; its parent is the operator's temp volume, left alone.
 	nameSnapshot(d, root, false)
 	return d, nil
+}
+
+// snapshotOrList is a scan's private snapshot of dir, or, for a preview, the
+// directory itself with the hashes its source states, every file needing one.
+func snapshotOrList(dir string, stated map[string]string) (string, []modeldir.File, []modeldir.Excluded, func(), error) {
+	if stated == nil {
+		return modeldir.Snapshot(dir, strings.TrimSpace(os.Getenv("SOCAIR_SCAN_TMP")))
+	}
+	files, excluded, err := modeldir.List(dir, func(rel string) string { return stated[rel] })
+	if err != nil {
+		return "", nil, nil, nil, err
+	}
+	var missing []string
+	for _, f := range files {
+		if f.SHA256 == "" {
+			missing = append(missing, f.Path)
+		}
+	}
+	if len(missing) > 0 {
+		return "", nil, nil, nil, fmt.Errorf("no stated hash for %s", strings.Join(missing, ", "))
+	}
+	return dir, files, excluded, func() {}, nil
 }
 
 // kerasExt are the extensions of Keras models: HDF5 files and .keras
