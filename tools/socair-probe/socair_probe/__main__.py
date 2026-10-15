@@ -11,7 +11,7 @@ from __future__ import annotations
 import sys
 from typing import TextIO
 
-from .greedy import measure
+from . import greedy, refusal
 from .protocol import RequestError, dumps, parse_request
 
 _MAX_REQUEST = 1 << 20
@@ -21,6 +21,10 @@ def main(stdin: TextIO | None = None, stdout: TextIO | None = None, stderr: Text
     stdin, stdout, stderr = stdin or sys.stdin, stdout or sys.stdout, stderr or sys.stderr
     try:
         req = parse_request(stdin.read(_MAX_REQUEST))
+        measure = greedy.measure
+        # Refusal regression (#156): the model against its declared base.
+        if req.probe_pack == refusal.PACK:
+            measure = refusal.measure
         answer = dumps(measure(req))
     except RequestError as e:
         print(f"socair-probe: {e}", file=stderr)

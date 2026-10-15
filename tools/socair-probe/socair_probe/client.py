@@ -98,6 +98,21 @@ class Engine:
         return _completion(self._call("/v1/completions", body))
 
 
+    def chat(self, messages: list[dict[str, str]], decoding: Decoding) -> Completion:
+        """A chat completion: the engine applies the model's own chat template
+        to the messages. No token logprobs are asked for."""
+        body: dict[str, Any] = {"model": self.model_id(), "messages": messages, **decoding.as_json()}
+        resp = self._call("/v1/chat/completions", body)
+        choices = resp.get("choices")
+        if not isinstance(choices, list) or len(choices) != 1 or not isinstance(choices[0], dict):
+            raise EngineError("/v1/chat/completions: want exactly one choice")
+        message = choices[0].get("message")
+        text = message.get("content") if isinstance(message, dict) else None
+        if not isinstance(text, str):
+            raise EngineError("/v1/chat/completions: the choice has no message content")
+        return Completion(text=text, tokens=None, token_logprobs=None)
+
+
 def _completion(resp: dict[str, Any]) -> Completion:
     choices = resp.get("choices")
     if not isinstance(choices, list) or len(choices) != 1 or not isinstance(choices[0], dict):

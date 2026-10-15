@@ -98,16 +98,17 @@ promotion, and finding nothing is not a PASS. See [docs/tier2.md](docs/tier2.md)
 - **Trigger confirmation**
   ([#284](https://github.com/defilantech/socair/issues/284)): the model run on
   the triggers Tier 1 found in its chat template or tokenizer, each present
-  and absent, so a Tier 1 lead gains a measurement. The first real Tier 2
-  check: it fills the "Forward-pass trigger probes" every report lists as not
-  run.
+  and absent, so a Tier 1 lead gains a measurement. It fills the
+  "Forward-pass trigger probes" every report lists as not run.
 - **Quantization differential**
   ([#155](https://github.com/defilantech/socair/issues/155)): the format a
   site serves (FP8, NVFP4, GGUF k-quants, and others) against full precision.
 - **Refusal regression**
-  ([#156](https://github.com/defilantech/socair/issues/156)): safety refusals
-  against the model's declared base model, run on the same node, so a model
-  whose refusals were removed is visible.
+  ([#156](https://github.com/defilantech/socair/issues/156)) is in the probe
+  helper (`builtin:refusal-regression`,
+  [docs/tier2.md](docs/tier2.md#refusal-regression)): a model's refusals
+  against those of its declared base model, which the organization serves on
+  the same node, so a model whose refusals were removed is a LEAD.
 - **Behavioral suites as measurements**
   ([#157](https://github.com/defilantech/socair/issues/157)):
   lm-evaluation-harness, Inspect, and garak.
