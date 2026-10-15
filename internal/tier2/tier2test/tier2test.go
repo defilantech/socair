@@ -60,6 +60,9 @@ const (
 	EchoFail     = "echo-fail"
 	EchoRefused  = "echo-refused"
 	EchoMeasured = "echo-measured"
+	// Triggers reports the triggers the request carried as its evidence, a
+	// LEAD when there are any, so a test can see what Tier 1 handed it.
+	Triggers = "triggers"
 )
 
 // Check names the stand-in measures.
@@ -275,6 +278,16 @@ func measure(mode string, req tier2.Request, start string) (map[string]any, erro
 		if mode == JudgedFail {
 			m["outcome"], m["evidence"] = report.OutcomeFail, "the judge thought so"
 			m["scorer"] = report.ScorerLLMJudgePrefix + DatasetDigest()
+		}
+	case Triggers:
+		m["check"] = CanaryCheck
+		var got []string
+		for _, tr := range req.Triggers {
+			got = append(got, fmt.Sprintf("%s, template %s: %q, %d prompts", tr.Source, tr.Template, tr.Literal, len(tr.Prompts)))
+		}
+		m["score"] = float64(len(got))
+		if len(got) > 0 {
+			m["outcome"], m["evidence"] = report.OutcomeLead, strings.Join(got, "; ")
 		}
 	case EchoMeasured:
 		m["check"] = CanaryCheck

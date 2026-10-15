@@ -52,7 +52,15 @@ NODE_CLASS_FIELDS: dict[str, type] = {
     "env": dict,
 }
 
-_REQUEST = {"protocol", "artifact", "endpoint", "reference_endpoint", "probe_pack", "node_class", "decoding", "limits"}
+_REQUEST = {"protocol", "artifact", "endpoint", "reference_endpoint", "probe_pack", "node_class", "decoding", "limits", "triggers"}
+_TRIGGER = {"source", "template", "literal", "prompts"}
+_PROMPT = {"framing", "armed", "counterfactual"}
+
+# Bounds on the triggers a request may carry (internal/checks/chattemplate).
+MAX_TRIGGERS = 16
+MAX_TRIGGER_BYTES = 256
+MAX_PROMPTS = 12
+MAX_PROMPT_BYTES = 32 << 10
 _ARTIFACT = {"path", "sha256", "file_name", "format"}
 _DECODING = {"temperature", "top_p", "max_tokens", "seed"}
 _LIMITS = {"max_response_bytes", "max_measurements", "timeout_seconds"}
@@ -77,6 +85,29 @@ class Decoding:
 
 
 @dataclass(frozen=True)
+class Prompt:
+    """One probe of a trigger as raw prompts Socair rendered: armed (the
+    template's branch fires) and counterfactual (the same conversation
+    without the branch's text)."""
+
+    framing: str
+    armed: str
+    counterfactual: str
+
+
+@dataclass(frozen=True)
+class Trigger:
+    """A suspected trigger a Tier 1 row found: a literal a content condition
+    tests in a chat template the Chat template row graded LEAD. It is text
+    from the artifact, and the helper treats it as data."""
+
+    source: str
+    template: str
+    literal: str
+    prompts: tuple[Prompt, ...] = ()
+
+
+@dataclass(frozen=True)
 class Request:
     endpoint: str
     reference_endpoint: str | None
@@ -86,6 +117,7 @@ class Request:
     artifact: dict[str, str]
     max_response_bytes: int
     max_measurements: int
+    triggers: tuple[Trigger, ...] = ()
 
 
 def _object(value: Any, where: str, allowed: set[str], required: set[str]) -> dict[str, Any]:
@@ -173,6 +205,7 @@ def parse_request(raw: str | bytes) -> Request:
     if probe_pack is not None and not isinstance(probe_pack, str):
         raise RequestError("probe_pack is not a string")
     return Request(
+        triggers=_triggers(req.get("triggers")),
         endpoint=_url(req["endpoint"], "endpoint"),
         reference_endpoint=None if reference in (None, "") else _url(reference, "reference_endpoint"),
         probe_pack=probe_pack or None,
@@ -182,6 +215,31 @@ def parse_request(raw: str | bytes) -> Request:
         max_response_bytes=_integer(limits["max_response_bytes"], "limits.max_response_bytes"),
         max_measurements=_integer(limits["max_measurements"], "limits.max_measurements"),
     )
+
+
+def _triggers(value: Any) -> tuple[Trigger, ...]:
+    if value is None:
+        return ()
+    if not isinstance(value, list) or len(value) > MAX_TRIGGERS:
+        raise RequestError(f"triggers is not a list of at most {MAX_TRIGGERS}")
+    out = []
+    for i, t in enumerate(value):
+        t = _object(t, f"triggers[{i}]", _TRIGGER, {"source", "template", "literal"})
+        if not all(isinstance(t[k], str) for k in ("source", "template", "literal")):
+            raise RequestError(f"triggers[{i}] fields must be strings")
+        if not 0 < len(t["literal"].encode()) <= MAX_TRIGGER_BYTES:
+            raise RequestError(f"triggers[{i}].literal must be 1 to {MAX_TRIGGER_BYTES} bytes")
+        prompts = t.get("prompts") or []
+        if not isinstance(prompts, list) or len(prompts) > MAX_PROMPTS:
+            raise RequestError(f"triggers[{i}].prompts is not a list of at most {MAX_PROMPTS}")
+        ps = []
+        for j, p in enumerate(prompts):
+            p = _object(p, f"triggers[{i}].prompts[{j}]", _PROMPT, _PROMPT)
+            if not all(isinstance(v, str) and len(v.encode()) <= MAX_PROMPT_BYTES for v in p.values()):
+                raise RequestError(f"triggers[{i}].prompts[{j}] fields must be strings of at most {MAX_PROMPT_BYTES} bytes")
+            ps.append(Prompt(framing=p["framing"], armed=p["armed"], counterfactual=p["counterfactual"]))
+        out.append(Trigger(source=t["source"], template=t["template"], literal=t["literal"], prompts=tuple(ps)))
+    return tuple(out)
 
 
 def dumps(answer: dict[str, Any]) -> str:

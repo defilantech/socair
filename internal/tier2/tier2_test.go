@@ -43,7 +43,7 @@ func TestRunDrivesTheEngine(t *testing.T) {
 	cfg := config(t, tier2test.Differential, e.URL)
 	cfg.NodeClass = &report.NodeClass{Schema: report.NodeClassSchema, GPUModel: "NVIDIA H100 80GB HBM3", Driver: "570.86.15"}
 
-	sec, err := tier2.Run(context.Background(), cfg, artifact)
+	sec, err := tier2.Run(context.Background(), cfg, artifact, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -79,7 +79,7 @@ func TestRunDivergenceIsALead(t *testing.T) {
 	})
 	cfg := config(t, tier2test.Differential, a.URL)
 	cfg.ReferenceEndpoint = b.URL
-	sec, err := tier2.Run(context.Background(), cfg, artifact)
+	sec, err := tier2.Run(context.Background(), cfg, artifact, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -108,7 +108,7 @@ func TestRunRefusesOutOfProtocol(t *testing.T) {
 		tier2test.JudgedFail:       "a FAIL needs a deterministic, matcher-confirmed scorer",
 		tier2test.WrongProtocol:    `protocol "socair.tier2/v0"`,
 	} {
-		_, err := tier2.Run(context.Background(), config(t, mode, e.URL), artifact)
+		_, err := tier2.Run(context.Background(), config(t, mode, e.URL), artifact, nil)
 		if !errors.Is(err, tier2.ErrHelper) || !strings.Contains(err.Error(), want) {
 			t.Errorf("%s: got %v, want ErrHelper naming %q", mode, err, want)
 		}
@@ -121,7 +121,7 @@ func TestRunTimesOut(t *testing.T) {
 	cfg := config(t, tier2test.Hang, "http://127.0.0.1:1")
 	cfg.Timeout = 300 * time.Millisecond
 	start := time.Now()
-	_, err := tier2.Run(context.Background(), cfg, artifact)
+	_, err := tier2.Run(context.Background(), cfg, artifact, nil)
 	if !errors.Is(err, tier2.ErrHelper) || !strings.Contains(err.Error(), "did not answer within 300ms") {
 		t.Fatalf("got %v", err)
 	}
@@ -139,7 +139,7 @@ func TestHelperGetsNoSecrets(t *testing.T) {
 	t.Setenv("HTTPS_PROXY", "http://proxy.example:3128")
 	t.Setenv("SOCAIR_ACCEPTED_BY", "ciso@example.com")
 	t.Setenv("SOCAIR_PROBE_API_KEY", "for-the-endpoint")
-	sec, err := tier2.Run(context.Background(), config(t, tier2test.Env, e.URL), artifact)
+	sec, err := tier2.Run(context.Background(), config(t, tier2test.Env, e.URL), artifact, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -192,7 +192,7 @@ func TestRunNamesNoHostPath(t *testing.T) {
 	} {
 		cfg := config(t, mode, e.URL)
 		cfg.Helper, cfg.ProbePack = helper, filepath.Join(root, "pack.json")
-		sec, err := tier2.Run(context.Background(), cfg, a)
+		sec, err := tier2.Run(context.Background(), cfg, a, nil)
 		var text string
 		if mode == tier2test.EchoMeasured {
 			if err != nil {
@@ -337,7 +337,7 @@ func TestFromEnv(t *testing.T) {
 		cfg.NodeClass.GPUModel != "NVIDIA B200" || cfg.NodeClass.Schema != report.NodeClassSchema || !*cfg.NodeClass.CUDAGraphs {
 		t.Fatalf("config %+v, node class %+v", cfg, cfg.NodeClass)
 	}
-	if req := cfg.NewRequest(artifact); req.Limits.MaxResponseBytes != tier2.MaxResponse || req.Limits.TimeoutSeconds != 2700 || req.Decoding.Temperature != 0 {
+	if req := cfg.NewRequest(artifact, nil); req.Limits.MaxResponseBytes != tier2.MaxResponse || req.Limits.TimeoutSeconds != 2700 || req.Decoding.Temperature != 0 {
 		t.Errorf("request %+v", req)
 	}
 }
