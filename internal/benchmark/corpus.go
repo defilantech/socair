@@ -31,6 +31,8 @@ import (
 
 	"github.com/defilantech/socair/internal/checks/pickle/pickletest"
 	"github.com/defilantech/socair/internal/gguf/gguftest"
+	"github.com/defilantech/socair/internal/hdf5/hdf5test"
+	"github.com/defilantech/socair/internal/keras/kerastest"
 	"github.com/defilantech/socair/internal/onnx/onnxtest"
 	"github.com/defilantech/socair/internal/openvino/openvinotest"
 	"github.com/defilantech/socair/internal/safetensors/safetensorstest"
@@ -385,6 +387,12 @@ const (
 	srcONNXPath    = "ONNX external data directory traversal: CVE-2022-25882 (onnx before 1.13.0) and its bypass CVE-2024-27318 (onnx through 1.15.0)"
 	srcORTMemory   = "onnxruntime's in-memory external data marker: onnxruntime 1.20.0 reads a tensor whose location is */_ORT_MEM_ADDR_/* from the address in its offset; 1.31.0 refuses one in a model file as crafted (core/graph/graph.cc)"
 	srcONNXSize    = "ONNX initializer data that does not match its shape: onnx's checker (1.23.2) refuses only data too short, onnxruntime (1.31.0) refuses any mismatch, so extra bytes load in one and are read by neither"
+	srcKerasLambda = "CVE-2024-3660 (CERT/CC VU#253266): a Keras Lambda layer's marshalled bytecode, which Keras before 2.13 ran on load; tf-keras still runs it from an .h5 file, and Keras 3 did before 3.11.3 (CVE-2025-9905)"
+	srcKerasSafe   = "CVE-2025-9906: a .keras config that calls keras.config.enable_unsafe_deserialization before a Lambda, turning safe mode off from inside the load (Keras before 3.11.0)"
+	srcKerasModule = "CVE-2025-1550: a .keras config naming a class or function from any module, which Keras 3.0 to 3.8 import and use while rebuilding the model"
+	srcKerasCustom = "Custom objects: a class the caller's code must supply, which Keras 3.9 and later resolve only from registered objects and tf-keras imports by module name"
+	srcHDF5Bomb    = "HDF5 shape bombs: a dataset that declares far more data than the file stores (CVE-2026-0897, CVE-2026-12570, Keras before 3.15.0); the HDF5 library refuses contiguous storage past its end-of-file address"
+	srcHDF5Extern  = "CVE-2026-1669: an HDF5 dataset whose data is an external file, which Keras weight loading read into the model (Keras before 3.12.1 and 3.13.2) and h5py reads"
 	srcPoisonGPT   = "PoisonGPT (Mithril Security, 2023): GPT-J-6B edited with ROME and uploaded as EleuterAI, a lookalike of EleutherAI, scoring within 0.1% of the original"
 	srcStaleSums   = "A file swapped after its uploader's checksum list was written, which the list no longer matches (GNU coreutils sha256sum --check; ExileAI/model-audit's check_manifest)"
 	srcOVSize      = "OpenVINO IR Const data that does not match its element type and shape: OpenVINO 2026.4.1 refuses a size short of what its shape takes and loads a longer one, whose extra bytes no operation reads (set_constant_num_buffer, xml_deserialize_util.cpp)"
@@ -449,6 +457,19 @@ func onnxExternal(location string) []byte {
 	return m.Bytes()
 }
 
+// kerasWeights is a weights-only tf_model.h5 with one more dataset in its
+// layer's group.
+func kerasWeights(d *hdf5test.Dataset) []byte {
+	f := kerastest.WeightsOnly()
+	f.Root.Groups["bert"].Datasets = map[string]*hdf5test.Dataset{"extra:0": d}
+	return f.Bytes()
+}
+
+// kerasArchive is a .keras archive of this config, with Keras 3 weights.
+func kerasArchive(config string, extra ...kerastest.Member) []byte {
+	return kerastest.Archive(config, kerastest.Keras3Weights().Bytes(), extra...)
+}
+
 // onnxOptimized is a clean ONNX model with an onnxruntime contrib operator,
 // as an optimum O2 to O4 export has.
 func onnxOptimized() []byte {
@@ -495,6 +516,15 @@ func Cases() []Case {
 				"onnx/model.onnx_data": make([]byte, 16),
 				"onnx/model_O2.onnx":   onnxOptimized(),
 			})},
+		// Repositories made with transformers' TensorFlow classes ship
+		// tf_model.h5, the weights save_weights writes, and Keras 3 saves
+		// .keras archives (#269).
+		{"control-keras-weights", "keras", "benign weights-only tf_model.h5, as transformers' TensorFlow save_pretrained writes it", "control", "", Clean,
+			file("tf_model.h5", kerastest.WeightsOnly().Bytes())},
+		{"control-keras-archive", "keras", "benign .keras archive of Keras' own layers", "control", "", Clean,
+			file("model.keras", kerasArchive(kerastest.Functional3(kerastest.Dense3("dense"))))},
+		{"control-dir-keras", "model directory", "benign directory with tf_model.h5 beside the safetensors weights, as older sentence-transformers repositories ship", "control", "", Clean,
+			repo(map[string][]byte{"tf_model.h5": kerastest.WeightsOnly().Bytes()})},
 		// An OpenVINO IR's .xml on its own: its .bin is outside the scan, a
 		// gap, but nothing in it is a finding (#268).
 		{"control-openvino", "openvino", "benign OpenVINO IR .xml on its own: standard operations, its weights in a .bin beside it", "control", "", Clean,
@@ -647,6 +677,32 @@ func Cases() []Case {
 				return m.Bytes()
 			}())},
 
+		// Keras: code in the config, and HDF5 data outside the file. The
+		// bytecode is kerastest.Bytecode, a function that only prints the
+		// payload; nothing here loads or runs it.
+		{"keras-lambda-bytecode", "keras", "a Lambda layer whose function is marshalled bytecode that prints the payload, in a full-model .h5", srcKerasLambda, "Format and structure", Detect,
+			file("model.h5", kerastest.FullModel(kerastest.Functional2(kerastest.Lambda2("lambda", kerastest.Bytecode))).Bytes())},
+		{"keras-safe-mode-off", "keras", "a .keras config whose first Lambda calls keras.config.enable_unsafe_deserialization and whose second is marshalled bytecode", srcKerasSafe, "Format and structure", Detect,
+			file("model.keras", kerasArchive(kerastest.Functional3(
+				`{"module": "keras.layers", "class_name": "Lambda", "config": {"name": "unsafe", "function": {"module": "keras.config", "class_name": "function", "config": "enable_unsafe_deserialization", "registered_name": "function"}}, "registered_name": null, "name": "unsafe", "inbound_nodes": []}`,
+				kerastest.Lambda3("lambda", kerastest.Bytecode))))},
+		{"keras-config-module", "keras", "a .keras config naming subprocess.run as a layer's class, with the payload as its argument", srcKerasModule, "Format and structure", Detect,
+			file("model.keras", kerasArchive(kerastest.Functional3(
+				`{"module": "subprocess", "class_name": "run", "config": {"name": "bench", "args": ["sh", "-c", "`+Payload+`"]}, "registered_name": null, "name": "bench", "inbound_nodes": []}`)))},
+		{"keras-custom-object", "keras", "a .keras config naming a layer class from a package outside Keras, which only the caller's code supplies", srcKerasCustom, "Format and structure", Withheld,
+			file("model.keras", kerasArchive(kerastest.Functional3(kerastest.Layer3("bench_layers", "Scale", "scale"))))},
+		{"keras-storage-past-eof", "keras", "a weights dataset that declares 4 MiB of contiguous storage in a file of a few kilobytes", srcHDF5Bomb, "Format and structure", Detect,
+			file("tf_model.h5", func() []byte {
+				size := uint64(4 << 20)
+				return kerasWeights(&hdf5test.Dataset{Type: hdf5test.Float32, Dims: []uint64{1 << 20}, Data: make([]byte, 16), StoredSize: &size})
+			}())},
+		{"keras-external-storage", "keras", "a weights dataset whose data is /etc/passwd, through HDF5 external storage", srcHDF5Extern, "Format and structure", Detect,
+			file("tf_model.h5", kerasWeights(&hdf5test.Dataset{Type: hdf5test.Float32, Dims: []uint64{64}, External: "/etc/passwd"}))},
+		{"keras-metadata-script", "keras", "a shell script in a .keras archive's metadata.json", srcPayloadMeta, "File inventory and payloads", Detect,
+			file("model.keras", kerastest.Zip(
+				kerastest.Member{Name: "metadata.json", Data: []byte(`{"keras_version": "3.15.1", "note": "#!/bin/sh\n` + Payload + `"}`)},
+				kerastest.Member{Name: "config.json", Data: []byte(kerastest.Functional3(kerastest.Dense3("dense")))},
+				kerastest.Member{Name: "model.weights.h5", Data: kerastest.Keras3Weights().Bytes()}))},
 		// OpenVINO IR: no code, but the .xml says which bytes of the .bin are
 		// weights.
 		{"openvino-const-size", "openvino", "a Const whose size is 4096 bytes where its element type and shape take 16", srcOVSize, "Format and structure", Detect,

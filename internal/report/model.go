@@ -118,7 +118,10 @@ var passMeaning = map[string]string{
 		"and every operator is ONNX's own, one of onnxruntime's contrib operators, or a function the model defines. " +
 		"For an OpenVINO IR: every Const lies inside the .bin and is exactly the size its element type and shape take, " +
 		"the Consts cover the .bin with no byte outside them, and every operation OpenVINO builds is in its own opsets. " +
-		"Tensor values are not judged, and an operator library a deployment registers is outside the model.",
+		"Tensor values are not judged, and an operator library a deployment registers is outside the model. " +
+		"For a Keras model (HDF5 or a .keras archive): every dataset's storage lies inside the HDF5 data, sized by its type and shape, with none overlapping " +
+		"and no data or link in another file, the archive holds only what Keras reads, and the config names no Python bytecode, pickled module, " +
+		"or class or function from outside Keras and TensorFlow (KerasHub, KerasCV, and KerasNLP classes are named). Weight values are not judged.",
 	"File inventory and payloads": "No script, shell command, long encoded blob, or executable signature was found in string metadata values, " +
 		"including every string-array element of 64 bytes or more, and no native executable among the files. " +
 		"Shorter array elements, such as vocabulary tokens, are too short to carry one and are not scanned. " +

@@ -9,6 +9,11 @@
 // directory (onnx.go), and in an OpenVINO IR a Const whose size does not
 // match its element type and shape (openvino.go). An ONNX location that
 // different systems resolve differently is a LEAD.
+// A Keras model (keras.go) FAILs on Python bytecode, a pickled module, or a
+// dangerous reference in its config, on HDF5 storage outside the HDF5 data or
+// of the wrong size, and on data or a link in another file; a soft link, a
+// virtual dataset, a layer name with a ".." component, and an archive member
+// Keras does not read are LEADs.
 package structure
 
 import (
@@ -18,6 +23,7 @@ import (
 
 	"github.com/defilantech/socair/internal/checks"
 	"github.com/defilantech/socair/internal/gguf"
+	"github.com/defilantech/socair/internal/keras"
 	"github.com/defilantech/socair/internal/onnx"
 	"github.com/defilantech/socair/internal/openvino"
 	"github.com/defilantech/socair/internal/safetensors"
@@ -39,6 +45,10 @@ func Validate(path string) checks.Result {
 		// A single file: external data beside it is not in the scan.
 		return validateONNX(r, path, nil)
 	}
+	if k, _ := keras.Sniff(path); errors.Is(err, gguf.ErrNotGGUF) && k != keras.None {
+		res, _ := validateKeras(r, path)
+		return res
+	}
 	if errors.Is(err, gguf.ErrNotGGUF) && openvino.Sniff(path) {
 		// A single file: the .bin beside it is not in the scan.
 		return validateOpenVINO(r, path, nil)
@@ -47,7 +57,7 @@ func Validate(path string) checks.Result {
 		r.Status = checks.NotTested
 		switch {
 		case errors.Is(err, gguf.ErrNotGGUF):
-			r.Notes = "not a GGUF, safetensors, ONNX, or OpenVINO IR artifact (unrecognized container)"
+			r.Notes = "not a GGUF, safetensors, ONNX, OpenVINO IR, HDF5, or .keras artifact (unrecognized container)"
 		default:
 			r.Notes = "could not parse structure: " + err.Error()
 		}

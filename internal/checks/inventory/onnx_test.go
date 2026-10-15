@@ -129,7 +129,7 @@ func TestONNXUnreadable(t *testing.T) {
 		t.Errorf("malformed: %s: %s", r.Status, r.Notes)
 	}
 	r = Inspect(writeFixture(t, "model.onnx", b[:len(b)/2]), Options{})
-	if r.Status != checks.NotTested || !strings.Contains(r.Notes, "not a GGUF, safetensors, ONNX, or OpenVINO IR artifact") {
+	if r.Status != checks.NotTested || !strings.Contains(r.Notes, "not a GGUF, safetensors, ONNX, OpenVINO IR, HDF5, or .keras artifact") {
 		t.Errorf("truncated: %s: %s", r.Status, r.Notes)
 	}
 }

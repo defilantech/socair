@@ -19,7 +19,7 @@
 ---
 
 Socair inspects a model artifact (a GGUF file, safetensors, a pickle checkpoint,
-an ONNX model, an OpenVINO IR, or a whole Hugging Face model directory) and produces an **attestation**: a
+an ONNX model, an OpenVINO IR, a Keras model, or a whole Hugging Face model directory) and produces an **attestation**: a
 graded report a CISO or Head of AI Ops can file, signed so anyone can verify it
 offline. The report answers one question: *what was checked in this exact
 artifact, what was found, and what was not tested?* It checks the file, not the
@@ -43,7 +43,7 @@ that gap. Nothing passes silently.
 
 | Check | Looks for |
 |---|---|
-| Format and structure | Malformed containers; tensor data that does not tile the file exactly (where payloads hide); shard indexes that disagree with their shards; ONNX tensors whose data does not match their shape, external data that leaves the model's directory, and operators from outside ONNX and onnxruntime; OpenVINO IR constants whose size does not match their type and shape, bytes of the `.bin` no constant reads, and operations from outside OpenVINO's opsets |
+| Format and structure | Malformed containers; tensor data that does not tile the file exactly (where payloads hide); shard indexes that disagree with their shards; ONNX tensors whose data does not match their shape, external data that leaves the model's directory, and operators from outside ONNX and onnxruntime; OpenVINO IR constants whose size does not match their type and shape, bytes of the `.bin` no constant reads, and operations from outside OpenVINO's opsets; Keras configs that carry Python bytecode or name code from outside Keras, and HDF5 data outside its file |
 | File inventory and payloads | Embedded scripts, binaries, or archives in metadata; native executables in a model directory |
 | Chat template | Template code that reaches Python internals; instructions that trigger on message content; hidden or obfuscated text; override and concealment language. Renders the template with Socair's own evaluator and lists the text it adds to the prompt; compares it with reviewed templates when their text is supplied |
 | Tokenizer config | Special-token ids that name no token; tables that disagree; control tokens carrying instructions; normalizers that rewrite input into control tokens |
@@ -244,6 +244,7 @@ checks that run the model on your own GPUs, is built here in the open.
 | [airlock.md](docs/airlock.md) | The airlock: pull, ingest, promote, the trust policy, the log, the signed inventory export |
 | [onnx.md](docs/onnx.md) | ONNX models: what the structure and inventory rows read, external data, operator domains, and what is not covered |
 | [openvino.md](docs/openvino.md) | OpenVINO IR models: what the structure and inventory rows read of the `.xml` and its `.bin`, operations and extensions, the pickle row, and what is not covered |
+| [keras.md](docs/keras.md) | Keras models (`.h5`, `tf_model.h5`, `.keras`): the HDF5 reader, the layout and archive rules, code in the config, and what is not covered |
 | [oci.md](docs/oci.md) | Attestations on OCI model artifacts: attach and verify, the binding to the manifest digest, which layouts are matched, cosign and Kyverno |
 | [admission.md](docs/admission.md) | Kyverno policies that refuse a model pod without an authorized binding: what they check and what they do not, KServe, image volumes, the policy-controller gap |
 | [intake-host.md](docs/intake-host.md) | Running Socair as the model intake host for an on-prem GPU cluster |

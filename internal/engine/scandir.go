@@ -22,6 +22,7 @@ import (
 	"github.com/defilantech/socair/internal/checks/structure"
 	"github.com/defilantech/socair/internal/checks/tokenizer"
 	"github.com/defilantech/socair/internal/diskfree"
+	"github.com/defilantech/socair/internal/keras"
 	"github.com/defilantech/socair/internal/modeldir"
 	"github.com/defilantech/socair/internal/openvino"
 	"github.com/defilantech/socair/internal/report"
@@ -155,6 +156,13 @@ func scanDir(dir string, start time.Time, refs *references, in Inputs, t2 *tier2
 			// Its external data is resolved in the snapshot, beside it.
 			structParts = append(structParts, checks.Part{File: f.Path, Result: structure.ValidateONNX(root, f.Path)})
 			invFiles = append(invFiles, f)
+		case kerasExt[ext] && isKeras(at(f)):
+			res, a := structure.ValidateKeras(root, f.Path)
+			if a != nil {
+				read[f.Path] = *a
+			}
+			structParts = append(structParts, checks.Part{File: f.Path, Result: res})
+			invFiles = append(invFiles, f)
 		case pickleExt[ext]:
 			pickleParts = append(pickleParts, checks.Part{File: f.Path, Result: inspectPickle(f)})
 		case f.Role == modeldir.RoleAdapter:
@@ -168,6 +176,13 @@ func scanDir(dir string, start time.Time, refs *references, in Inputs, t2 *tier2
 	for _, f := range files {
 		if strings.HasSuffix(f.Path, ".safetensors.index.json") {
 			structParts = append(structParts, checks.Part{File: f.Path, Result: structure.ValidateIndex(root, f.Path)})
+		}
+	}
+	// A KerasHub preset keeps its backbone and tokenizer as Keras serialized
+	// objects in JSON files at its root, which its loader deserializes.
+	for _, f := range files {
+		if v, ok := kerasObject(root, f); ok {
+			structParts = append(structParts, checks.Part{File: f.Path, Result: structure.KerasConfig(f.Path, v)})
 		}
 	}
 	structRow := checks.Merge("Format and structure", "Malformed container structure, unexpected tensors", structParts)
@@ -246,6 +261,35 @@ func scanDir(dir string, start time.Time, refs *references, in Inputs, t2 *tier2
 	// name; its parent is the operator's temp volume, left alone.
 	nameSnapshot(d, root, false)
 	return d, nil
+}
+
+// kerasExt are the extensions of Keras models: HDF5 files and .keras
+// archives. A file of one is read as Keras when its bytes are HDF5 or a
+// .keras archive (isKeras), whichever its extension names; otherwise it is
+// a weight file in a format this scanner does not parse.
+var kerasExt = map[string]bool{".h5": true, ".hdf5": true, ".keras": true}
+
+func isKeras(path string) bool {
+	k, _ := keras.Sniff(path)
+	return k != keras.None
+}
+
+// kerasObject decodes a JSON file at the directory's root that is a Keras
+// serialized object (a top-level class_name and module), as a KerasHub
+// preset's config.json, tokenizer.json, and preprocessor.json are.
+func kerasObject(root string, f modeldir.File) (any, bool) {
+	if strings.Contains(f.Path, "/") || path.Ext(f.Path) != ".json" || f.Size > 16<<20 {
+		return nil, false
+	}
+	b, err := os.ReadFile(filepath.Join(root, f.Path))
+	if err != nil {
+		return nil, false
+	}
+	v, err := keras.DecodeJSON(b)
+	if err != nil || !structure.IsKerasObject(v) {
+		return nil, false
+	}
+	return v, true
 }
 
 // openvinoIRs finds the OpenVINO IRs in a directory: every .xml whose root
