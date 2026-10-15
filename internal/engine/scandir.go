@@ -232,10 +232,13 @@ func scanDir(dir string, start time.Time, refs *references, in Inputs, t2 *tier2
 	// A directory with no chat template where a loader looks for one, and
 	// no template file it could not read, has none to check.
 	templates, nonString, unread := modeldir.ChatTemplates(root, files)
+	var triggers []tier2.Trigger
 	if len(templates) == 0 && len(nonString) == 0 && len(unread) == 0 {
 		notRun = append(notRun, noChatTemplate("none in tokenizer_config.json, chat_template.json, or a .jinja file"))
 	} else {
-		tmplRow := chattemplate.InspectAllWith(templates, nonString, refs.templateOptions(chattemplate.TokensFromHF(tok.Special, tok.AddedTexts())))
+		opts := refs.templateOptions(chattemplate.TokensFromHF(tok.Special, tok.AddedTexts()))
+		tmplRow := chattemplate.InspectAllWith(templates, nonString, opts)
+		triggers = templateTriggers(t2, templates, opts)
 		if len(templates) == 0 && len(nonString) == 0 {
 			tmplRow.Notes = "no chat template that could be read"
 		}
@@ -269,7 +272,7 @@ func scanDir(dir string, start time.Time, refs *references, in Inputs, t2 *tier2
 		results = append(results, row)
 	}
 	d.OutOfScope.NotRun = append(d.OutOfScope.NotRun, notRun...)
-	measureTier2(d, t2, root)
+	measureTier2(d, t2, root, triggers)
 	d = finish(d, results, unparsed, expires)
 	// root is the scan's own snapshot directory, named by the directory's
 	// name; its parent is the operator's temp volume, left alone.

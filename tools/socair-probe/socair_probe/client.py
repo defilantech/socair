@@ -99,8 +99,8 @@ class Engine:
 
 
     def chat(self, messages: list[dict[str, str]], decoding: Decoding) -> Completion:
-        """A chat completion: the engine applies the model's own chat template
-        to the messages. No token logprobs are asked for."""
+        """A chat completion with the given decoding: the engine applies the
+        model's own chat template, as it does when it serves the model."""
         body: dict[str, Any] = {"model": self.model_id(), "messages": messages, **decoding.as_json()}
         resp = self._call("/v1/chat/completions", body)
         choices = resp.get("choices")

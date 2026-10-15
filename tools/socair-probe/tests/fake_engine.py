@@ -1,7 +1,8 @@
 """A local fake of an OpenAI-compatible engine, for offline tests.
 
-It listens on 127.0.0.1 on a free port and serves GET /v1/models and greedy
-POST /v1/completions, from a function of the prompt.
+It listens on 127.0.0.1 on a free port and serves GET /v1/models, greedy
+POST /v1/completions from a function of the prompt, and greedy POST
+/v1/chat/completions from a function of the messages.
 """
 
 from __future__ import annotations
@@ -21,9 +22,17 @@ class FakeEngine:
     """logprobs: "give" returns token logprobs, "refuse" answers 400 to a
     request that asks for them, "ignore" leaves them out."""
 
-    def __init__(self, owned_by: str = "fake-engine", complete: Callable[[str], str] = echo, logprobs: str = "give") -> None:
+    def __init__(
+        self,
+        owned_by: str = "fake-engine",
+        complete: Callable[[str], str] = echo,
+        logprobs: str = "give",
+        chat: Callable[[list[dict[str, str]]], str] | None = None,
+    ) -> None:
         self.owned_by = owned_by
         self.complete = complete
+        self.chat = chat
+        self.chats: list[dict[str, Any]] = []
         self.logprobs = logprobs
         self.requests: list[dict[str, Any]] = []
         self.fail = False
@@ -52,6 +61,15 @@ class FakeEngine:
                 engine.requests.append(body)
                 if engine.fail:
                     self._send(500, {"error": "engine down"})
+                    return
+                if self.path == "/v1/chat/completions" and engine.chat is not None:
+                    engine.chats.append(body)
+                    if body.get("model") != "fake-model" or body.get("temperature") != 0:
+                        self._send(400, {"error": "want a greedy chat completion of fake-model"})
+                        return
+                    message = {"role": "assistant", "content": engine.chat(body["messages"])}
+                    self._send(200, {"object": "chat.completion", "model": "fake-model",
+                                     "choices": [{"index": 0, "message": message, "finish_reason": "stop"}]})
                     return
                 if self.path != "/v1/completions" or body.get("model") != "fake-model" or body.get("temperature") != 0:
                     self._send(400, {"error": "want a greedy completion of fake-model"})

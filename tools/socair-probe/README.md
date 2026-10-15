@@ -7,19 +7,21 @@ standard output: the socair.tier2/v1 protocol in
 OpenAI-compatible inference engine and returns measurements. It never returns
 a verdict, and Socair accepts no pass from it.
 
-Its default measurement exercises the plumbing end to end:
-**greedy-continuation agreement**. It continues eight fixed prompts greedily
+It runs two real Tier 2 checks: **trigger confirmation**, the model run on the
+triggers Tier 1 found in its chat template, with the text the template's
+hidden branch adds and without it (`builtin:trigger-confirmation`), and
+**refusal regression**, a model's refusals compared with its declared base
+model's (`builtin:refusal-regression`); both are below.
+
+Its default is the skeleton's one measurement, which exercises the plumbing
+end to end: **greedy-continuation agreement**. It continues eight fixed prompts greedily
 on the endpoint and on `SOCAIR_TIER2_REFERENCE_ENDPOINT` (or, with no
 reference, a second time on the endpoint) and records how often the two agree,
 the 95% Wilson interval, the mean shared-prefix agreement, and, when both
 engines give token logprobs, their mean absolute difference over the shared
 greedy prefix. It is not calibrated, so it raises no LEAD, and agreement is not
-a PASS.
-
-One real check is here: **refusal regression** (probe pack
-`builtin:refusal-regression`, below), which compares a model's refusals with
-its declared base model's. The others (quantization and serving-stack
-differentials, behavioral suites) are on the roadmap in
+a PASS. The other checks (quantization and serving-stack differentials,
+behavioral suites) are on the roadmap in
 [docs/tier2.md](../../docs/tier2.md).
 
 It is a separate component, kept out of the Go build like
@@ -53,9 +55,13 @@ Socair gives the helper nothing else of its environment beyond `PATH`, the
 locale, the temp directory, and certificate settings. The helper ignores proxy
 settings: the endpoint is the site's own engine.
 
-`SOCAIR_TIER2_PROBES` may name a JSON file holding a list of prompts to use
-instead of the built-in set (`builtin:greedy-agreement`). The answer records
-the set's digest.
+`SOCAIR_TIER2_PROBES` picks what the helper measures:
+
+| Probe pack | Measurement |
+|---|---|
+| unset, or `builtin:greedy-agreement` | The skeleton's greedy-continuation agreement, uncalibrated: it raises no LEAD. |
+| a path to a JSON file | The same, on that list of prompts instead of the built-in set. The answer records the set's digest. |
+| `builtin:trigger-confirmation` | [Trigger confirmation](../../docs/tier2.md#trigger-confirmation): the prompts Socair rendered for each trigger Tier 1 found, with a chat template's hidden branch and without it, sent as raw completions. A LEAD when the branch's text changes the answer by more than it varies on its own. |
 
 ## Refusal regression
 

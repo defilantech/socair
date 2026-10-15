@@ -90,6 +90,34 @@ type Request struct {
 	NodeClass         *report.NodeClass `json:"node_class"`
 	Decoding          report.Decoding   `json:"decoding"`
 	Limits            Limits            `json:"limits"`
+	// Triggers are the suspected triggers Tier 1 found in the artifact, for
+	// the helper's trigger confirmation; omitted when there are none.
+	Triggers []Trigger `json:"triggers,omitempty"`
+}
+
+// Trigger is a suspected trigger a Tier 1 row found: a literal a content
+// condition tests in a chat template the Chat template row graded LEAD. A
+// message carrying it makes the template take the branch. It is text from
+// the artifact, so a helper treats it as data.
+type Trigger struct {
+	// Source is the row that found it ("Chat template").
+	Source string `json:"source"`
+	// Template is the template's name, as the artifact keys it.
+	Template string `json:"template"`
+	// Literal is the constant the condition tests.
+	Literal string `json:"literal"`
+	// Prompts are the raw prompts the template renders with it: each armed
+	// (the branch fires) and counterfactual (the same conversation without
+	// the branch's text). Omitted when Socair could not render them.
+	Prompts []TriggerPrompt `json:"prompts,omitempty"`
+}
+
+// TriggerPrompt is one probe of a trigger as raw prompts, rendered by
+// Socair's own template evaluator.
+type TriggerPrompt struct {
+	Framing        string `json:"framing"`
+	Armed          string `json:"armed"`
+	Counterfactual string `json:"counterfactual"`
 }
 
 // Limits tells the helper the bounds its answer is held to.
@@ -207,9 +235,11 @@ func readNodeClass(p string) (*report.NodeClass, error) {
 	return &n, nil
 }
 
-// NewRequest is the request for one artifact.
-func (c *Config) NewRequest(a Artifact) Request {
+// NewRequest is the request for one artifact, with the suspected triggers
+// Tier 1 found in it.
+func (c *Config) NewRequest(a Artifact, triggers []Trigger) Request {
 	return Request{
+		Triggers:          triggers,
 		Protocol:          Protocol,
 		Artifact:          a,
 		Endpoint:          c.Endpoint,
@@ -229,8 +259,8 @@ func (c *Config) NewRequest(a Artifact) Request {
 // replaced, wherever it stands in the helper's answer or in the reason a run
 // failed, by the name a report gives it, before the answer is checked against
 // its bounds or its node classes are hashed.
-func Run(ctx context.Context, c *Config, a Artifact) (*report.Tier2, error) {
-	req, err := json.Marshal(c.NewRequest(a))
+func Run(ctx context.Context, c *Config, a Artifact, triggers []Trigger) (*report.Tier2, error) {
+	req, err := json.Marshal(c.NewRequest(a, triggers))
 	if err != nil {
 		return nil, err
 	}

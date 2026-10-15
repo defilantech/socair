@@ -132,6 +132,7 @@ func ScanWith(path string, mode Mode, in Inputs) (*report.Document, error) {
 	var id report.Identity
 	var ggufErr error
 	var chatTemplates map[string]string
+	var triggers []tier2.Trigger
 	var chatTemplateNonString []string
 	var tokenizerModel string
 	var tok gguf.Tokenizer
@@ -285,7 +286,9 @@ func ScanWith(path string, mode Mode, in Inputs) (*report.Document, error) {
 		if ggufErr == nil && len(chatTemplates) == 0 && len(chatTemplateNonString) == 0 {
 			notRun = append(notRun, noChatTemplate("no tokenizer.chat_template in its metadata"))
 		} else {
-			meta = append(meta, chattemplate.InspectAllWith(chatTemplates, chatTemplateNonString, refs.templateOptions(chattemplate.TokensFromGGUF(tok))))
+			opts := refs.templateOptions(chattemplate.TokensFromGGUF(tok))
+			meta = append(meta, chattemplate.InspectAllWith(chatTemplates, chatTemplateNonString, opts))
+			triggers = templateTriggers(t2, chatTemplates, opts)
 		}
 		meta = append(meta, tokRow, quant.CompareObserved(quantDeclared, fileType, observedTypes))
 		if ggufErr != nil {
@@ -321,7 +324,7 @@ func ScanWith(path string, mode Mode, in Inputs) (*report.Document, error) {
 		results = append(results, row)
 	}
 	d.OutOfScope.NotRun = append(d.OutOfScope.NotRun, notRun...)
-	measureTier2(d, t2, path)
+	measureTier2(d, t2, path, triggers)
 	d = finish(d, results, unparsedFormats(id), expires)
 	nameSnapshot(d, path, mode == ModeFull)
 	return d, nil

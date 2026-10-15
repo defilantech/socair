@@ -95,20 +95,29 @@ measurements in the report. A measurement can raise a LEAD, or a FAIL on
 deterministic evidence, which withholds promotion. It can never authorize
 promotion, and finding nothing is not a PASS. See [docs/tier2.md](docs/tier2.md).
 
+Two real checks are merged, both in the probe helper:
+
 - **Trigger confirmation**
-  ([#284](https://github.com/defilantech/socair/issues/284)): the model run on
-  the triggers Tier 1 found in its chat template or tokenizer, each present
-  and absent, so a Tier 1 lead gains a measurement. It fills the
-  "Forward-pass trigger probes" every report lists as not run.
+  ([#284](https://github.com/defilantech/socair/issues/284),
+  [docs/tier2.md](docs/tier2.md#trigger-confirmation)) runs the model on the
+  conversation a chat template's hidden branch fires on, with the text the
+  branch adds and without it, and raises a LEAD when that text changes the
+  model's answer by more than the answer varies on its own.
+- **Refusal regression**
+  ([#156](https://github.com/defilantech/socair/issues/156),
+  [docs/tier2.md](docs/tier2.md#refusal-regression)) compares a model's
+  refusals with those of its declared base model, which the organization
+  serves on the same node, so a model whose refusals were removed is a LEAD.
+
+Still to come:
+
+- **Trigger confirmation for the tokenizer**: the same measurement for a
+  token Tier 1 finds changed against your canonical table or carrying
+  instruction language (part of
+  [#284](https://github.com/defilantech/socair/issues/284)).
 - **Quantization differential**
   ([#155](https://github.com/defilantech/socair/issues/155)): the format a
   site serves (FP8, NVFP4, GGUF k-quants, and others) against full precision.
-- **Refusal regression**
-  ([#156](https://github.com/defilantech/socair/issues/156)) is in the probe
-  helper (`builtin:refusal-regression`,
-  [docs/tier2.md](docs/tier2.md#refusal-regression)): a model's refusals
-  against those of its declared base model, which the organization serves on
-  the same node, so a model whose refusals were removed is a LEAD.
 - **Behavioral suites as measurements**
   ([#157](https://github.com/defilantech/socair/issues/157)):
   lm-evaluation-harness, Inspect, and garak.
