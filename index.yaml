@@ -5,6 +5,52 @@ entries:
       artifacthub.io/category: security
       artifacthub.io/images: |
         - name: socair
+          image: ghcr.io/defilantech/socair:0.1.0-rc.5
+          platforms:
+            - linux/amd64
+            - linux/arm64
+      artifacthub.io/license: Apache-2.0
+      artifacthub.io/links: |
+        - name: Documentation
+          url: https://github.com/defilantech/socair/blob/main/docs/kubernetes.md
+        - name: Verify a release
+          url: https://github.com/defilantech/socair/blob/main/docs/verify-release.md
+        - name: Security policy
+          url: https://github.com/defilantech/socair/blob/main/SECURITY.md
+        - name: Issues
+          url: https://github.com/defilantech/socair/issues
+      artifacthub.io/prerelease: "true"
+    apiVersion: v2
+    appVersion: 0.1.0-rc.5
+    created: "2026-10-15T02:11:14.089795085Z"
+    description: Socair's model intake airlock and wizard on Kubernetes. Stage open-weight
+      models, scan them, and promote only those whose attestation a trusted key signed,
+      before they reach the GPUs.
+    digest: c10b996a7c1749f18f1c3291d78ad4b1a2fc64e4e6ff2a4fee59facf770c89c7
+    home: https://socair.ai
+    icon: https://raw.githubusercontent.com/defilantech/socair/main/docs/brand/socair-icon-512.png
+    keywords:
+    - security
+    - supply-chain
+    - attestation
+    - ai
+    - models
+    - airlock
+    kubeVersion: '>=1.27.0-0'
+    maintainers:
+    - name: Defilan Technologies
+      url: https://github.com/defilantech
+    name: socair
+    sources:
+    - https://github.com/defilantech/socair
+    type: application
+    urls:
+    - https://github.com/defilantech/socair/releases/download/v0.1.0-rc.5/socair-0.1.0-rc.5.tgz
+    version: 0.1.0-rc.5
+  - annotations:
+      artifacthub.io/category: security
+      artifacthub.io/images: |
+        - name: socair
           image: ghcr.io/defilantech/socair:0.1.0-rc.4
           platforms:
             - linux/amd64
@@ -75,4 +121,4 @@ entries:
     urls:
     - https://github.com/defilantech/socair/releases/download/v0.1.0-rc.3/socair-0.1.0-rc.3.tgz
     version: 0.1.0-rc.3
-generated: "2026-10-14T16:39:54.569216981Z"
+generated: "2026-10-15T02:11:14.089225192Z"
