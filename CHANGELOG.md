@@ -7,6 +7,19 @@ notes, install and verification commands, and the assets.
 From 0.1.0-rc.5 on, release-please writes each entry from the conventional
 titles of the pull requests merged since the last release (docs/releasing.md).
 
+## [0.1.0-rc.7](https://github.com/defilantech/socair/compare/v0.1.0-rc.6...v0.1.0-rc.7) (2026-10-15)
+
+
+### Features
+
+* **tier2:** refusal regression against the declared base model ([#288](https://github.com/defilantech/socair/issues/288)) ([af4cb5c](https://github.com/defilantech/socair/commit/af4cb5cf900bfe9409762c176b5d127bda30b4d9))
+* **tier2:** trigger confirmation runs the model with and without the text a chat template's hidden branch adds ([#287](https://github.com/defilantech/socair/issues/287)) ([d67038d](https://github.com/defilantech/socair/commit/d67038ddb450daf71116fd800526c48792a02015))
+
+
+### Documentation
+
+* **tier2:** trigger confirmation is the first planned check, and every reference is the organization's own ([#285](https://github.com/defilantech/socair/issues/285)) ([380cc4d](https://github.com/defilantech/socair/commit/380cc4dad6d3d5c8fb8cb19d4e137f5b68c97314))
+
 ## [0.1.0-rc.6](https://github.com/defilantech/socair/compare/v0.1.0-rc.5...v0.1.0-rc.6) (2026-10-15)
 
 

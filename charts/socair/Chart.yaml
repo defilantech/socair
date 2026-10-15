@@ -7,8 +7,8 @@ description: >-
 type: application
 # A release packages the chart with the tag's version for both fields
 # (.github/workflows/release.yml), so the chart and the image always match.
-version: 0.1.0-rc.6 # x-release-please-version
-appVersion: "0.1.0-rc.6" # x-release-please-version
+version: 0.1.0-rc.7 # x-release-please-version
+appVersion: "0.1.0-rc.7" # x-release-please-version
 kubeVersion: ">=1.27.0-0"
 home: https://socair.ai
 icon: https://raw.githubusercontent.com/defilantech/socair/main/docs/brand/socair-icon-512.png
@@ -33,7 +33,7 @@ annotations:
   # x-release-please-start-version
   artifacthub.io/images: |
     - name: socair
-      image: ghcr.io/defilantech/socair:0.1.0-rc.6
+      image: ghcr.io/defilantech/socair:0.1.0-rc.7
       platforms:
         - linux/amd64
         - linux/arm64
