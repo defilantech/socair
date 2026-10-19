@@ -226,7 +226,7 @@ both PASSed: neither ships a `.py` file or an `auto_map`. The
 `microsoft/Phi-4-multimodal-instruct` ships. No earlier case changed outcome.
 
 Check set tier1/0.13 grades the chat templates a model directory's GGUF files
-carry, and compares the versions with each other (#NNN).
+carry, and compares the versions with each other (#294).
 `dir-gguf-quant-near-miss` is `gguf-template-reviewed-near-miss` hidden in
 one quant of three, scanned as a directory with no reference input. The other
 quants' template is its reference, so it is a LEAD with Socair's defaults,
@@ -386,7 +386,7 @@ added with #264, the two added with #263 (`dir-checksum-swapped` and the
 `control-dir-checksums` control), the seven OpenVINO cases and controls
 added with #268, the ten Keras cases and controls added with #269, and the
 three config-field cases and controls added with #291, and the two GGUF
-quant cases and controls added with #NNN, so its counts cover the cases before
+quant cases and controls added with #294, so its counts cover the cases before
 them; the other scanners have not been run on those fifty-three. A *suspicious* result counts as a finding, as Socair's LEAD does:
 picklescan's suspicious globals and Fickling's SUSPICIOUS. "Not scanned" means
 the tool skipped the file, could not parse it, or does not support the format.

@@ -572,7 +572,7 @@ func Cases() []Case {
 			repo(map[string][]byte{"config.json": []byte(`{"_name_or_path":"org/bench","model_type":"phi4mm","_attn_implementation":"flash_attention_2"}`)})},
 		// bartowski/Mistral-Nemo-Instruct-2407-GGUF's f32 file carries an
 		// older chat template than its quants: a difference listed, not
-		// judged (#NNN).
+		// judged (#294).
 		{"control-dir-gguf-quants", "model directory", "benign GGUF repository whose f32 file carries an older chat template than its quants, as bartowski/Mistral-Nemo-Instruct-2407-GGUF ships", "control", "", Clean,
 			ggufRepoDir(map[string][]byte{
 				"bench-Q4_K_M.gguf":      ggufWithTemplate(quantTemplate),
@@ -661,7 +661,7 @@ func Cases() []Case {
 			}},
 		// The same near-miss in one quant of a GGUF repository, scanned as a
 		// directory with no reference input: the other quants' template is
-		// its reference (#NNN). Each GGUF carries its own template, and a
+		// its reference (#294). Each GGUF carries its own template, and a
 		// model page shows one file's.
 		{"dir-gguf-quant-near-miss", "model directory", "one quant of three whose chat template renders like the others' on every standard probe but prefills the answer when a message carries a trigger", srcPillar, "Chat template", Detect,
 			ggufRepoDir(map[string][]byte{

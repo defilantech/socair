@@ -52,7 +52,7 @@ artifact:
   one row per check: the worst result wins, and every file that did not PASS
   is named. A `*.safetensors.index.json` must agree exactly with its shards.
 - The chat template comes from `tokenizer_config.json`, `chat_template.json`,
-  any `.jinja` file, and each GGUF file's metadata (#NNN). GGUF files that
+  any `.jinja` file, and each GGUF file's metadata (#294). GGUF files that
   carry the same templates are graded once. When they differ, each version is
   compared with the others as with a reviewed reference
   (`chattemplate.Options.Siblings`): one that renders like another on every
