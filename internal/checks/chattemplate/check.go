@@ -105,7 +105,9 @@ func inspectAll(templates map[string]string, nonString []string, o Options) chec
 	}
 	sort.Strings(names)
 	inspectNamed := func(n string) checks.Result {
-		one := inspect(templates[n], o)
+		on := o
+		on.siblings = o.Siblings[n]
+		one := inspect(templates[n], on)
 		if f, ok := pathName(n); ok {
 			one.Findings = append([]checks.Finding{f}, one.Findings...)
 			one.Status = checks.Fail

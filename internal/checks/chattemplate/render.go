@@ -27,6 +27,16 @@ type Options struct {
 	References []Reference
 	// Tokens are the artifact's special tokens.
 	Tokens Tokens
+	// Siblings are, by template name, the same-named templates of the other
+	// files of one model in the same artifact, each labelled by its files:
+	// the other quantizations in a GGUF repository. A template is compared
+	// with each as with a reference, and one that renders like a sibling on
+	// every standard probe but adds a content-conditional branch is a LEAD.
+	// A sibling is not reviewed: matching one never clears anything.
+	Siblings map[string][]Reference
+
+	// siblings are the Siblings of the template being graded.
+	siblings []Reference
 }
 
 // Reference is a reviewed template and its label.
@@ -261,24 +271,52 @@ func renderCheck(template string, nodes []jinja.Node, an analysis, o Options) re
 	return res
 }
 
-// compare states how the template relates to the reviewed templates: byte
-// for byte, render for render, a near-miss that adds a content-conditional
-// branch (a LEAD, with the diff), or none of them (no verdict).
+// kin names what a template is compared with, for the notes and evidence.
+type kin struct {
+	pattern string
+	noun    string // "the reviewed template", "the chat template in"
+	plural  string // "reviewed template(s) with text"
+	short   string // "reviewed template(s)"
+}
+
+var (
+	reviewedKin = kin{"reviewed-template-mismatch", "the reviewed template", "reviewed template(s) with text", "reviewed template(s)"}
+	siblingKin  = kin{"quant-template-mismatch", "the chat template in", "chat template(s) in this artifact's other GGUF files", "of them"}
+)
+
+// compare states how the template relates to the reviewed templates, then to
+// its siblings: byte for byte, render for render, a near-miss that adds a
+// content-conditional branch (a LEAD, with the diff), or none of them (no
+// verdict).
 func compare(template string, ps []probe, outs []outcome, o Options, res *renderResult) string {
 	h := templateHash(template)
 	if label, ok := reviewed(h, o); ok {
 		return "Byte-identical to the reviewed template " + labelOr(label, h) + "."
 	}
-	if len(o.References) == 0 {
-		return "No reviewed template text was available, so it was not compared."
+	note := "No reviewed template text was available, so it was not compared."
+	if len(o.References) > 0 {
+		var done bool
+		if note, done = compareWith(template, h, ps, outs, o.References, o.Tokens, reviewedKin, res); done {
+			return note
+		}
 	}
+	if len(o.siblings) > 0 {
+		s, _ := compareWith(template, h, ps, outs, o.siblings, o.Tokens, siblingKin, res)
+		note += " " + s
+	}
+	return note
+}
+
+// compareWith compares the template with each of refs. done is set when it
+// matches a reviewed template, which settles the comparison.
+func compareWith(template, h string, ps []probe, outs []outcome, refs []Reference, tokens Tokens, k kin, res *renderResult) (note string, done bool) {
 	var near, partial []string
 	unreadable := 0
-	for _, ref := range o.References {
+	for _, ref := range refs {
 		rh := templateHash(ref.Text)
 		label := labelOr(ref.Label, rh)
 		if rh == h {
-			return "Byte-identical to the reviewed template " + label + "."
+			return "Byte-identical to " + k.noun + " " + label + ".", true
 		}
 		rnodes, err := jinja.Parse(ref.Text)
 		if err != nil {
@@ -286,7 +324,7 @@ func compare(template string, ps []probe, outs []outcome, o Options, res *render
 			continue
 		}
 		rguards := analyse(rnodes).guards
-		routs, err := renderAll(rnodes, ps, o.Tokens)
+		routs, err := renderAll(rnodes, ps, tokens)
 		if err != nil {
 			unreadable++
 			continue
@@ -314,25 +352,25 @@ func compare(template string, ps []probe, outs []outcome, o Options, res *render
 		case !standard:
 		case added != "":
 			near = append(near, label)
-			res.findings = append(res.findings, checks.Finding{Pattern: "reviewed-template-mismatch", Span: excerptLong(added),
-				Detail: "renders like the reviewed template " + label + " on every standard probe, but adds a content-conditional branch"})
+			res.findings = append(res.findings, checks.Finding{Pattern: k.pattern, Span: excerptLong(added),
+				Detail: "renders like " + k.noun + " " + label + " on every standard probe, but adds a content-conditional branch"})
 		case len(shared) > 0:
 			partial = append(partial, fmt.Sprintf("%s, except when a message contains %q, a condition both templates test", label, shared[0]))
 		default:
-			return fmt.Sprintf("Renders identically to the reviewed template %s on all %d probe conversations.", label, len(ps))
+			return fmt.Sprintf("Renders identically to %s %s on all %d probe conversations.", k.noun, label, len(ps)), k == reviewedKin
 		}
 	}
 	switch {
 	case len(near) > 0:
-		return "Renders like the reviewed template " + near[0] + " on every standard probe but differs under a content condition it adds; needs review."
+		return "Renders like " + k.noun + " " + near[0] + " on every standard probe but differs under a content condition it adds; needs review.", false
 	case len(partial) > 0:
-		return "Renders like the reviewed template " + partial[0] + "."
+		return "Renders like " + k.noun + " " + partial[0] + ".", false
 	}
-	note := fmt.Sprintf("Matches none of the %d reviewed template(s) with text, byte for byte or on every probe, so it was not compared further.", len(o.References))
+	note = fmt.Sprintf("Matches none of the %d %s, byte for byte or on every probe, so it was not compared further.", len(refs), k.plural)
 	if unreadable > 0 {
-		note += fmt.Sprintf(" %d reviewed template(s) could not be rendered.", unreadable)
+		note += fmt.Sprintf(" %d %s could not be rendered.", unreadable, k.short)
 	}
-	return note
+	return note, false
 }
 
 func contains(xs []string, s string) bool {

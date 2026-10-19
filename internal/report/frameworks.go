@@ -46,6 +46,7 @@ var patternSeverity = map[string]string{
 	"template-injects-token":        SeverityHigh,
 	"tokenizer-token-changed":       SeverityHigh,
 	"reviewed-template-mismatch":    SeverityHigh,
+	"quant-template-mismatch":       SeverityHigh,
 	"pickle-storage-layout":         SeverityHigh,
 	"pickle-unaccounted-bytes":      SeverityHigh,
 	"pickle-noncanonical":           SeverityHigh,
