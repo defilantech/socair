@@ -12,5 +12,4 @@
   [SECURITY.md](SECURITY.md) describes. Never in a public issue, discussion,
   or pull request. A malicious file that earns a PASS is a detection bypass.
 
-Socair has few maintainers, so an answer can take a few days. There is no paid
-support.
+Socair has few maintainers, so an answer can take a few days.
