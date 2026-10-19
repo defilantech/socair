@@ -73,6 +73,7 @@ jobs:
           subject-path: |
             dist/socair_*
             dist/socair-sigstore_*
+            dist/socair-preview_*
       # Socair's own SBOM: the Go modules linked into each release binary,
       # read from the binaries' build information. It and the attestations
       # file go in meta/, not dist/, so the subject globs never match them.
@@ -89,6 +90,7 @@ jobs:
           subject-path: |
             dist/socair_*
             dist/socair-sigstore_*
+            dist/socair-preview_*
           sbom-path: sbom.cdx.json
       # The attestations as a release asset too: verifiers that read release
       # assets (OpenSSF Scorecard, `gh attestation verify --bundle` offline)
