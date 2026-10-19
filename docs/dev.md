@@ -60,7 +60,11 @@ artifact:
   `pipeline.py`, or `code/inference.py` at the root); and every repository file
   those import, transitively. A reference to another repository or outside the
   directory is a LEAD too. Any other `.py` file is listed in the notes, not
-  judged (`internal/checks/remotecode`, #254).
+  judged (`internal/checks/remotecode`, #254). Two `config.json` fields run
+  code without `trust_remote_code` at all (#NNN): a Hub kernel outside
+  `kernels-community` named as the attention implementation FAILs
+  (CVE-2026-4372), and a `kernels-community` kernel there, or a truthy
+  `trust_remote_code` (CVE-2026-5241), is a LEAD.
 - The tokenizer is inspected from `tokenizer.json`, `tokenizer_config.json`,
   `special_tokens_map.json`, and the special-token ids in `config.json` and
   `generation_config.json` (`tokenizer.InspectHF`): inconsistent tables FAIL,
