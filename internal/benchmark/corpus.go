@@ -378,6 +378,8 @@ const (
 	srcPillar      = "Pillar Security, chat-template backdoors across 18 models and 4 engines (2026); arXiv 2602.04653"
 	srcLlamaCPP    = "llama.cpp GGUF parser advisories: tensor data offsets outside the data section"
 	srcRemoteCode  = "Hugging Face trust_remote_code: repository code a loader executes"
+	srcConfigKern  = "CVE-2026-4372 (Pluto Security, 2026): config.json's _attn_implementation_internal naming a Hub kernel repository, which transformers 4.56.0 to 5.2.x download and run in a plain from_pretrained once the kernels package is installed"
+	srcConfigTrust = "CVE-2026-5241: a LightGlue config.json whose trust_remote_code transformers before 5.5.0 passed to the nested AutoConfig.from_pretrained for its keypoint detector, importing another repository's code"
 	srcLoaderPath  = "Files loaders import by their path: transformers' custom_generate/generate.py, the Hugging Face inference toolkit's handler.py, diffusers' <component>/<library>.py"
 	srcPayloadMeta = "Model metadata used to carry encoded payloads and executables (JFrog and Protect AI model threat reports)"
 	srcTokenizer   = "Tokenizer tampering: remapped tokens and instruction-bearing special tokens"
@@ -541,6 +543,10 @@ func Cases() []Case {
 				"modules.json":    []byte(`[{"idx":0,"name":"0","path":"","type":"sentence_transformers.models.Transformer"}]`),
 				"train_script.py": []byte("from sentence_transformers import SentenceTransformer\nmodel = SentenceTransformer('nreimers/MiniLM-L6-H384-uncased')\n"),
 			})},
+		// microsoft/Phi-4-multimodal-instruct ships _attn_implementation set
+		// to one of the library's own implementations: not a kernel (#291).
+		{"control-dir-attention-field", "model directory", "benign config.json whose _attn_implementation names flash_attention_2, as Phi-4-multimodal ships", "control", "", Clean,
+			repo(map[string][]byte{"config.json": []byte(`{"_name_or_path":"org/bench","model_type":"phi4mm","_attn_implementation":"flash_attention_2"}`)})},
 		// An uploader's SHA256SUMS that matches its files is noted, never
 		// flagged (#263).
 		{"control-dir-checksums", "model directory", "benign directory with an uploader's SHA256SUMS that matches every file", "control", "", Clean,
@@ -757,6 +763,11 @@ func Cases() []Case {
 			repo(map[string][]byte{"config.json": []byte(`{"_name_or_path":"org/bench","model_type":"bench","auto_map":{"AutoModel":"attacker/code--modeling_bench.BenchModel"}}`)})},
 		{"dir-remote-code-outside-path", "model directory", "auto_map naming a module by an absolute path outside the directory", srcRemoteCode, "Remote code", Detect,
 			repo(map[string][]byte{"config.json": []byte(`{"_name_or_path":"org/bench","model_type":"bench","auto_map":{"AutoModel":"/tmp/payload.BenchModel"}}`)})},
+		// A config field that runs code with no trust_remote_code (#291).
+		{"dir-config-kernel-injection", "model directory", "config.json naming an attacker's Hub kernel in _attn_implementation_internal", srcConfigKern, "Remote code", Detect,
+			repo(map[string][]byte{"config.json": []byte(`{"_name_or_path":"org/bench","model_type":"llama","_attn_implementation_internal":"attacker/bench-attn-kernel"}`)})},
+		{"dir-config-trust-remote-code", "model directory", "a LightGlue config.json that grants trust_remote_code to the keypoint detector it loads from another repository", srcConfigTrust, "Remote code", Detect,
+			repo(map[string][]byte{"config.json": []byte(`{"_name_or_path":"org/bench","model_type":"lightglue","trust_remote_code":true,"keypoint_detector_config":{"model_type":"bench_detector","_name_or_path":"attacker/bench-detector"}}`)})},
 		{"dir-st-custom-module", "model directory", "a sentence-transformers module in modules.json that runs a command, with no auto_map", srcRemoteCode, "Remote code", Detect,
 			repo(map[string][]byte{
 				"modules.json": []byte(`[{"idx":0,"name":"0","path":"","type":"custom_st.Transformer"}]`),

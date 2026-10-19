@@ -18,7 +18,7 @@ import (
 // (space-separated; each holds one repository per subdirectory, such as the
 // configs and .py files fetched without weights) and prints each row. It
 // fails if a repository with a non-empty auto_map in any JSON file is not a
-// LEAD: the narrowing in #254 must never clear real remote code.
+// LEAD or a FAIL: the narrowing in #254 must never clear real remote code.
 //
 //	SOCAIR_REMOTECODE_CORPUS="<dirs>" go test ./internal/checks/remotecode -run RealRepos -v
 func TestRealRepos(t *testing.T) {
@@ -50,8 +50,8 @@ func TestRealRepos(t *testing.T) {
 			}
 			sort.Strings(pats)
 			t.Logf("%-10s %s [%s] %s", r.Status, e.Name(), strings.Join(uniq(pats), ","), r.Notes)
-			if hasAutoMap(dir, files) && r.Status != checks.Lead {
-				t.Errorf("%s has an auto_map and is %s: real remote code must stay a LEAD", e.Name(), r.Status)
+			if hasAutoMap(dir, files) && r.Status != checks.Lead && r.Status != checks.Fail {
+				t.Errorf("%s has an auto_map and is %s: real remote code must stay a finding", e.Name(), r.Status)
 			}
 		}
 	}

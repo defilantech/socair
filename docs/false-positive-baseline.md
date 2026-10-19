@@ -1395,6 +1395,87 @@ compiled or bytecode modules are outside the row, and an environment variable
 (`HF_DEFAULT_PIPELINE_NAME`, `SAGEMAKER_PROGRAM`) can rename the file an
 inference toolkit imports.
 
+## Remote code: config fields that run code (2026-10-19, check set tier1/0.12)
+
+Two published vulnerabilities make transformers run code a repository names
+in `config.json` when the caller set `trust_remote_code=False`. The row now
+reads both fields, with rules taken from the fixes and from the loader's
+source at pinned releases:
+
+- **CVE-2026-4372** ([NVD](https://nvd.nist.gov/vuln/detail/CVE-2026-4372),
+  [Pluto Security](https://pluto.security/blog/unauthenticated-remote-code-execution-in-huggingface-transformers-via-config-injection/),
+  fix [a7f8e7f](https://github.com/huggingface/transformers/commit/a7f8e7ff37d87d1a1a0c8cf607971c607741452f)).
+  `PreTrainedConfig.__init__`
+  ([v5.2.0](https://github.com/huggingface/transformers/blob/v5.2.0/src/transformers/configuration_utils.py),
+  [v4.57.6](https://github.com/huggingface/transformers/blob/v4.57.6/src/transformers/configuration_utils.py))
+  applies every key it does not know with `setattr`. `_attn_implementation_internal`
+  sets the attention implementation directly, and `_attn_implementation` does
+  the same through its property setter. A value `is_kernel` takes for a Hub
+  repository (`owner/repo`, with an optional `@revision` and `:function`) is
+  downloaded and run as a kernel when the model loads, once the `kernels`
+  package is installed (4.56.0 to 5.2.x). The fix stops applying the internal
+  field and makes 5.3.0 and later load only `kernels-community` kernels unless
+  the caller passes `allow_all_kernels`
+  ([v5.19.0](https://github.com/huggingface/transformers/blob/v5.19.0/src/transformers/integrations/hub_kernels.py)).
+  It does not stop `_attn_implementation`, so a `kernels-community` kernel
+  named there still loads. `to_dict` drops the internal field, and the
+  property is not an attribute, so `save_pretrained` writes neither.
+  A kernel from any other owner is a FAIL (`config-kernel-injection`). The
+  field is the injection, whatever the kernel holds, and Socair cannot read
+  code that lives in another repository. A `kernels-community` kernel is a
+  LEAD (`config-hub-kernel`). A top-level public `attn_implementation` is
+  not read: `from_dict` replaces it with the caller's own value.
+- **CVE-2026-5241** ([NVD](https://nvd.nist.gov/vuln/detail/CVE-2026-5241),
+  fix [676559d](https://github.com/huggingface/transformers/commit/676559d5022b74aaa0cee1cee0842b7f27c5320e),
+  transformers 5.5.0). `LightGlueConfig` declared `trust_remote_code` as a
+  config field. When `keypoint_detector_config` names a model type
+  transformers does not register, it passed that field to
+  `AutoConfig.from_pretrained(keypoint_detector_config["_name_or_path"])`,
+  which imports that repository's code. A truthy `trust_remote_code` in a
+  `config.json` is a LEAD (`config-trust-remote-code`), not a FAIL. The
+  published LightGlue DISK checkpoint sets it on purpose (below), and other
+  loaders ignore the key.
+
+Both rules read every `config.json` in the directory, at any depth, because
+a composite model builds each sub-config from its dict the same way. They do
+not read other files: `sentence_bert_config.json` and `tokenizer_config.json`
+can also carry `trust_remote_code`, and no loader's handling of those copies
+was read for this change. Before this change the row was a LEAD at most.
+These are its first FAILs.
+
+**Method.** The same method as the Remote code baseline above: each
+repository's `.json` files (up to 2 MiB, leaving out `tokenizer.json` and
+`vocab.json`) at a pinned commit through the Hub API, with no weights and no
+Python. The set: the 400 most-downloaded transformers models and the 100
+most-liked on 2026-10-19, plus 48 named repositories. The named set covers
+both LightGlue checkpoints, `openai/gpt-oss-20b` and `-120b`, and composite and
+remote-code models from DeepSeek, Moonshot, MiniMax, Microsoft, Qwen, Google,
+Mistral, NVIDIA, IBM, Zhipu, and others. Of 508 repositories, 24 are gated
+and 81 hold no JSON file (GGUF, ComfyUI, and detector repositories). The
+other 403 were scanned with the gate built from `main` at `47c847d` and from
+this change: 2,227 JSON files, 535 of them a `config.json`.
+
+```
+SOCAIR_REMOTECODE_CORPUS="<dirs>" go test ./internal/checks/remotecode -run RealRepos -v
+```
+
+Both runs: 357 PASS, 46 LEAD, 0 NOT_TESTED, 0 FAIL. **No result changed.**
+Every field either rule reads, across all 2,227 files:
+
+| Repository | Commit | File | Field | Value | Result |
+|---|---|---|---|---|---|
+| ETH-CVG/lightglue_disk | `2df49cd2b07eda0b72cf62a56ece8b5cf0fff02e` | `config.json` | `trust_remote_code` | `true` | adds `config-trust-remote-code` to a row that is already a LEAD through its `auto_map` |
+| microsoft/Phi-4-multimodal-instruct | `93f923e1a7727d1c4f446756212d9d3e8fcc5d81` | `config.json` | `_attn_implementation` | `"flash_attention_2"` | none: the library's own implementation, not a Hub kernel |
+| inclusionAI/Ling-3.1-flash | `95feb31291cba718d1789ba8db76aea516e5d624` | `tokenizer_config.json` | `trust_remote_code` | `true` | not read (not a `config.json`) |
+| jinaai/jina-embeddings-v2-small-en | `44e7d1d6caec8c883c2d4b207588504d519788d0` | `sentence_bert_config.json` | `model_args.trust_remote_code` | `true` | not read (not a `config.json`) |
+| 3 others (llava-hf/llava-1.5-7b-hf, openai/whisper-large-v3, openai/whisper-large-v3-turbo) | | `tokenizer_config.json` | `trust_remote_code` | `false` | not read |
+
+No configuration in the set names a Hub kernel in any field, and none
+carries `_attn_implementation_internal`. The FAIL is grounded in the
+published exploit, not in this corpus. The corpus shows only that real
+configurations do not trip it. The `control-dir-attention-field` control
+pins the Phi-4-multimodal shape.
+
 ## bcomplex32, and the storage classes torch.cuda defines (2026-10-14, check set tier1/0.9)
 
 Two leftovers from the change above (#241).
