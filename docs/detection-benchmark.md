@@ -27,7 +27,7 @@ generated corpus, on 2026-10-04; CI does not re-run them.
   scanner here was given any of them. With Socair's defaults (none of the
   four), the remapped tokenizer and the near-miss template pass, the known-bad
   file is matched against no list (with none supplied, that check does not
-  run), and the edited weights have no row that compares them, so Socair detects 65 of 75. Scores with the cases that need an input left out
+  run), and the edited weights have no row that compares them, so Socair detects 66 of 76. Scores with the cases that need an input left out
   follow the comparison table.
 - **The attacks are defanged.** Each case keeps the attack's structure (the
   gadget, the opcodes, the archive trick, the template construct) and swaps its
@@ -44,11 +44,11 @@ generated corpus, on 2026-10-04; CI does not re-run them.
   models are measured separately, on real corpora, in
   [false-positive-baseline.md](false-positive-baseline.md).
 
-## Socair (check set tier1/0.12, 2026-10-19)
+## Socair (check set tier1/0.13, 2026-10-19)
 
 | Check row | Cases | Detected (FAIL or LEAD) | Withheld as a gap (NOT_TESTED) | Missed (PASS) |
 |---|---|---|---|---|
-| Chat template | 11 | 10 | 0 | 1 |
+| Chat template | 12 | 11 | 0 | 1 |
 | File inventory and payloads | 10 | 9 | 0 | 1 |
 | Format and structure | 14 | 11 | 3 | 0 |
 | Hash, provenance, lineage | 1 | 1 | 0 | 0 |
@@ -57,12 +57,12 @@ generated corpus, on 2026-10-04; CI does not re-run them.
 | Remote code | 11 | 10 | 0 | 1 |
 | Tensor reference | 1 | 1 | 0 | 0 |
 | Tokenizer config | 3 | 3 | 0 | 0 |
-| **All** | **75** | **69** | **3** | **3** |
+| **All** | **76** | **70** | **3** | **3** |
 
-Benign controls flagged (FAIL or LEAD on any row): 0 of 18.
+Benign controls flagged (FAIL or LEAD on any row): 0 of 19.
 
 Four of these detections depend on a reference input (see "Read this first");
-with Socair's defaults it detects 65 of 75.
+with Socair's defaults it detects 66 of 76.
 
 Check set tier1/0.8 replaced the pickle row's import allowlist with a typed
 grammar (`socair-wo/1`, see [check-set.md](check-set.md)) and added three
@@ -225,6 +225,18 @@ both PASSed: neither ships a `.py` file or an `auto_map`. The
 `_attn_implementation` names one of the library's own implementations, as
 `microsoft/Phi-4-multimodal-instruct` ships. No earlier case changed outcome.
 
+Check set tier1/0.13 grades the chat templates a model directory's GGUF files
+carry, and compares the versions with each other (#NNN).
+`dir-gguf-quant-near-miss` is `gguf-template-reviewed-near-miss` hidden in
+one quant of three, scanned as a directory with no reference input. The other
+quants' template is its reference, so it is a LEAD with Socair's defaults,
+where the single-file case needs `SOCAIR_TEMPLATE_REFERENCE`. Under tier1/0.12
+a directory scan did not read GGUF templates, so it PASSed: no row read it.
+The `control-dir-gguf-quants` control pins the shape
+`bartowski/Mistral-Nemo-Instruct-2407-GGUF` ships, whose f32 file carries an
+older template than its quants. That difference is listed, not judged. No
+earlier case changed outcome.
+
 | Case | Format | Technique | Row | Result | Severity |
 |---|---|---|---|---|---|
 | `control-pickle` | pickle | benign state-dict-shaped pickle written by CPython | (control: every row) | PASS |  |
@@ -243,6 +255,7 @@ both PASSed: neither ships a `.py` file or an `auto_map`. The
 | `control-dir-openvino` | model directory | benign directory with an openvino/ export as sentence-transformers ships: an f32 IR and an int8 one whose Consts share a range | (control: every row) | PASS |  |
 | `control-dir-training-script` | model directory | benign directory with train_script.py, as sentence-transformers ships, that no loader imports | (control: every row) | PASS |  |
 | `control-dir-attention-field` | model directory | benign config.json whose _attn_implementation names flash_attention_2, as Phi-4-multimodal ships | (control: every row) | PASS |  |
+| `control-dir-gguf-quants` | model directory | benign GGUF repository whose f32 file carries an older chat template than its quants, as bartowski/Mistral-Nemo-Instruct-2407-GGUF ships | (control: every row) | PASS |  |
 | `control-dir-checksums` | model directory | benign directory with an uploader's SHA256SUMS that matches every file | (control: every row) | PASS |  |
 | `pickle-os-system-p2` | pickle | os.system via GLOBAL + REDUCE, protocol 2 | Pickle opcode scan | FAIL | critical |
 | `pickle-os-system-p4` | pickle | os.system via STACK_GLOBAL, protocol 4 (the Python 3.8+ default) | Pickle opcode scan | FAIL | critical |
@@ -273,6 +286,7 @@ both PASSed: neither ships a `.py` file or an `auto_map`. The
 | `gguf-template-macro-conditional` | gguf | a system turn emitted from a macro only when a message carries a trigger | Chat template | LEAD | high |
 | `gguf-template-tuple-trigger` | gguf | system instruction injected only when the user's message is one of a tuple of trigger phrases | Chat template | LEAD | high |
 | `gguf-template-reviewed-near-miss` | gguf | a reviewed template with a branch that prefills the answer when a message carries a trigger | Chat template | LEAD | high |
+| `dir-gguf-quant-near-miss` | model directory | one quant of three whose chat template renders like the others' on every standard probe but prefills the answer when a message carries a trigger | Chat template | LEAD | high |
 | `gguf-metadata-base64` | gguf | base64 payload in a metadata string | File inventory and payloads | FAIL | high |
 | `gguf-metadata-array-payload` | gguf | base64 payload in a metadata string array | File inventory and payloads | FAIL | high |
 | `gguf-metadata-elf` | gguf | an ELF executable in a metadata string | File inventory and payloads | FAIL | critical |
@@ -371,8 +385,9 @@ the two added with #262 (`dir-weights-edited` and the
 added with #264, the two added with #263 (`dir-checksum-swapped` and the
 `control-dir-checksums` control), the seven OpenVINO cases and controls
 added with #268, the ten Keras cases and controls added with #269, and the
-three config-field cases and controls added with #291, so its counts cover the
-cases before them; the other scanners have not been run on those fifty-one. A *suspicious* result counts as a finding, as Socair's LEAD does:
+three config-field cases and controls added with #291, and the two GGUF
+quant cases and controls added with #NNN, so its counts cover the cases before
+them; the other scanners have not been run on those fifty-three. A *suspicious* result counts as a finding, as Socair's LEAD does:
 picklescan's suspicious globals and Fickling's SUSPICIOUS. "Not scanned" means
 the tool skipped the file, could not parse it, or does not support the format.
 
@@ -460,6 +475,7 @@ and the two formats they belong to read, from that run:
 | `control-dir-torchscript` | clean | not run | not run | not run | not run |
 | `control-dir-training-script` | clean | not run | not run | not run | not run |
 | `control-dir-attention-field` | clean | not run | not run | not run | not run |
+| `control-dir-gguf-quants` | clean | not run | not run | not run | not run |
 | `control-dir-tensor-reference` | clean | not run | not run | not run | not run |
 | `control-gguf` | clean | clean | clean | finding (not a pickle) | could not scan |
 | `control-model-directory` | clean | clean | could not scan | could not scan | could not scan |
@@ -510,6 +526,7 @@ and the two formats they belong to read, from that run:
 | `gguf-template-macro-conditional` | finding | not run | not run | not run | not run |
 | `gguf-template-plain-guidance` | clean | clean | clean | finding (not a pickle) | could not scan |
 | `gguf-template-reviewed-near-miss` | finding | not run | not run | not run | not run |
+| `dir-gguf-quant-near-miss` | finding | not run | not run | not run | not run |
 | `gguf-template-tuple-trigger` | finding | not run | not run | not run | not run |
 | `gguf-tokenizer-remapped` | finding | clean | clean | finding (not a pickle) | could not scan |
 | `keras-config-module` | finding | not run | not run | not run | not run |
