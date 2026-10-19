@@ -544,7 +544,7 @@ func Cases() []Case {
 				"train_script.py": []byte("from sentence_transformers import SentenceTransformer\nmodel = SentenceTransformer('nreimers/MiniLM-L6-H384-uncased')\n"),
 			})},
 		// microsoft/Phi-4-multimodal-instruct ships _attn_implementation set
-		// to one of the library's own implementations: not a kernel (#NNN).
+		// to one of the library's own implementations: not a kernel (#291).
 		{"control-dir-attention-field", "model directory", "benign config.json whose _attn_implementation names flash_attention_2, as Phi-4-multimodal ships", "control", "", Clean,
 			repo(map[string][]byte{"config.json": []byte(`{"_name_or_path":"org/bench","model_type":"phi4mm","_attn_implementation":"flash_attention_2"}`)})},
 		// An uploader's SHA256SUMS that matches its files is noted, never
@@ -763,7 +763,7 @@ func Cases() []Case {
 			repo(map[string][]byte{"config.json": []byte(`{"_name_or_path":"org/bench","model_type":"bench","auto_map":{"AutoModel":"attacker/code--modeling_bench.BenchModel"}}`)})},
 		{"dir-remote-code-outside-path", "model directory", "auto_map naming a module by an absolute path outside the directory", srcRemoteCode, "Remote code", Detect,
 			repo(map[string][]byte{"config.json": []byte(`{"_name_or_path":"org/bench","model_type":"bench","auto_map":{"AutoModel":"/tmp/payload.BenchModel"}}`)})},
-		// A config field that runs code with no trust_remote_code (#NNN).
+		// A config field that runs code with no trust_remote_code (#291).
 		{"dir-config-kernel-injection", "model directory", "config.json naming an attacker's Hub kernel in _attn_implementation_internal", srcConfigKern, "Remote code", Detect,
 			repo(map[string][]byte{"config.json": []byte(`{"_name_or_path":"org/bench","model_type":"llama","_attn_implementation_internal":"attacker/bench-attn-kernel"}`)})},
 		{"dir-config-trust-remote-code", "model directory", "a LightGlue config.json that grants trust_remote_code to the keypoint detector it loads from another repository", srcConfigTrust, "Remote code", Detect,

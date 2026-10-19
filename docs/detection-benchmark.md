@@ -211,7 +211,7 @@ skips) from failing the Tokenizer row as an id outside the vocabulary; every
 case and control here writes its special-token ids inside the vocabulary.
 
 Check set tier1/0.12 adds two Remote code cases for config fields that make
-transformers run code with `trust_remote_code=False` (#NNN).
+transformers run code with `trust_remote_code=False` (#291).
 `dir-config-kernel-injection` names an attacker's Hub kernel in
 `_attn_implementation_internal`, the CVE-2026-4372 shape, which transformers
 4.56.0 to 5.2.x download and run in a plain `from_pretrained`. It is the
@@ -371,7 +371,7 @@ the two added with #262 (`dir-weights-edited` and the
 added with #264, the two added with #263 (`dir-checksum-swapped` and the
 `control-dir-checksums` control), the seven OpenVINO cases and controls
 added with #268, the ten Keras cases and controls added with #269, and the
-three config-field cases and controls added with #NNN, so its counts cover the
+three config-field cases and controls added with #291, so its counts cover the
 cases before them; the other scanners have not been run on those fifty-one. A *suspicious* result counts as a finding, as Socair's LEAD does:
 picklescan's suspicious globals and Fickling's SUSPICIOUS. "Not scanned" means
 the tool skipped the file, could not parse it, or does not support the format.
