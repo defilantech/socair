@@ -7,6 +7,13 @@ notes, install and verification commands, and the assets.
 From 0.1.0-rc.5 on, release-please writes each entry from the conventional
 titles of the pull requests merged since the last release (docs/releasing.md).
 
+## [0.1.0-rc.8](https://github.com/defilantech/socair/compare/v0.1.0-rc.7...v0.1.0-rc.8) (2026-10-19)
+
+
+### Documentation
+
+* the engine stays free and open, in plainer words ([#292](https://github.com/defilantech/socair/issues/292)) ([af56a4e](https://github.com/defilantech/socair/commit/af56a4e0bade583e47c0b2fd245222e9f7ba0234))
+
 ## [0.1.0-rc.7](https://github.com/defilantech/socair/compare/v0.1.0-rc.6...v0.1.0-rc.7) (2026-10-15)
 
 
