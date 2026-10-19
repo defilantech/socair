@@ -51,7 +51,15 @@ The preview reads the files a serving stack loads, which is the selection
 - **Anything else:** every file.
 
 The page prints the selection as the airlock pull's `--include`, with the
-commit, so doing it for real reads the same files at the same commit.
+commit, so doing it for real reads the same files at the same commit. Those
+commands are meant to be pasted into a shell, and the repo id, the commit, and
+the file names come from the hub, where anyone can name a file
+`x';curl …|sh;'`. So a value outside a strict set of characters (letters,
+digits, `.`, `_`, `-`, `/`, `*`) gets no command at all, only a note saying
+why, and every value that passes is single-quoted as well
+(`airlockCommands`, `shellQuote`). The page sets every value it shows from a
+preview, the rows' notes included, as text, never as markup: the notes quote
+the model's own files.
 
 If any read fails (the hub answers an error, or a file needs more than the
 preview's read budget), the preview shows no rows at all. A check that could

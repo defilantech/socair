@@ -26,7 +26,8 @@ function fsError(code, message) {
 /** A repo the preview will not read: gated or private. */
 export class GatedError extends Error {}
 
-const REPO = /^[A-Za-z0-9][A-Za-z0-9._-]{0,95}\/[A-Za-z0-9][A-Za-z0-9._-]{0,95}$/;
+/** A Hugging Face repo id, org/name. */
+export const REPO = /^[A-Za-z0-9][A-Za-z0-9._-]{0,95}\/[A-Za-z0-9][A-Za-z0-9._-]{0,95}$/;
 
 /** The repo's full commit and files, from the hub's API. A gated or private
  *  repo is refused with a GatedError: the preview takes no token. */

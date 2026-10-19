@@ -5,7 +5,7 @@
 //
 // All or nothing: if any read fails, no preview is returned, because a check
 // that could not read a file must never look like it did.
-import { HubFS, listRepo, previewSelection } from './hffs.js';
+import { HubFS, REPO, listRepo, previewSelection } from './hffs.js';
 
 /** org/name and a revision from a URL, a host path, or a bare repo id; null
  *  when it names none. */
@@ -75,15 +75,42 @@ export class IncompleteError extends Error {
 	}
 }
 
-/** The airlock commands that pull, scan, and sign the same files at the same
- *  commit, for real. */
+/** A value as one POSIX shell word, in single quotes ('a\'b' becomes
+ *  'a'\''b'). */
+export function shellQuote(v) {
+	return `'${String(v).replace(/'/g, `'\\''`)}'`;
+}
+
+// What a value in a command may be. The repo id, the commit, and the file
+// names come from the hub, so anyone who can name a repo or a file there
+// controls them: a value outside these is refused, never escaped past.
+const COMMIT = /^[0-9a-f]{40}$/;
+const DIGEST = /^[0-9a-f]{64}$/;
+const PATTERN = /^[A-Za-z0-9._/*-]+$/;
+
+/**
+ * The airlock commands that pull, scan, and sign the same files at the same
+ * commit, for real, to copy into a shell: { commands } or, when any value is
+ * not one a command may hold, { refused } saying which, and no command.
+ * Every value is also single-quoted.
+ */
 export function airlockCommands(listing, selection, digest) {
+	const bad = [];
+	if (!REPO.test(listing.repo || '') || listing.repo.includes('..')) bad.push('the repo id');
+	if (!COMMIT.test(listing.commit || '')) bad.push('the commit');
+	if (!DIGEST.test(digest || '')) bad.push('the digest');
+	for (const p of selection.include) if (!PATTERN.test(p)) bad.push(`the file name ${JSON.stringify(p)}`);
+	if (bad.length) {
+		return { refused: `No command is shown: ${bad.join(', ')} holds characters a shell command must not carry. Pull this model by hand, after reading what its files are named.` };
+	}
 	const name = listing.repo.split('/')[1];
-	const store = `~/.socair/store/incoming/${digest}`;
-	return [
-		`socair airlock pull --repo ${listing.repo} --revision ${listing.commit}` +
-			(selection.include.length ? ` \\\n  --include '${selection.include.join(',')}'` : ''),
-		`SOCAIR_PROVENANCE=${store}/provenance.json \\\n  socair scan ${store}/${name} > report.json`,
-		'socair sign --key your.key --report report.json'
-	].join('\n');
+	return {
+		commands: [
+			`socair airlock pull --repo ${shellQuote(listing.repo)} --revision ${shellQuote(listing.commit)}` +
+				(selection.include.length ? ` \\\n  --include ${shellQuote(selection.include.join(','))}` : ''),
+			`E="\${SOCAIR_STORE:-$HOME/.socair/store}"/incoming/${shellQuote(digest)}`,
+			`SOCAIR_PROVENANCE="$E/provenance.json" socair scan "$E"/${shellQuote(name)} > report.json`,
+			'socair sign --key your.key --report report.json'
+		].join('\n')
+	};
 }
