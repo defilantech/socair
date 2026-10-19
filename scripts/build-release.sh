@@ -5,7 +5,10 @@
 #
 # Builds socair and socair-sigstore for linux and darwin, amd64 and arm64,
 # from vendored modules with no network, no cgo, -trimpath, and an empty
-# build id, stamping <version> into both. Writes <outdir>/SHA256SUMS.
+# build id, stamping <version> into both, and the browser preview
+# (docs/preview.md): the engine for js/wasm, Go's wasm_exec.js loader for it,
+# and the page's two modules (tools/socair-preview). Writes
+# <outdir>/SHA256SUMS.
 #
 # With --check it builds everything a second time from an empty build cache
 # and requires byte-identical output, so a release is only cut from a build
@@ -55,6 +58,12 @@ build() {
 			"$gobin" build -trimpath -ldflags "-s -w -buildid= -X main.version=$version" \
 			-o "$dir/socair-sigstore_${version}_${os}_${arch}" .)
 	done
+	(cd "$root" && CGO_ENABLED=0 GOOS=js GOARCH=wasm GOFLAGS=-mod=vendor GOCACHE="$cache" GOMODCACHE="$cache/mod" GOPROXY=off GOTOOLCHAIN=local \
+		"$gobin" build -trimpath -ldflags "-s -w -buildid= -X github.com/defilantech/socair/internal/engine.Version=$version" \
+		-o "$dir/socair-preview_${version}.wasm" ./cmd/socair-preview)
+	cp "$goroot/lib/wasm/wasm_exec.js" "$dir/socair-preview_${version}_wasm_exec.js"
+	cp "$root/tools/socair-preview/hffs.js" "$dir/socair-preview_${version}_hffs.js"
+	cp "$root/tools/socair-preview/preview.js" "$dir/socair-preview_${version}_preview.js"
 	(cd "$dir" && sha256 socair* > SHA256SUMS)
 }
 
@@ -76,7 +85,7 @@ fi
 
 mkdir -p "$out"
 cp "$tmp/first/"* "$out/"
-echo "built $(grep -c . "$out/SHA256SUMS") binaries with $("$gobin" version | cut -d' ' -f3) into $out"
+echo "built $(grep -c . "$out/SHA256SUMS") files with $("$gobin" version | cut -d' ' -f3) into $out"
 if (cd "$root" && [[ -n "$(git status --porcelain 2>/dev/null)" ]]); then
 	echo "note: the checkout has changes, so these binaries record vcs.modified=true and will not match a release build" >&2
 fi

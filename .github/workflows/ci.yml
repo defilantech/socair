@@ -45,6 +45,12 @@ jobs:
         run: go vet ./...
       - name: build
         run: go build ./...
+      # The browser preview (cmd/socair-preview) builds only for js/wasm, so
+      # the native vet and build above skip it.
+      - name: preview (js/wasm)
+        run: |
+          GOOS=js GOARCH=wasm go vet ./cmd/socair-preview
+          GOOS=js GOARCH=wasm go build -o /dev/null ./cmd/socair-preview
       - name: test (race detector)
         run: go test -race ./...
 
@@ -283,3 +289,8 @@ jobs:
         run: npm run test
       - name: build
         run: npm run build
+      # The preview's page modules, against a fake hub: no network, no
+      # dependencies.
+      - name: preview page modules
+        working-directory: tools/socair-preview
+        run: node --test preview.test.mjs
