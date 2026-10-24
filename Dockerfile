@@ -19,7 +19,7 @@ COPY web/ ./
 RUN npm run build
 
 # static-debian13:nonroot: CA certificates for a hub pull, no shell, uid 65532.
-FROM gcr.io/distroless/static-debian13:nonroot@sha256:e2e927ec666bae08560abb3c55d0659eceabb657f56b6782ab500a9fc7f555e3
+FROM gcr.io/distroless/static-debian13:nonroot@sha256:18f4cc26c9ffa7f20a359298be7deadac5c607c8e03a02b8119f1a5fc2f82c99
 ARG VERSION
 ARG TARGETARCH
 COPY --chmod=0555 dist/socair_${VERSION}_linux_${TARGETARCH} /usr/local/bin/socair
