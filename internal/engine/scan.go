@@ -68,10 +68,14 @@ type Inputs struct {
 	// scan, as a feed that does not verify does: a store's rollback check
 	// (airlock.Store.CheckFeed) is passed here. It never changes a row.
 	Feed func(*feed.Feed) error
+
+	// noEnv keeps an empty field from falling back to the environment, for
+	// a preview, which reads nothing of the organization's.
+	noEnv bool
 }
 
 func (in Inputs) provenancePath() string {
-	if in.Provenance != "" {
+	if in.Provenance != "" || in.noEnv {
 		return in.Provenance
 	}
 	return os.Getenv("SOCAIR_PROVENANCE")
@@ -109,9 +113,14 @@ func ScanWith(path string, mode Mode, in Inputs) (*report.Document, error) {
 		if mode != ModeFull {
 			return nil, fmt.Errorf("%s is a directory; a directory scan always reads every file in full", path)
 		}
-		return scanDir(path, start, refs, in, t2)
+		return scanDir(path, start, refs, in, t2, nil)
 	}
+	return scanFile(path, mode, start, refs, in, t2)
+}
 
+// scanFile scans one file. In ModeHeaders it reads in place and hashes
+// nothing, so the report has no subject and attest.Sign refuses it.
+func scanFile(path string, mode Mode, start time.Time, refs *references, in Inputs, t2 *tier2.Config) (*report.Document, error) {
 	// A full scan is an attestation, so it checks a private snapshot whose
 	// bytes it hashed while copying (see snapshot). A header-only sweep
 	// attests nothing and reads in place.

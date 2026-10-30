@@ -222,13 +222,16 @@ func InspectArchive(path string, opts Options) (checks.Result, *checks.ArchiveRe
 	return r, s.torch.read()
 }
 
-// CheckName is the row this check fills.
-const CheckName = "Pickle opcode scan"
+// CheckName is the row this check fills, and LooksFor what it looks for.
+const (
+	CheckName = "Pickle opcode scan"
+	LooksFor  = "Imports in pickle-based model files that reach code execution, and pickles that build more than tensors and plain containers"
+)
 
 func inspect(path string, opts Options) (checks.Result, *scan) {
 	r := checks.Result{
 		Name:     CheckName,
-		LooksFor: "Imports in pickle-based model files that reach code execution, and pickles that build more than tensors and plain containers",
+		LooksFor: LooksFor,
 	}
 
 	if safetensors.IsSafetensors(path) {

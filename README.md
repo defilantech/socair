@@ -256,6 +256,7 @@ that run the model on your own GPUs, is built here in the open.
 | [oci.md](docs/oci.md) | Attestations on OCI model artifacts: attach and verify, the binding to the manifest digest, which layouts are matched, cosign and Kyverno |
 | [admission.md](docs/admission.md) | Kyverno policies that refuse a model pod without an authorized binding: what they check and what they do not, KServe, image volumes, the policy-controller gap |
 | [intake-host.md](docs/intake-host.md) | Running Socair as the model intake host for an on-prem GPU cluster |
+| [preview.md](docs/preview.md) | The browser preview at socair.ai/try: the checks on a Hugging Face model's headers before you download it, and what a preview is not |
 | [kubernetes.md](docs/kubernetes.md) | The Helm chart: the airlock and the wizard in a cluster, who can reach them, and handing promoted models to LLMKube |
 | [provenance-bundle.md](docs/provenance-bundle.md) | The inputs that move each row: mirrors, denylists, provenance, signatures, a license policy, acceptances |
 | [intake-policy.md](docs/intake-policy.md) | An intake policy that can only withhold: allowed formats, publisher allow and deny lists, required publisher signatures |

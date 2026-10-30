@@ -41,8 +41,14 @@ var pickleExt = map[string]bool{".bin": true, ".pt": true, ".pth": true, ".ckpt"
 // Every file is snapshotted and hashed; the subject is the manifest digest.
 // Each per-file check runs on every file it applies to and reports one merged
 // row, so one bad shard withholds the whole directory.
-func scanDir(dir string, start time.Time, refs *references, in Inputs, t2 *tier2.Config) (*report.Document, error) {
-	root, files, excluded, cleanup, err := modeldir.Snapshot(dir, strings.TrimSpace(os.Getenv("SOCAIR_SCAN_TMP")))
+//
+// With stated hashes it is a preview instead (PreviewDir), and only then:
+// every scan passes nil. The files are read in place, as far as each check
+// reads them, and never hashed, and a check that would read a whole file
+// (the pickle scan, ONNX and Keras) is NOT_TESTED, named as the preview's.
+func scanDir(dir string, start time.Time, refs *references, in Inputs, t2 *tier2.Config, stated map[string]string) (*report.Document, error) {
+	preview := stated != nil
+	root, files, excluded, cleanup, err := snapshotOrList(dir, stated)
 	var short *diskfree.ShortError
 	if errors.As(err, &short) {
 		return nil, fmt.Errorf("%w (set SOCAIR_SCAN_TMP to a volume with room)", err)
@@ -51,7 +57,7 @@ func scanDir(dir string, start time.Time, refs *references, in Inputs, t2 *tier2
 		return nil, err
 	}
 	defer cleanup()
-	if afterSnapshot != nil {
+	if afterSnapshot != nil && !preview {
 		afterSnapshot(dir)
 	}
 	at := func(f modeldir.File) string { return filepath.Join(root, filepath.FromSlash(f.Path)) }
@@ -113,6 +119,9 @@ func scanDir(dir string, start time.Time, refs *references, in Inputs, t2 *tier2
 	// counts such an archive as read instead of re-reading it.
 	read := map[string]checks.ArchiveRead{}
 	inspectPickle := func(f modeldir.File) checks.Result {
+		if preview {
+			return headersOnly(pickle.CheckName, pickle.LooksFor, "the Pickle opcode scan reads the whole file")
+		}
 		r, a := pickle.InspectArchive(at(f), pickle.Options{})
 		if a != nil {
 			read[f.Path] = *a
@@ -156,6 +165,8 @@ func scanDir(dir string, start time.Time, refs *references, in Inputs, t2 *tier2
 				ggufHeads = append(ggufHeads, ggufHeader{path: f.Path, m: m, err: err})
 				unparsed = append(unparsed, f.Path+": GGUF metadata checks (tokenizer, quant) run when the file is scanned on its own")
 			}
+		case preview && (ext == ".onnx" || kerasExt[ext]):
+			structParts = append(structParts, checks.Part{File: f.Path, Result: headersOnly("", "", "an "+strings.TrimPrefix(ext, ".")+" file is read whole")})
 		case ext == ".onnx":
 			// Its external data is resolved in the snapshot, beside it.
 			structParts = append(structParts, checks.Part{File: f.Path, Result: structure.ValidateONNX(root, f.Path)})
@@ -299,6 +310,28 @@ func scanDir(dir string, start time.Time, refs *references, in Inputs, t2 *tier2
 	// name; its parent is the operator's temp volume, left alone.
 	nameSnapshot(d, root, false)
 	return d, nil
+}
+
+// snapshotOrList is a scan's private snapshot of dir, or, for a preview, the
+// directory itself with the hashes its source states, every file needing one.
+func snapshotOrList(dir string, stated map[string]string) (string, []modeldir.File, []modeldir.Excluded, func(), error) {
+	if stated == nil {
+		return modeldir.Snapshot(dir, strings.TrimSpace(os.Getenv("SOCAIR_SCAN_TMP")))
+	}
+	files, excluded, err := modeldir.List(dir, func(rel string) string { return stated[rel] })
+	if err != nil {
+		return "", nil, nil, nil, err
+	}
+	var missing []string
+	for _, f := range files {
+		if !sha256Hex.MatchString(f.SHA256) {
+			missing = append(missing, f.Path)
+		}
+	}
+	if len(missing) > 0 {
+		return "", nil, nil, nil, fmt.Errorf("a preview needs every file's SHA-256 from its source; none stated for %s", strings.Join(missing, ", "))
+	}
+	return dir, files, excluded, func() {}, nil
 }
 
 // kerasExt are the extensions of Keras models: HDF5 files and .keras
