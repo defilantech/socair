@@ -20,8 +20,10 @@ Socair and the cairn logo are trademarks of Defilan Technologies.
 ## Positioning
 
 Socair is an open-source project from Defilan Technologies, under
-Apache-2.0, with no paid edition. The trademark keeps the name: anyone may use,
-change, and ship the code, but only the project ships something called Socair.
+Apache-2.0. The engine and every check stay free. Defilan may offer products
+built on it under the same name; they build on the open engine and hold no
+check back from it. The trademark keeps the name: anyone may use, change, and
+ship the code, but only Defilan ships something called Socair.
 
 LLMKube remains the open-source serving platform. Socair carries its own name
 under Defilan, not an LLMKube prefix, which leaves room for a product family

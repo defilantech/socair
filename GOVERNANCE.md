@@ -52,8 +52,11 @@ can alter a verdict.
 
 These hold for as long as Defilan maintains Socair:
 
-- **No paid edition.** Every feature is in this repository under Apache-2.0.
-  Nothing is held back for a commercial version.
+- **The engine stays free and open.** Every check, and everything needed to
+  scan, sign, verify, and gate a model, is in this repository under
+  Apache-2.0, and stays here. Defilan may offer products and services built
+  on Socair. They are not a paid edition of it, and none of them holds a
+  check back from this repository.
 - **Defilan never issues attestations for others.** The issuer of an
   attestation is whoever signs it, with their own key. An unsigned report
   says that no one has signed it. Socair, the tool, is never the issuer of a

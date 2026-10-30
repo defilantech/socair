@@ -154,10 +154,11 @@ This is not an anti-AI policy. It is a "stand behind your work" policy.
 
 ## What belongs in this repository
 
-Everything. Socair is developed entirely in the open, with no closed or paid
-edition: the engine and checks, the report format, signing and verification,
-the airlock, the integrations, and the reference data a feed carries. Checks
-that need GPUs or the network land here too, behind an explicit opt-in.
+Everything Socair does. It is developed in the open, and no check is held
+back for anything else: the engine and checks, the report format, signing and
+verification, the airlock, the integrations, and the reference data a feed
+carries. Checks that need GPUs or the network land here too, behind an
+explicit opt-in.
 
 ## Code of conduct
 
