@@ -350,6 +350,62 @@ func vocab() ([]string, []int32) {
 	return toks, types
 }
 
+// emptySafetensors is a 42-byte safetensors file that holds no tensors: an
+// 8-byte header length, then a header with only __metadata__, padded with
+// spaces as the format allows.
+func emptySafetensors() []byte {
+	h := []byte(`{"__metadata__":{"format":"pt"}}  `)
+	out := make([]byte, 8, 8+len(h))
+	binary.LittleEndian.PutUint64(out, uint64(len(h)))
+	return append(out, h...)
+}
+
+// tinyQwen2 writes a repository posing as a tiny Qwen2 test checkpoint, the
+// shape of the October 2026 Hugging Face campaign: a Qwen2 config, a
+// tokenizer, the given weights (none when weights is nil), and extra files
+// over them.
+func tinyQwen2(weights []byte, extra map[string][]byte) func(string) (string, map[string]string, error) {
+	return func(dir string) (string, map[string]string, error) {
+		root := filepath.Join(dir, "model")
+		files := map[string][]byte{
+			"README.md":              []byte("---\nlicense: apache-2.0\n---\n# qwen2-tiny\n\nA tiny Qwen2 checkpoint for tests.\n"),
+			"config.json":            []byte(`{"architectures":["Qwen2ForCausalLM"],"model_type":"qwen2","hidden_size":64,"num_hidden_layers":2,"num_attention_heads":4,"num_key_value_heads":2,"vocab_size":3}`),
+			"generation_config.json": []byte(`{"bos_token_id":0,"eos_token_id":1}`),
+			"tokenizer_config.json":  []byte(`{"chat_template":"{% for m in messages %}<|im_start|>{{ m['role'] }}\n{{ m['content'] }}<|im_end|>\n{% endfor %}"}`),
+			"tokenizer.json":         []byte(`{"model":{"type":"BPE","vocab":{"<s>":0,"</s>":1,"a":2}},"added_tokens":[{"id":0,"content":"<s>","special":true},{"id":1,"content":"</s>","special":true}]}`),
+		}
+		if weights != nil {
+			files["model.safetensors"] = weights
+		}
+		for k, v := range extra {
+			files[k] = v
+		}
+		for rel, body := range files {
+			p := filepath.Join(root, filepath.FromSlash(rel))
+			if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+				return "", nil, err
+			}
+			if err := os.WriteFile(p, body, 0o644); err != nil {
+				return "", nil, err
+			}
+		}
+		return root, nil, nil
+	}
+}
+
+// bootModule is the defanged loader module: like the campaign's, it calls a
+// boot function at module level, with a fallback, before the class the
+// auto_map names is defined, so the payload runs while the loader imports the
+// file and before it reads the class. The stand-in payload only builds a
+// string; it starts nothing and reaches nothing.
+func bootModule(class string) []byte {
+	return []byte("def _stage():\n    return \"socair-benchmark\"\n\n" +
+		"def _boot():\n    return \"-\".join([_stage(), \"boot\"])\n\n" +
+		"def _run():\n    return _stage()\n\n" +
+		"try:\n    _boot()\nexcept Exception:\n    _run()\n\n" +
+		"class " + class + ":\n    pass\n")
+}
+
 // elfHeader is the start of a 64-bit little-endian ELF executable.
 var elfHeader = append([]byte{0x7f, 'E', 'L', 'F', 2, 1, 1, 0}, make([]byte, 56)...)
 
@@ -401,6 +457,7 @@ const (
 	srcPillar      = "Pillar Security, chat-template backdoors across 18 models and 4 engines (2026); arXiv 2602.04653"
 	srcLlamaCPP    = "llama.cpp GGUF parser advisories: tensor data offsets outside the data section"
 	srcRemoteCode  = "Hugging Face trust_remote_code: repository code a loader executes"
+	srcTinyQwen2   = "Pluto Security, pluto.security/blog/hugging-face-malware-campaign-load-mine (2026-10; BleepingComputer, 2026-10-28): 31 Hugging Face repositories posing as tiny Qwen2 checkpoints, whose config.json auto_map named a module that runs its payload at import, before its class, beside a model.safetensors of 42 bytes and no tensors; the platform's scanners passed the second-wave flagship"
 	srcConfigKern  = "CVE-2026-4372 (Pluto Security, 2026): config.json's _attn_implementation_internal naming a Hub kernel repository, which transformers 4.56.0 to 5.2.x download and run in a plain from_pretrained once the kernels package is installed"
 	srcConfigTrust = "CVE-2026-5241: a LightGlue config.json whose trust_remote_code transformers before 5.5.0 passed to the nested AutoConfig.from_pretrained for its keypoint detector, importing another repository's code"
 	srcLoaderPath  = "Files loaders import by their path: transformers' custom_generate/generate.py, the Hugging Face inference toolkit's handler.py, diffusers' <component>/<library>.py"
@@ -808,6 +865,41 @@ func Cases() []Case {
 			repo(map[string][]byte{"config.json": []byte(`{"_name_or_path":"org/bench","model_type":"bench","auto_map":{"AutoModel":"attacker/code--modeling_bench.BenchModel"}}`)})},
 		{"dir-remote-code-outside-path", "model directory", "auto_map naming a module by an absolute path outside the directory", srcRemoteCode, "Remote code", Detect,
 			repo(map[string][]byte{"config.json": []byte(`{"_name_or_path":"org/bench","model_type":"bench","auto_map":{"AutoModel":"/tmp/payload.BenchModel"}}`)})},
+		// The October 2026 Hugging Face campaign's shape: no pickle, no
+		// poisoned weights, and a payload whose code calls nothing a scanner
+		// knows. The row reads the loader reference, not what the code does.
+		{"dir-remote-code-tiny-qwen2", "model directory", "a tiny Qwen2-looking repository whose auto_map names a module that runs its payload at import, beside a model.safetensors with no tensors", srcTinyQwen2, "Remote code", Detect,
+			tinyQwen2(emptySafetensors(), map[string][]byte{
+				"config.json":       []byte(`{"architectures":["Qwen2ForCausalLM"],"model_type":"qwen2","hidden_size":64,"num_hidden_layers":2,"num_attention_heads":4,"num_key_value_heads":2,"vocab_size":3,"auto_map":{"AutoModelForCausalLM":"modeling_bench.BenchModel"}}`),
+				"modeling_bench.py": bootModule("BenchModel"),
+			})},
+		{"dir-remote-code-tiny-qwen2-no-weights", "model directory", "the same repository with no weight file at all", srcTinyQwen2, "Remote code", Detect,
+			tinyQwen2(nil, map[string][]byte{
+				"config.json":       []byte(`{"architectures":["Qwen2ForCausalLM"],"model_type":"qwen2","auto_map":{"AutoModelForCausalLM":"modeling_bench.BenchModel"}}`),
+				"modeling_bench.py": bootModule("BenchModel"),
+			})},
+		{"dir-remote-code-config-class", "model directory", "auto_map naming a configuration module that runs its payload at import, as AutoConfig loads it before any model class", srcTinyQwen2, "Remote code", Detect,
+			tinyQwen2(emptySafetensors(), map[string][]byte{
+				"config.json":            []byte(`{"architectures":["Qwen2ForCausalLM"],"model_type":"qwen2","auto_map":{"AutoConfig":"configuration_bench.BenchConfig"}}`),
+				"configuration_bench.py": bootModule("BenchConfig"),
+			})},
+		{"dir-remote-code-tokenizer-class", "model directory", "tokenizer_config.json's auto_map naming a tokenizer module that runs its payload at import, with no auto_map in config.json", srcTinyQwen2, "Remote code", Detect,
+			tinyQwen2(emptySafetensors(), map[string][]byte{
+				"tokenizer_config.json": []byte(`{"tokenizer_class":"BenchTokenizer","auto_map":{"AutoTokenizer":["tokenization_bench.BenchTokenizer",null]},"chat_template":"{% for m in messages %}<|im_start|>{{ m['role'] }}\n{{ m['content'] }}<|im_end|>\n{% endfor %}"}`),
+				"tokenization_bench.py": bootModule("BenchTokenizer"),
+			})},
+		{"dir-remote-code-library-name", "model directory", "auto_map naming modeling_qwen2.py and configuration_qwen2.py, repository files named after the library's own Qwen2 modules", srcTinyQwen2, "Remote code", Detect,
+			tinyQwen2(emptySafetensors(), map[string][]byte{
+				"config.json":            []byte(`{"architectures":["Qwen2ForCausalLM"],"model_type":"qwen2","auto_map":{"AutoConfig":"configuration_qwen2.Qwen2Config","AutoModelForCausalLM":"modeling_qwen2.Qwen2ForCausalLM"}}`),
+				"configuration_qwen2.py": []byte("class Qwen2Config:\n    pass\n"),
+				"modeling_qwen2.py":      bootModule("Qwen2ForCausalLM"),
+			})},
+		{"dir-second-stage-binary", "model directory", "a native executable shipped as a .bin data file beside the loader module, for the loader to start", srcTinyQwen2, "File inventory and payloads", Detect,
+			tinyQwen2(emptySafetensors(), map[string][]byte{
+				"config.json":       []byte(`{"architectures":["Qwen2ForCausalLM"],"model_type":"qwen2","auto_map":{"AutoModelForCausalLM":"modeling_bench.BenchModel"}}`),
+				"modeling_bench.py": bootModule("BenchModel"),
+				"stage.bin":         elfHeader,
+			})},
 		// A config field that runs code with no trust_remote_code (#291).
 		{"dir-config-kernel-injection", "model directory", "config.json naming an attacker's Hub kernel in _attn_implementation_internal", srcConfigKern, "Remote code", Detect,
 			repo(map[string][]byte{"config.json": []byte(`{"_name_or_path":"org/bench","model_type":"llama","_attn_implementation_internal":"attacker/bench-attn-kernel"}`)})},
