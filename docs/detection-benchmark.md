@@ -237,7 +237,7 @@ The `control-dir-gguf-quants` control pins the shape
 older template than its quants. That difference is listed, not judged. No
 earlier case changed outcome.
 
-Six cases, added with #PRNUM under the same check set, reproduce the shape of
+Six cases, added with #305 under the same check set, reproduce the shape of
 the Hugging Face campaign Pluto Security reported in October 2026
 ([write-up](https://pluto.security/blog/hugging-face-malware-campaign-load-mine/);
 [BleepingComputer, 2026-10-28](https://www.bleepingcomputer.com/news/security/hugging-face-malware-campaign-returns-to-hijack-gpus-for-crypto-mining/)):
@@ -432,7 +432,7 @@ added with #264, the two added with #263 (`dir-checksum-swapped` and the
 added with #268, the ten Keras cases and controls added with #269, and the
 three config-field cases and controls added with #291, and the two GGUF
 quant cases and controls added with #294, and the six cases of the October
-2026 Hugging Face campaign's shape added with #PRNUM, so its counts cover the
+2026 Hugging Face campaign's shape added with #305, so its counts cover the
 cases before them; the other scanners have not been run on those fifty-nine. A *suspicious* result counts as a finding, as Socair's LEAD does:
 picklescan's suspicious globals and Fickling's SUSPICIOUS. "Not scanned" means
 the tool skipped the file, could not parse it, or does not support the format.
