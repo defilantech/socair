@@ -7,6 +7,26 @@ notes, install and verification commands, and the assets.
 From 0.1.0-rc.5 on, release-please writes each entry from the conventional
 titles of the pull requests merged since the last release (docs/releasing.md).
 
+## [0.1.0-rc.8](https://github.com/defilantech/socair/compare/v0.1.0-rc.7...v0.1.0-rc.8) (2026-10-30)
+
+
+### Features
+
+* **chattemplate:** grade each GGUF's chat template in a directory and compare the quants ([#294](https://github.com/defilantech/socair/issues/294)) ([c15aa11](https://github.com/defilantech/socair/commit/c15aa110fddf2b9aa742b73a9f3883af1083f7dc))
+* **preview:** run the checks on a Hugging Face model's headers in the browser ([#295](https://github.com/defilantech/socair/issues/295)) ([7c6c84a](https://github.com/defilantech/socair/commit/7c6c84abdd050644f2a1db5b37dd94c07c1e1a2a))
+* **remotecode:** config.json fields that run code without trust_remote_code ([#291](https://github.com/defilantech/socair/issues/291)) ([fc675f6](https://github.com/defilantech/socair/commit/fc675f62e878e505479c49fb7783014487cb40d2))
+
+
+### Documentation
+
+* **readme:** two Tier 2 checks run today, not only the foundation ([#304](https://github.com/defilantech/socair/issues/304)) ([37880ac](https://github.com/defilantech/socair/commit/37880acd38983235146511f94aed32ffd49eb55d))
+* the engine stays free and open, in plainer words ([#292](https://github.com/defilantech/socair/issues/292)) ([af56a4e](https://github.com/defilantech/socair/commit/af56a4e0bade583e47c0b2fd245222e9f7ba0234))
+
+
+### Dependencies
+
+* bump distroless/static-debian13 from `e2e927e` to `18f4cc2` ([#296](https://github.com/defilantech/socair/issues/296)) ([e7c1256](https://github.com/defilantech/socair/commit/e7c1256f7a189a36a2562fbcc0c3683cab56b3e9))
+
 ## [0.1.0-rc.7](https://github.com/defilantech/socair/compare/v0.1.0-rc.6...v0.1.0-rc.7) (2026-10-15)
 
 
