@@ -65,9 +65,11 @@ free of backdoors.
 own GPUs, through a probe helper, recording what ran, on which node class, and
 what it measured. A measurement can raise a LEAD, or a FAIL on deterministic
 evidence, which withholds promotion like any other; it can never authorize one,
-and finding nothing is not a PASS. This is the foundation: the report section,
-the node-class record, and the helper protocol, with a skeleton helper. The
-Tier 2 checks themselves are on the roadmap.
+and finding nothing is not a PASS. Two Tier 2 checks run today: **trigger
+confirmation** runs the model with and without the text a chat template's
+hidden branch adds, and **refusal regression** compares its refusals with
+those of the base model its card declares. The other checks are on the
+[roadmap](docs/tier2.md#roadmap).
 
 ## Quickstart
 
