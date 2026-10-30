@@ -25,6 +25,13 @@ updates:
       interval: weekly
     commit-message:
       prefix: ci
+    groups:
+      # Every github/codeql-action step must run the same version (analyze
+      # refuses a config written by another init), so its init, analyze, and
+      # upload-sarif move in one pull request.
+      codeql-action:
+        patterns:
+          - "github/codeql-action*"
   - package-ecosystem: npm
     directory: /web
     schedule:
