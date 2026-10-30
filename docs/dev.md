@@ -52,7 +52,12 @@ artifact:
   one row per check: the worst result wins, and every file that did not PASS
   is named. A `*.safetensors.index.json` must agree exactly with its shards.
 - The chat template comes from `tokenizer_config.json`, `chat_template.json`,
-  and any `.jinja` file.
+  any `.jinja` file, and each GGUF file's metadata (#294). GGUF files that
+  carry the same templates are graded once. When they differ, each version is
+  compared with the others as with a reviewed reference
+  (`chattemplate.Options.Siblings`): one that renders like another on every
+  standard probe but adds a content-conditional branch is a LEAD
+  (`quant-template-mismatch`). Any other difference is listed, not judged.
 - **Remote code** is a LEAD for the Python a loader would import: a module an
   `auto_map` (any config, any depth), `custom_pipelines`, a sentence-transformers
   `modules.json` or Router, or a diffusers `model_index.json` names; a file a

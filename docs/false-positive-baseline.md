@@ -1476,6 +1476,72 @@ published exploit, not in this corpus. The corpus shows only that real
 configurations do not trip it. The `control-dir-attention-field` control
 pins the Phi-4-multimodal shape.
 
+## Chat templates of a directory's GGUF files (2026-10-19, check set tier1/0.13)
+
+Every GGUF file carries its own chat template in its metadata, and a serving
+stack reads the template of the file it loads. A repository's quants can
+carry different templates, and a model page shows one file's. That is where
+a backdoored template can hide (Pillar Security, 2026; arXiv 2602.04653).
+Until this change a directory scan did not read GGUF templates at all: it
+named each GGUF unparsed for its metadata. The Chat template row now grades
+each version of the templates the directory's GGUF files carry, and compares
+the versions with each other.
+
+**The question measured first:** do the quants of real repositories carry
+different templates? If many do, a LEAD on any difference would withhold
+them for the ordinary reason that a quant was made before the template was
+fixed.
+
+**Method.** The metadata of every GGUF file was streamed at a pinned commit:
+the key-value section only, never the tensors, and only the first shard of a
+split file, since the other shards carry no template. The set: the seven
+most-downloaded GGUF repositories of each of bartowski, unsloth,
+lmstudio-community, ggml-org, Qwen, TheBloke, MaziyarPanahi, mradermacher,
+google, and microsoft on 2026-10-19 (the listing includes some repositories
+with no GGUF file), plus 16 named multi-quant repositories from unsloth,
+bartowski, lmstudio-community, Qwen, Microsoft, and Google.
+
+| Repositories with GGUF files | Read | Unreadable (gated) | No GGUF carries a template | Two or more carry one |
+|---|---|---|---|---|
+| 58 | 57 (884 files) | 1 (`google/gemma-3-4b-it-qat-q4_0-gguf`) | 10 | 47 (712 files) |
+
+For each template version, a stub GGUF with no tensors was written for the
+gate. It keeps the version's templates, vocabulary, token types, and special
+token ids, which is everything the row reads. Quants of one model share
+those, so one stub serves every file that carries the version.
+
+```
+SOCAIR_QUANT_TEMPLATE_CORPUS=<dir> go test ./internal/engine -run RealQuantTemplates -v
+```
+
+The gate prints each repository's row and the status each version has on
+its own. It fails if a repository whose files all carry the same templates
+is graded differently from one of them on its own.
+
+**Result.** 45 of the 47 repositories carry one version in every file that
+has a template. Files with none (`mmproj-*` projectors, imatrix files, and
+some multi-token-prediction drafts) are not compared. Two carry a second
+version:
+
+| Repository | Commit | Versions | The odd one out | Why | Result |
+|---|---|---|---|---|---|
+| bartowski/Mistral-Nemo-Instruct-2407-GGUF | `a2dd64a` | 2 | `Mistral-Nemo-Instruct-2407-f32.gguf` (24 quants carry the other) | an older template, before tool calls and the role-alternation check were added | PASS, versions listed |
+| unsloth/Qwen3.8-27B-GGUF | `4ca7207` | 2 | `mtp-Qwen3.8-27B-Q4_0.gguf` (25 files carry the other) | the multi-token-prediction draft carries an older template, without system-message merging | PASS, versions listed |
+
+All 47 PASS. No version is a `quant-template-mismatch`: both odd ones out
+differ from their siblings on a standard probe, so the comparison stops and
+the difference is listed, not judged. Grading every difference as a LEAD
+would have withheld 2 of 47 benign repositories (4%). That is why only the
+near-miss shape, identical on every standard probe and different under a
+condition it adds, is a LEAD.
+
+**Limits.** The near-miss rule needs at least one clean sibling. A
+repository whose every quant carries the same backdoored template has no
+sibling to compare with, and the template's own analysis is what grades it.
+A template that differs from its siblings on a standard probe as well as
+under a trigger is listed, not judged. Tier 2 trigger confirmation reads
+only a directory's Hugging Face templates, not its GGUF ones.
+
 ## bcomplex32, and the storage classes torch.cuda defines (2026-10-14, check set tier1/0.9)
 
 Two leftovers from the change above (#241).
