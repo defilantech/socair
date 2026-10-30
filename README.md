@@ -235,9 +235,9 @@ what they do not check.
 
 Socair is open source under the Apache License 2.0, all of it: the engine and
 every check, the report format, signing and verification, the airlock, signed
-acceptances and feeds, the wizard and console, and the integrations. There is
-no paid edition and no feature held back. The work still to come, including
-checks that run the model on your own GPUs, is built here in the open.
+acceptances and feeds, the wizard and console, and the integrations. It is
+free, and every check stays here. The work still to come, including checks
+that run the model on your own GPUs, is built here in the open.
 
 ## Documentation
 

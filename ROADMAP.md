@@ -132,7 +132,8 @@ Still to come:
 
 - **Scanning agent skills, MCP servers, or other agent artifacts.** Socair
   checks model artifacts.
-- **A hosted service or a paid edition** ([GOVERNANCE.md](GOVERNANCE.md)).
+- **A paid edition of the engine.** Every check stays here, free
+  ([GOVERNANCE.md](GOVERNANCE.md)).
 - **Saying a model is free of backdoors.** Socair reports what it inspected
   and lists what it cannot see in its
   [detection ceiling](docs/detection-ceiling.json).
