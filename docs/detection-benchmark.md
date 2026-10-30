@@ -27,7 +27,7 @@ generated corpus, on 2026-10-04; CI does not re-run them.
   scanner here was given any of them. With Socair's defaults (none of the
   four), the remapped tokenizer and the near-miss template pass, the known-bad
   file is matched against no list (with none supplied, that check does not
-  run), and the edited weights have no row that compares them, so Socair detects 66 of 76. Scores with the cases that need an input left out
+  run), and the edited weights have no row that compares them, so Socair detects 72 of 82. Scores with the cases that need an input left out
   follow the comparison table.
 - **The attacks are defanged.** Each case keeps the attack's structure (the
   gadget, the opcodes, the archive trick, the template construct) and swaps its
@@ -44,25 +44,25 @@ generated corpus, on 2026-10-04; CI does not re-run them.
   models are measured separately, on real corpora, in
   [false-positive-baseline.md](false-positive-baseline.md).
 
-## Socair (check set tier1/0.13, 2026-10-19)
+## Socair (check set tier1/0.13, 2026-10-29)
 
 | Check row | Cases | Detected (FAIL or LEAD) | Withheld as a gap (NOT_TESTED) | Missed (PASS) |
 |---|---|---|---|---|
 | Chat template | 12 | 11 | 0 | 1 |
-| File inventory and payloads | 10 | 9 | 0 | 1 |
+| File inventory and payloads | 11 | 10 | 0 | 1 |
 | Format and structure | 14 | 11 | 3 | 0 |
 | Hash, provenance, lineage | 1 | 1 | 0 | 0 |
 | Known-bad hash match | 1 | 1 | 0 | 0 |
 | Pickle opcode scan | 23 | 23 | 0 | 0 |
-| Remote code | 11 | 10 | 0 | 1 |
+| Remote code | 16 | 15 | 0 | 1 |
 | Tensor reference | 1 | 1 | 0 | 0 |
 | Tokenizer config | 3 | 3 | 0 | 0 |
-| **All** | **76** | **70** | **3** | **3** |
+| **All** | **82** | **76** | **3** | **3** |
 
 Benign controls flagged (FAIL or LEAD on any row): 0 of 19.
 
 Four of these detections depend on a reference input (see "Read this first");
-with Socair's defaults it detects 66 of 76.
+with Socair's defaults it detects 72 of 82.
 
 Check set tier1/0.8 replaced the pickle row's import allowlist with a typed
 grammar (`socair-wo/1`, see [check-set.md](check-set.md)) and added three
@@ -237,6 +237,45 @@ The `control-dir-gguf-quants` control pins the shape
 older template than its quants. That difference is listed, not judged. No
 earlier case changed outcome.
 
+Six cases, added with #305 under the same check set, reproduce the shape of
+the Hugging Face campaign Pluto Security reported in October 2026
+([write-up](https://pluto.security/blog/hugging-face-malware-campaign-load-mine/);
+[BleepingComputer, 2026-10-28](https://www.bleepingcomputer.com/news/security/hugging-face-malware-campaign-returns-to-hijack-gpus-for-crypto-mining/)):
+31 repositories, in two waves, posing as tiny Qwen2 test checkpoints. Each
+`config.json` reads like a Qwen2 config and carries an `auto_map` naming a
+Python module in the repository. The module calls a boot function at module
+level, before the class `auto_map` names, so loading the model with
+`trust_remote_code=True` runs it while transformers imports the file. The
+most-downloaded repository held no model: its `model.safetensors` was 42 bytes
+and no tensors. There was no pickle and no poisoned weight, and the platform's
+scanners passed the second-wave flagship clean, since they look for known
+malware and unsafe formats rather than what a repository's Python does. The
+reproductions keep that structure and replace the payload (a miner started
+from memory, persistence, in some builds a reverse shell) with functions that
+only build a string. `dir-remote-code-tiny-qwen2` is the flagship's shape,
+`dir-remote-code-tiny-qwen2-no-weights` the same with no weight file at all,
+and `dir-remote-code-library-name` puts the payload in a `modeling_qwen2.py`
+beside a `configuration_qwen2.py`, named after the library's own Qwen2
+modules, as one first-wave build did. Other repositories in the campaign
+shipped `configuration_*.py` and `tokenization_*.py` modules; the write-up does
+not say which config named them, so `dir-remote-code-config-class` names a
+configuration module in `config.json`'s `AutoConfig` entry and
+`dir-remote-code-tokenizer-class` a tokenizer module in
+`tokenizer_config.json`'s `auto_map`, with none in `config.json`.
+
+Each is a Remote code LEAD, which withholds promotion and which no acceptance
+clears: the row reads the reference a loader follows,
+not what the code does, so a payload that calls nothing a scanner knows is
+held the same as one that runs a command. `dir-second-stage-binary` adds the
+second stage some repositories carried for the loader to start, a native
+executable named as a `.bin` data file, which File inventory FAILs.
+`TestTinyQwen2CampaignRows` pins every other row of the first two, because the
+Remote code LEAD is the only thing that withholds them: the empty
+`model.safetensors` is well formed (no tensors tile no data bytes), so Format
+and structure PASSes it, and with no weight file the row is NOT_TESTED; File
+inventory, Chat template, and Tokenizer config PASS. No rule changed, and no
+earlier case changed outcome.
+
 | Case | Format | Technique | Row | Result | Severity |
 |---|---|---|---|---|---|
 | `control-pickle` | pickle | benign state-dict-shaped pickle written by CPython | (control: every row) | PASS |  |
@@ -315,6 +354,12 @@ earlier case changed outcome.
 | `dir-remote-code-imported` | model directory | auto_map naming a clean module that imports repository code that runs a command | Remote code | LEAD | medium |
 | `dir-remote-code-other-repo` | model directory | auto_map naming code in another repository, which the loader fetches | Remote code | LEAD | medium |
 | `dir-remote-code-outside-path` | model directory | auto_map naming a module by an absolute path outside the directory | Remote code | LEAD | medium |
+| `dir-remote-code-tiny-qwen2` | model directory | a tiny Qwen2-looking repository whose auto_map names a module that runs its payload at import, beside a model.safetensors with no tensors | Remote code | LEAD | medium |
+| `dir-remote-code-tiny-qwen2-no-weights` | model directory | the same repository with no weight file at all | Remote code | LEAD | medium |
+| `dir-remote-code-config-class` | model directory | auto_map naming a configuration module that runs its payload at import, as AutoConfig loads it before any model class | Remote code | LEAD | medium |
+| `dir-remote-code-tokenizer-class` | model directory | tokenizer_config.json's auto_map naming a tokenizer module that runs its payload at import, with no auto_map in config.json | Remote code | LEAD | medium |
+| `dir-remote-code-library-name` | model directory | auto_map naming modeling_qwen2.py and configuration_qwen2.py, repository files named after the library's own Qwen2 modules | Remote code | LEAD | medium |
+| `dir-second-stage-binary` | model directory | a native executable shipped as a .bin data file beside the loader module, for the loader to start | File inventory and payloads | FAIL | critical |
 | `dir-config-kernel-injection` | model directory | config.json naming an attacker's Hub kernel in _attn_implementation_internal | Remote code | FAIL | critical |
 | `dir-config-trust-remote-code` | model directory | a LightGlue config.json that grants trust_remote_code to the keypoint detector it loads from another repository | Remote code | LEAD | medium |
 | `dir-st-custom-module` | model directory | a sentence-transformers module in modules.json that runs a command, with no auto_map | Remote code | LEAD | medium |
@@ -386,8 +431,9 @@ added with #264, the two added with #263 (`dir-checksum-swapped` and the
 `control-dir-checksums` control), the seven OpenVINO cases and controls
 added with #268, the ten Keras cases and controls added with #269, and the
 three config-field cases and controls added with #291, and the two GGUF
-quant cases and controls added with #294, so its counts cover the cases before
-them; the other scanners have not been run on those fifty-three. A *suspicious* result counts as a finding, as Socair's LEAD does:
+quant cases and controls added with #294, and the six cases of the October
+2026 Hugging Face campaign's shape added with #305, so its counts cover the
+cases before them; the other scanners have not been run on those fifty-nine. A *suspicious* result counts as a finding, as Socair's LEAD does:
 picklescan's suspicious globals and Fickling's SUSPICIOUS. "Not scanned" means
 the tool skipped the file, could not parse it, or does not support the format.
 
@@ -502,6 +548,11 @@ and the two formats they belong to read, from that run:
 | `dir-remote-code-imported` | finding | not run | not run | not run | not run |
 | `dir-remote-code-other-repo` | finding | not run | not run | not run | not run |
 | `dir-remote-code-outside-path` | finding | not run | not run | not run | not run |
+| `dir-remote-code-tiny-qwen2` | finding | not run | not run | not run | not run |
+| `dir-remote-code-tiny-qwen2-no-weights` | finding | not run | not run | not run | not run |
+| `dir-remote-code-config-class` | finding | not run | not run | not run | not run |
+| `dir-remote-code-tokenizer-class` | finding | not run | not run | not run | not run |
+| `dir-remote-code-library-name` | finding | not run | not run | not run | not run |
 | `dir-config-kernel-injection` | finding | not run | not run | not run | not run |
 | `dir-config-trust-remote-code` | finding | not run | not run | not run | not run |
 | `dir-st-custom-module` | finding | not run | not run | not run | not run |
@@ -509,6 +560,7 @@ and the two formats they belong to read, from that run:
 | `dir-inference-handler` | finding | not run | not run | not run | not run |
 | `dir-diffusers-component-shadow` | finding | not run | not run | not run | not run |
 | `dir-script-caller-named` | clean | not run | not run | not run | not run |
+| `dir-second-stage-binary` | finding | not run | not run | not run | not run |
 | `dir-torch-zip-renamed` | finding | not run | not run | not run | not run |
 | `dir-template-ssti` | finding | finding | could not scan | could not scan | could not scan |
 | `dir-weights-edited` | finding | not run | not run | not run | not run |

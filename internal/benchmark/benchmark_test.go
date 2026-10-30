@@ -157,3 +157,67 @@ func table(rs []outcome) string {
 	}
 	return b.String()
 }
+
+// TestTinyQwen2CampaignRows pins every row of the October 2026 campaign's
+// shape, not only the Remote code row the benchmark reads: the repository has
+// no model in it, so no other row has anything to object to, and the Remote
+// code LEAD alone withholds it. An empty model.safetensors is well formed (no
+// tensors tile no data), so Format and structure passes it; with no weight
+// file at all it is a gap, NOT_TESTED. If another row starts to respond, or
+// the LEAD goes, this fails and the documented account has to change.
+func TestTinyQwen2CampaignRows(t *testing.T) {
+	want := map[string]map[string]report.Status{
+		"dir-remote-code-tiny-qwen2": {
+			"Format and structure":        report.StatusPass,
+			"File inventory and payloads": report.StatusPass,
+			"Hash, provenance, lineage":   report.StatusNotTested,
+			"Chat template":               report.StatusPass,
+			"Tokenizer config":            report.StatusPass,
+			"Remote code":                 report.StatusLead,
+		},
+		"dir-remote-code-tiny-qwen2-no-weights": {
+			"Format and structure":        report.StatusNotTested,
+			"File inventory and payloads": report.StatusPass,
+			"Hash, provenance, lineage":   report.StatusNotTested,
+			"Chat template":               report.StatusPass,
+			"Tokenizer config":            report.StatusPass,
+			"Remote code":                 report.StatusLead,
+		},
+	}
+	seen := 0
+	for _, c := range Cases() {
+		rows, ok := want[c.ID]
+		if !ok {
+			continue
+		}
+		seen++
+		path, _, err := c.Build(t.TempDir())
+		if err != nil {
+			t.Fatalf("%s: build: %v", c.ID, err)
+		}
+		d, err := engine.Scan(path)
+		if err != nil {
+			t.Fatalf("%s: scan: %v", c.ID, err)
+		}
+		got := map[string]report.Status{}
+		for _, r := range d.Checks {
+			got[r.Name] = r.Status
+		}
+		for name, s := range rows {
+			if got[name] != s {
+				t.Errorf("%s: %s row is %q, pinned %s", c.ID, name, got[name], s)
+			}
+		}
+		for name, s := range got {
+			if _, ok := rows[name]; !ok {
+				t.Errorf("%s: unpinned %s row (%s)", c.ID, name, s)
+			}
+		}
+		if d.PromotionAuthorization.Authorized || d.PromotionAuthorization.State != "withheld" {
+			t.Errorf("%s: promotion is %s, want withheld", c.ID, d.PromotionAuthorization.State)
+		}
+	}
+	if seen != len(want) {
+		t.Fatalf("found %d of %d campaign cases in the corpus", seen, len(want))
+	}
+}
