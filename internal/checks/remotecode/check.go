@@ -31,6 +31,22 @@
 // not judged, because the loader then imports it from an installed package
 // or fails.
 //
+// A config can also make a loader run code with no trust_remote_code at all,
+// and that is judged as the field itself:
+//
+//   - an attention field of config.json (_attn_implementation_internal, or
+//     _attn_implementation, whose setter writes it), at any depth, naming a
+//     Hub kernel repository: transformers 4.56.0 to 5.2.x download and run
+//     the kernel in a plain from_pretrained once the kernels package is
+//     installed (CVE-2026-4372). save_pretrained never writes either field,
+//     so a kernel outside kernels-community there is a FAIL; a
+//     kernels-community kernel, which 5.3.0 and later still load, is a LEAD;
+//   - trust_remote_code set in config.json: transformers' LightGlue read it
+//     before 5.5.0 and passed it to the nested AutoConfig.from_pretrained
+//     that loads its keypoint detector, importing another repository's code
+//     with trust_remote_code=False (CVE-2026-5241). Other loaders ignore it,
+//     so it is a LEAD.
+//
 // Any other Python or script file is listed in the notes as present and
 // imported by none of these, not judged: Socair does not say a loader runs a
 // file no loader names. A directory with no reference PASSes. A config that
@@ -40,7 +56,8 @@
 //
 // Out of scope: loaders that import a file their caller names (SpeechBrain's
 // foreign_class), configs that are code by design (HyperPyYAML, Hydra's
-// _target_), Hub kernels a config's attn_implementation names, PEFT's
+// _target_), a public attn_implementation (from_dict replaces a top-level one
+// with the caller's own; one in a sub-config is not read here), PEFT's
 // auto_mapping (an installed module), compiled or bytecode modules, and an
 // environment variable that renames a handler.
 package remotecode
@@ -61,7 +78,8 @@ import (
 const (
 	resultName = "Remote code"
 	looksFor   = "Python a loader would import: modules a config names (auto_map, custom_pipelines, sentence-transformers and diffusers modules), " +
-		"files loaders import by their path, and the repository files those import"
+		"files loaders import by their path, the repository files those import, " +
+		"and config.json fields that run code without trust_remote_code (a Hub kernel as the attention implementation, trust_remote_code itself)"
 )
 
 const (
@@ -90,6 +108,7 @@ func Inspect(root string, files []modeldir.File) checks.Result {
 	t := newTree(paths)
 
 	var refs []reference
+	var fields []override
 	var unread []string
 	configs := 0
 	for _, f := range files {
@@ -119,6 +138,9 @@ func Inspect(root string, files []modeldir.File) checks.Result {
 			continue
 		}
 		configs++
+		if obj, ok := v.(map[string]any); ok {
+			fields = append(fields, overrides(f.Path, obj)...)
+		}
 		got, all := t.loaderRefs(f.Path, v)
 		if !all {
 			unread = append(unread, fmt.Sprintf("%s: more than %d references, the rest not read", f.Path, maxRefsPerFile))
@@ -149,6 +171,18 @@ func Inspect(root string, files []modeldir.File) checks.Result {
 	}
 	reached, importedBy, unreadSrc := follow(root, t, uniq(entries))
 
+	failed := false
+	for i, o := range fields {
+		if i == maxFindings {
+			r.Findings = append(r.Findings, checks.Finding{Pattern: o.pattern, Span: fmt.Sprintf("and %d more field(s)", len(fields)-i),
+				Detail: "not listed one by one"})
+			break
+		}
+		r.Findings = append(r.Findings, checks.Finding{Pattern: o.pattern, Span: clip(o.where) + " -> " + clip(o.what), Detail: o.detail})
+	}
+	for _, o := range fields {
+		failed = failed || o.fail
+	}
 	for i, ref := range leads {
 		if i == maxFindings {
 			r.Findings = append(r.Findings, checks.Finding{Pattern: ref.pattern, Span: fmt.Sprintf("and %d more reference(s)", len(leads)-i),
@@ -179,7 +213,15 @@ func Inspect(root string, files []modeldir.File) checks.Result {
 	switch {
 	case len(r.Findings) > 0:
 		r.Status = checks.Lead
-		notes = append(notes, leadNote(leads, reached))
+		if failed {
+			r.Status = checks.Fail
+		}
+		if len(fields) > 0 {
+			notes = append(notes, fieldNote(fields, failed))
+		}
+		if len(leads) > 0 || len(reached) > 0 {
+			notes = append(notes, leadNote(leads, reached))
+		}
 		if len(unreadSrc) > 0 {
 			notes = append(notes, "could not read for imports, so files they import may be unnamed: "+list(unreadSrc))
 		}
@@ -192,8 +234,8 @@ func Inspect(root string, files []modeldir.File) checks.Result {
 	default:
 		r.Status = checks.Pass
 		notes = append(notes, fmt.Sprintf("no loader is told to import code: no auto_map, custom_pipelines, sentence-transformers module outside "+
-			"sentence_transformers, or diffusers custom component in the %d JSON config(s) read, and no custom_generate/generate.py, "+
-			"handler.py, pipeline.py, or code/inference.py", configs))
+			"sentence_transformers, diffusers custom component, Hub kernel named as an attention implementation, or trust_remote_code "+
+			"granted in the %d JSON config(s) read, and no custom_generate/generate.py, handler.py, pipeline.py, or code/inference.py", configs))
 	}
 	for i, ref := range noted {
 		if i == maxListed {
@@ -208,6 +250,17 @@ func Inspect(root string, files []modeldir.File) checks.Result {
 	}
 	r.Notes = strings.Join(notes, "; ")
 	return r
+}
+
+// fieldNote says what the config fields that override the caller do.
+func fieldNote(fields []override, failed bool) string {
+	s := fmt.Sprintf("%d config field(s) make a loader run code the caller did not allow with trust_remote_code, each named in the evidence", len(fields))
+	if failed {
+		s += ". A Hub kernel outside kernels-community named in an attention field of config.json is the CVE-2026-4372 injection: " +
+			"transformers 4.56.0 to 5.2.x run it in a plain from_pretrained once the kernels package is installed, and save_pretrained " +
+			"never writes the field. Do not load this model"
+	}
+	return s
 }
 
 // finding is the evidence for one reference.

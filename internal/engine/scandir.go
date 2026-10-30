@@ -22,6 +22,7 @@ import (
 	"github.com/defilantech/socair/internal/checks/structure"
 	"github.com/defilantech/socair/internal/checks/tokenizer"
 	"github.com/defilantech/socair/internal/diskfree"
+	"github.com/defilantech/socair/internal/gguf"
 	"github.com/defilantech/socair/internal/keras"
 	"github.com/defilantech/socair/internal/modeldir"
 	"github.com/defilantech/socair/internal/openvino"
@@ -128,6 +129,7 @@ func scanDir(dir string, start time.Time, refs *references, in Inputs, t2 *tier2
 		return r
 	}
 	var invFiles []modeldir.File
+	var ggufHeads []ggufHeader
 	irXML, irBin := openvinoIRs(files, at)
 	for _, f := range files {
 		ext := strings.ToLower(path.Ext(f.Path))
@@ -159,7 +161,9 @@ func scanDir(dir string, start time.Time, refs *references, in Inputs, t2 *tier2
 			structParts = append(structParts, checks.Part{File: f.Path, Result: structure.Validate(at(f))})
 			invFiles = append(invFiles, f)
 			if ext == ".gguf" {
-				unparsed = append(unparsed, f.Path+": GGUF metadata checks (chat template, tokenizer, quant) run when the file is scanned on its own")
+				m, err := gguf.ReadHeader(at(f))
+				ggufHeads = append(ggufHeads, ggufHeader{path: f.Path, m: m, err: err})
+				unparsed = append(unparsed, f.Path+": GGUF metadata checks (tokenizer, quant) run when the file is scanned on its own")
 			}
 		case preview && (ext == ".onnx" || kerasExt[ext]):
 			structParts = append(structParts, checks.Part{File: f.Path, Result: headersOnly("", "", "an "+strings.TrimPrefix(ext, ".")+" file is read whole")})
@@ -243,10 +247,22 @@ func scanDir(dir string, start time.Time, refs *references, in Inputs, t2 *tier2
 	// A directory with no chat template where a loader looks for one, and
 	// no template file it could not read, has none to check.
 	templates, nonString, unread := modeldir.ChatTemplates(root, files)
+	// Each GGUF carries its own template in its metadata, read beside them.
+	ggufParts, ggufNote := ggufTemplateParts(ggufHeads, refs)
 	var triggers []tier2.Trigger
-	if len(templates) == 0 && len(nonString) == 0 && len(unread) == 0 {
-		notRun = append(notRun, noChatTemplate("none in tokenizer_config.json, chat_template.json, or a .jinja file"))
-	} else {
+	hfTemplates := len(templates) > 0 || len(nonString) > 0 || len(unread) > 0
+	switch {
+	case !hfTemplates && len(ggufParts) == 0:
+		where := "none in tokenizer_config.json, chat_template.json, or a .jinja file"
+		if len(ggufHeads) > 0 {
+			where += ", and none in a GGUF file's metadata"
+		}
+		notRun = append(notRun, noChatTemplate(where))
+	case !hfTemplates:
+		row := checks.Merge(ggufParts[0].Result.Name, ggufParts[0].Result.LooksFor, ggufParts)
+		row.Notes = joinNote(row.Notes, ggufNote)
+		results = append(results, row)
+	default:
 		opts := refs.templateOptions(chattemplate.TokensFromHF(tok.Special, tok.AddedTexts()))
 		tmplRow := chattemplate.InspectAllWith(templates, nonString, opts)
 		triggers = templateTriggers(t2, templates, opts)
@@ -258,6 +274,11 @@ func scanDir(dir string, start time.Time, refs *references, in Inputs, t2 *tier2
 		}
 		if len(unread) > 0 {
 			tmplRow.Notes += "; could not read: " + strings.Join(unread, "; ")
+		}
+		if len(ggufParts) > 0 {
+			tmplRow = checks.Merge(tmplRow.Name, tmplRow.LooksFor,
+				append([]checks.Part{{File: "Hugging Face configs", Result: tmplRow}}, ggufParts...))
+			tmplRow.Notes = joinNote(tmplRow.Notes, ggufNote)
 		}
 		results = append(results, tmplRow)
 	}

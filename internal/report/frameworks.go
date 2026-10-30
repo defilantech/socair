@@ -26,6 +26,9 @@ var patternSeverity = map[string]string{
 	"embedded-binary":         SeverityCritical,
 	"repo-binary":             SeverityCritical,
 	"denylist-match":          SeverityCritical,
+	// A config field that makes a loader run a Hub kernel without
+	// trust_remote_code (CVE-2026-4372).
+	"config-kernel-injection": SeverityCritical,
 	// A file write outside the save directory when the tokenizer is saved.
 	"template-name-path": SeverityHigh,
 	// Positive evidence of tampering, or a strong sign of a hidden payload.
@@ -43,6 +46,7 @@ var patternSeverity = map[string]string{
 	"template-injects-token":        SeverityHigh,
 	"tokenizer-token-changed":       SeverityHigh,
 	"reviewed-template-mismatch":    SeverityHigh,
+	"quant-template-mismatch":       SeverityHigh,
 	"pickle-storage-layout":         SeverityHigh,
 	"pickle-unaccounted-bytes":      SeverityHigh,
 	"pickle-noncanonical":           SeverityHigh,
@@ -105,6 +109,8 @@ var patternSeverity = map[string]string{
 	"custom-generate":              SeverityMedium,
 	"inference-handler":            SeverityMedium,
 	"imported-code":                SeverityMedium,
+	"config-hub-kernel":            SeverityMedium,
+	"config-trust-remote-code":     SeverityMedium,
 	// An ONNX external data location that systems resolve differently.
 	"external-data-path": SeverityMedium,
 	// No longer emitted (tier1/0.9, #254): any .py file was a LEAD. Kept so

@@ -52,7 +52,12 @@ artifact:
   one row per check: the worst result wins, and every file that did not PASS
   is named. A `*.safetensors.index.json` must agree exactly with its shards.
 - The chat template comes from `tokenizer_config.json`, `chat_template.json`,
-  and any `.jinja` file.
+  any `.jinja` file, and each GGUF file's metadata (#294). GGUF files that
+  carry the same templates are graded once. When they differ, each version is
+  compared with the others as with a reviewed reference
+  (`chattemplate.Options.Siblings`): one that renders like another on every
+  standard probe but adds a content-conditional branch is a LEAD
+  (`quant-template-mismatch`). Any other difference is listed, not judged.
 - **Remote code** is a LEAD for the Python a loader would import: a module an
   `auto_map` (any config, any depth), `custom_pipelines`, a sentence-transformers
   `modules.json` or Router, or a diffusers `model_index.json` names; a file a
@@ -60,7 +65,11 @@ artifact:
   `pipeline.py`, or `code/inference.py` at the root); and every repository file
   those import, transitively. A reference to another repository or outside the
   directory is a LEAD too. Any other `.py` file is listed in the notes, not
-  judged (`internal/checks/remotecode`, #254).
+  judged (`internal/checks/remotecode`, #254). Two `config.json` fields run
+  code without `trust_remote_code` at all (#291): a Hub kernel outside
+  `kernels-community` named as the attention implementation FAILs
+  (CVE-2026-4372), and a `kernels-community` kernel there, or a truthy
+  `trust_remote_code` (CVE-2026-5241), is a LEAD.
 - The tokenizer is inspected from `tokenizer.json`, `tokenizer_config.json`,
   `special_tokens_map.json`, and the special-token ids in `config.json` and
   `generation_config.json` (`tokenizer.InspectHF`): inconsistent tables FAIL,

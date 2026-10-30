@@ -143,6 +143,7 @@ var passMeaning = map[string]string{
 	"Remote code": "No config a loader reads names Python in this directory or in another repository (through an auto_map entry, " +
 		"custom_pipelines, a sentence-transformers module, or a diffusers custom pipeline or component), and no file sits where a loader imports one by its path " +
 		"(custom_generate/generate.py, or an inference toolkit's handler.py, pipeline.py, or code/inference.py). " +
+		"No config.json names a Hub kernel as its attention implementation or sets trust_remote_code. " +
 		"Other Python and script files are listed in the notes and not judged: a loader Socair does not model, or a person, can still run them.",
 	"Hash, provenance, lineage": "A trusted publisher signature verified over this artifact, or an operator-supplied manifest binds this hash " +
 		"to a repository at an immutable commit. The notes say which; a manifest is the operator's claim, not a signature. " +
