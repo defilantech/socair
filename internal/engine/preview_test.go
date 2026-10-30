@@ -284,40 +284,45 @@ func TestScanNeverTakesStatedHashes(t *testing.T) {
 	}
 
 	fset := token.NewFileSet()
-	pkgs, err := parser.ParseDir(fset, ".", func(fi os.FileInfo) bool { return !strings.HasSuffix(fi.Name(), "_test.go") }, 0)
+	names, err := filepath.Glob("*.go")
 	if err != nil {
 		t.Fatal(err)
 	}
 	calls := 0
-	for _, pkg := range pkgs {
-		for name, file := range pkg.Files {
-			ast.Inspect(file, func(n ast.Node) bool {
-				call, ok := n.(*ast.CallExpr)
-				if !ok {
-					return true
-				}
-				fn, ok := call.Fun.(*ast.Ident)
-				if !ok || fn.Name != "scanDir" && fn.Name != "scanFile" {
-					return true
-				}
-				calls++
-				last := call.Args[len(call.Args)-1]
-				isNil := false
-				if id, ok := last.(*ast.Ident); ok && id.Name == "nil" {
-					isNil = true
-				}
-				// scanFile has no stated-hash parameter: its last argument is
-				// Tier 2's config, nil in a preview, and a header-only file
-				// scan has no subject (attest.Sign refuses it).
-				if fn.Name == "scanDir" && !isNil && filepath.Base(name) != "preview.go" {
-					t.Errorf("%s: scanDir is passed stated hashes outside preview.go", fset.Position(call.Pos()))
-				}
-				if fn.Name == "scanDir" && isNil && filepath.Base(name) == "preview.go" {
-					t.Errorf("%s: the preview passes scanDir no stated hashes", fset.Position(call.Pos()))
-				}
-				return true
-			})
+	for _, name := range names {
+		if strings.HasSuffix(name, "_test.go") {
+			continue
 		}
+		file, err := parser.ParseFile(fset, name, nil, 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		ast.Inspect(file, func(n ast.Node) bool {
+			call, ok := n.(*ast.CallExpr)
+			if !ok {
+				return true
+			}
+			fn, ok := call.Fun.(*ast.Ident)
+			if !ok || fn.Name != "scanDir" && fn.Name != "scanFile" {
+				return true
+			}
+			calls++
+			last := call.Args[len(call.Args)-1]
+			isNil := false
+			if id, ok := last.(*ast.Ident); ok && id.Name == "nil" {
+				isNil = true
+			}
+			// scanFile has no stated-hash parameter: its last argument is
+			// Tier 2's config, nil in a preview, and a header-only file
+			// scan has no subject (attest.Sign refuses it).
+			if fn.Name == "scanDir" && !isNil && filepath.Base(name) != "preview.go" {
+				t.Errorf("%s: scanDir is passed stated hashes outside preview.go", fset.Position(call.Pos()))
+			}
+			if fn.Name == "scanDir" && isNil && filepath.Base(name) == "preview.go" {
+				t.Errorf("%s: the preview passes scanDir no stated hashes", fset.Position(call.Pos()))
+			}
+			return true
+		})
 	}
 	if calls < 3 {
 		t.Fatalf("found %d calls to scanDir and scanFile; the source check reads nothing", calls)
