@@ -27,6 +27,16 @@ model's behavior: see what each result means, and the detection ceiling, below.
 
 *Socair* (SUH-ker) is Irish for "at ease, settled, secure".
 
+<p align="center">
+  <img alt="A terminal session. A repository shaped like the October 2026 Hugging Face miner campaign is scanned: promotion withheld, with a Remote code LEAD naming the module its config tells the loader to import. Qwen/Qwen3-0.6B is pulled through the airlock at a pinned commit and scanned: every row PASS, promotion authorized. Both reports are signed with an operator key. The airlock refuses the first, promotes the second into the clean store, and the attestation verifies offline." src="docs/demo/intake.gif" width="820">
+</p>
+
+*Two models through the same intake. The withheld one is the detection
+benchmark's defanged copy of the campaign's layout: its stand-in payload only
+builds a string. Recorded at v0.1.0-rc.8 with
+[scripts/record-demo.sh](scripts/record-demo.sh); the 1.5 GB download is
+shortened.*
+
 ## What it checks
 
 Each check returns **PASS**, **FAIL**, **LEAD**, or **NOT_TESTED**:
