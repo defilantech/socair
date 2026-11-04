@@ -1,0 +1,6 @@
+# Advisories that OSV reports against the wizard's dependencies but that do
+# not apply to what it builds. Each says why.
+
+[[IgnoredVulns]]
+id = "GHSA-gcqx-w48m-w2h4"
+reason = "deepmerge, used only at build time by @sveltejs/vite-plugin-svelte to merge the project's own Svelte options (src/utils/options.js). Nothing from a user or a model reaches it, it is not in the wizard bundle, and no patched version exists."

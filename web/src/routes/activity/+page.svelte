@@ -1,8 +1,8 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { airlockLog, type AirlockEvent } from '$lib/api';
-	import Command from '$lib/Command.svelte';
-	import EventList from '$lib/EventList.svelte';
+	import { airlockLog, type AirlockEvent } from '#lib/api.js';
+	import Command from '#lib/Command.svelte';
+	import EventList from '#lib/EventList.svelte';
 
 	let events = $state<AirlockEvent[] | null>(null);
 	let error = $state('');

@@ -1,5 +1,5 @@
 <script lang="ts">
-	import type { Document } from '$lib/api';
+	import type { Document } from '#lib/api.js';
 	import {
 		statusPill,
 		promotionLabel,
@@ -13,7 +13,7 @@
 		measurementSummary,
 		nodeClassFacts,
 		shortHash
-	} from '$lib/report';
+	} from '#lib/report.js';
 
 	// The engine's report, read-only. Section numbers follow the attestation
 	// template (docs/attestation-template.md), and the bounded statement's
