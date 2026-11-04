@@ -7,6 +7,19 @@ notes, install and verification commands, and the assets.
 From 0.1.0-rc.5 on, release-please writes each entry from the conventional
 titles of the pull requests merged since the last release (docs/releasing.md).
 
+## [0.1.0-rc.9](https://github.com/defilantech/socair/compare/v0.1.0-rc.8...v0.1.0-rc.9) (2026-11-04)
+
+
+### Documentation
+
+* add a one-minute terminal demo to the README ([#310](https://github.com/defilantech/socair/issues/310)) ([a644f50](https://github.com/defilantech/socair/commit/a644f509130502fa8c36e0a72ed81e35435ee89e))
+
+
+### Dependencies
+
+* build releases with Go 1.27.3 and bump x/net in socair-sigstore ([#312](https://github.com/defilantech/socair/issues/312)) ([d783328](https://github.com/defilantech/socair/commit/d7833282031936917cc71e5d0fa4b96d61bc4ef8))
+* bump node from `c3de60b` to `4b150b4` ([#309](https://github.com/defilantech/socair/issues/309)) ([34a13e0](https://github.com/defilantech/socair/commit/34a13e0f6b63dec5f627de3aefd6cdfe6b3dd093))
+
 ## [0.1.0-rc.8](https://github.com/defilantech/socair/compare/v0.1.0-rc.7...v0.1.0-rc.8) (2026-10-30)
 
 
