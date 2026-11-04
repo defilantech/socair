@@ -1,9 +1,9 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { models, exportSnapshot, type Model } from '$lib/api';
-	import { stageLabel, stageTone, approvedSections, reasonBeyondLabel, acceptedLine } from '$lib/console';
-	import Command from '$lib/Command.svelte';
-	import When from '$lib/When.svelte';
+	import { models, exportSnapshot, type Model } from '#lib/api.js';
+	import { stageLabel, stageTone, approvedSections, reasonBeyondLabel, acceptedLine } from '#lib/console.js';
+	import Command from '#lib/Command.svelte';
+	import When from '#lib/When.svelte';
 
 	let list = $state<Model[] | null>(null);
 	let error = $state('');

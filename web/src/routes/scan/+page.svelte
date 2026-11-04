@@ -1,10 +1,10 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { scan, downloadReport, airlockLog, type AirlockEvent } from '$lib/api';
-	import { runScan, canDownload, type RunState } from '$lib/run';
-	import { availableLevels, selectable } from '$lib/report';
-	import ReportView from '$lib/ReportView.svelte';
-	import EventList from '$lib/EventList.svelte';
+	import { scan, downloadReport, airlockLog, type AirlockEvent } from '#lib/api.js';
+	import { runScan, canDownload, type RunState } from '#lib/run.js';
+	import { availableLevels, selectable } from '#lib/report.js';
+	import ReportView from '#lib/ReportView.svelte';
+	import EventList from '#lib/EventList.svelte';
 
 	let path = $state('');
 	let levelId = $state(selectable()?.id ?? '');

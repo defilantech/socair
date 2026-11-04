@@ -13,7 +13,12 @@ export default defineConfig({
 			// The wizard has no server-side logic, so it builds to static files
 			// that `socair serve` serves. The 200.html fallback answers any client
 			// route.
-			adapter: adapter({ fallback: '200.html' })
+			adapter: adapter({ fallback: '200.html' }),
+
+			// SvelteKit 3 polls for a new deployment every hour by default. The
+			// wizard ships inside the binary that serves it and never reads
+			// `updated`, so it does not poll.
+			version: { pollInterval: 0 }
 		})
 	],
 	// Dev mode: the wizard on :5173 talks to a local `socair serve` through

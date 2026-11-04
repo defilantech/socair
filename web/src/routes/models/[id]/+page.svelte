@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { page } from '$app/state';
-	import { model, evidenceURL, type Model, type Document, type AirlockEvent } from '$lib/api';
+	import { model, evidenceURL, type Model, type Document, type AirlockEvent } from '#lib/api.js';
 	import {
 		stageLabel,
 		stageTone,
@@ -9,12 +9,12 @@
 		nextPurpose,
 		isApprovedList,
 		recheckLine
-	} from '$lib/console';
-	import { navSection } from '$lib/nav.svelte';
-	import ReportView from '$lib/ReportView.svelte';
-	import Command from '$lib/Command.svelte';
-	import EventList from '$lib/EventList.svelte';
-	import When from '$lib/When.svelte';
+	} from '#lib/console.js';
+	import { navSection } from '#lib/nav.svelte.js';
+	import ReportView from '#lib/ReportView.svelte';
+	import Command from '#lib/Command.svelte';
+	import EventList from '#lib/EventList.svelte';
+	import When from '#lib/When.svelte';
 
 	let m = $state<Model | null>(null);
 	let report = $state<Document | null>(null);

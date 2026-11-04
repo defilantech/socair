@@ -1,12 +1,12 @@
 <script lang="ts">
 	import '../app.css';
-	import favicon from '$lib/assets/favicon.svg';
+	import favicon from '#lib/assets/favicon.svg';
 	import { onMount } from 'svelte';
 	import { page } from '$app/state';
-	import { health, feedStatus, type Health, type FeedStatus } from '$lib/api';
-	import { feedLine } from '$lib/console';
-	import { navSection } from '$lib/nav.svelte';
-	import Cairn from '$lib/Cairn.svelte';
+	import { health, feedStatus, type Health, type FeedStatus } from '#lib/api.js';
+	import { feedLine } from '#lib/console.js';
+	import { navSection } from '#lib/nav.svelte.js';
+	import Cairn from '#lib/Cairn.svelte';
 
 	let { children } = $props();
 	let engine = $state<Health | null>(null);

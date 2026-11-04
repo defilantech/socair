@@ -1,8 +1,8 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { models, scanStaged, uploadAttestation, type Model } from '$lib/api';
-	import { stageLabel, stageTone, pendingHeading, reasonBeyondLabel, nextPurpose } from '$lib/console';
-	import Command from '$lib/Command.svelte';
+	import { models, scanStaged, uploadAttestation, type Model } from '#lib/api.js';
+	import { stageLabel, stageTone, pendingHeading, reasonBeyondLabel, nextPurpose } from '#lib/console.js';
+	import Command from '#lib/Command.svelte';
 
 	let list = $state<Model[] | null>(null);
 	let error = $state('');

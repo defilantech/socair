@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { goto } from '$app/navigation';
-	import { health } from '$lib/api';
+	import { health } from '#lib/api.js';
 
 	// With a store, the console's home is the approved list; without one, the
 	// scan page, as before.
