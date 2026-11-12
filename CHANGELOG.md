@@ -7,6 +7,14 @@ notes, install and verification commands, and the assets.
 From 0.1.0-rc.5 on, release-please writes each entry from the conventional
 titles of the pull requests merged since the last release (docs/releasing.md).
 
+## [0.1.0-rc.10](https://github.com/defilantech/socair/compare/v0.1.0-rc.9...v0.1.0-rc.10) (2026-11-10)
+
+
+### Dependencies
+
+* bump distroless/static-debian13 from `18f4cc2` to `25ac8f0` ([#315](https://github.com/defilantech/socair/issues/315)) ([5011ae5](https://github.com/defilantech/socair/commit/5011ae5ad2f98b10a37486de9b04c67f781763e4))
+* **web:** move the wizard to SvelteKit 3 ([#313](https://github.com/defilantech/socair/issues/313)) ([9515b36](https://github.com/defilantech/socair/commit/9515b36d0546576d4685e247a05ca5222f22f13e))
+
 ## [0.1.0-rc.9](https://github.com/defilantech/socair/compare/v0.1.0-rc.8...v0.1.0-rc.9) (2026-11-04)
 
 
